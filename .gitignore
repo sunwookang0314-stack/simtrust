@@ -1,0 +1,10 @@
+.env
+.venv/
+.venv-ga/
+external/
+runs/
+!runs/.gitkeep
+config.ini
+*.log
+__pycache__/
+*.pyc
