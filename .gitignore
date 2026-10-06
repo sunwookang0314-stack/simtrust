@@ -1,6 +1,7 @@
 .env
 .venv/
 .venv-ga/
+.venv-data/
 external/
 runs/
 !runs/.gitkeep
@@ -8,3 +9,5 @@ config.ini
 *.log
 __pycache__/
 *.pyc
+
+experiments/personas_nemotron_korea/WORK_LOG.md
