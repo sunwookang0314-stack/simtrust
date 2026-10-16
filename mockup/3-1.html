@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>3-1 가상 이슈 묶기 · SimTrust</title>
+<link rel="stylesheet" href="base.css?v=12">
+<style>
+.main{grid-template-columns:1fr}
+.sum{display:grid;grid-template-columns:minmax(180px,240px) 40px minmax(180px,240px) 1fr;gap:16px;align-items:center}
+.cards4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:14px}
+</style></head>
+<body data-no="3-1" data-state="0">
+<main class="in main">
+  <div class="panel">
+    <div class="hl-row">
+      <h1 class="h2">조건 2 카드 166장에서 가상 이슈 27건이 나왔어요</h1>
+      <p class="lead">같은 문제를 여러 페르소나가 지적해도 가상 이슈 1건으로 쳐요. 정밀도·재현율은 이 가상 이슈 단위로 계산해요.</p>
+    </div>
+    <div class="sum">
+      <div class="kpi"><span>원래 카드 · 조건 2</span><b>166<small>장</small></b></div>
+      <svg class="arrow" width="40" height="24" viewBox="0 0 40 24" aria-hidden="true"><path d="M4 12h30M26 5l8 7-8 7" fill="none" stroke="#4E5968" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div class="kpi"><span>가상 이슈</span><b>27<small>건</small></b></div>
+      <p class="note">정리자 2인 1조가 같은 문제끼리 묶었어요.</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2 class="st">가상 이슈<small>조건 2 가상 이슈 27건 중 8건 표시 · 가장 나쁜 결과 = 묶인 카드 중 가장 나쁜 과제 결과</small></h2>
+    <table class="tbl" style="margin-top:14px">
+      <thead><tr><th>ID</th><th>화면</th><th>유형</th><th>대표 설명</th><th class="r">카드</th><th class="r">페르소나</th><th>가장 나쁜 결과</th><th>정리자</th></tr></thead>
+      <tbody>
+        <tr class="rowsel"><td style="font-weight:600">VI-2-01</td><td>S2 공고 목록</td><td>기능을 못 찾음</td><td>분야·마감 필터가 접혀 있어 못 찾음</td><td class="r">14</td><td class="r">8</td><td>헤매다 함</td><td class="muted">SH·MW</td></tr>
+        <tr><td class="muted">VI-2-02</td><td>S5 관심 분야 설정</td><td>흐름 중간에 막힘</td><td>저장 버튼이 화면 밖에 있어 설정이 안 끝남</td><td class="r">11</td><td class="r">6</td><td><b>못 함</b></td><td class="muted">SH·SW</td></tr>
+        <tr><td class="muted">VI-2-03</td><td>S2 공모전 목록</td><td>기능을 못 찾음</td><td>상금 순 정렬이 드롭다운 안에 있음</td><td class="r">9</td><td class="r">6</td><td>헤매다 함</td><td class="muted">MW·SW</td></tr>
+        <tr><td class="muted">VI-2-04</td><td>S3 공모전 상세</td><td>흐름 중간에 막힘</td><td>지원 방법이 접힘 영역 안이라 못 찾음</td><td class="r">8</td><td class="r">5</td><td><b>못 함</b></td><td class="muted">SH·MW</td></tr>
+        <tr><td class="muted">VI-2-05</td><td>S3 공고 상세</td><td>용어를 이해 못 함</td><td>'서포터즈'·'기자단' 차이를 모름</td><td class="r">6</td><td class="r">4</td><td>헤매다 함</td><td class="muted">SW·MW</td></tr>
+        <tr><td class="muted">VI-2-06</td><td>S4 스크랩함</td><td>흐름 중간에 막힘</td><td>스크랩한 공고를 어디서 보는지 모름</td><td class="r">5</td><td class="r">4</td><td>헤매다 함</td><td class="muted">SH·SW</td></tr>
+        <tr><td class="muted">VI-2-07</td><td>S1 메인</td><td>취향·감성</td><td>메인 색감이 딱딱해 보임</td><td class="r">3</td><td class="r">2</td><td>바로 함</td><td class="muted">MW·SW</td></tr>
+        <tr><td class="muted">VI-2-08</td><td>S3 공고 상세</td><td>용어를 이해 못 함</td><td>'활동비 지급' 기준이 무엇인지 모름</td><td class="r">4</td><td class="r">3</td><td>헤매다 함</td><td class="muted">SH·MW</td></tr>
+      </tbody>
+    </table>
+
+    <div class="hr"></div>
+    <h3 class="st-sm">VI-2-01에 묶인 원래 카드<small>분야·마감 필터가 접혀 있어 못 찾음 · 14장 중 4장</small></h3>
+    <div class="cards4">
+      <div class="quote"><small>IC-2-0412 · S08_나영석</small>필터가 접혀 있어 처음엔 없는 줄 알았어요.</div>
+      <div class="quote"><small>IC-2-0388 · J02_박소영</small>마감일로 거르는 버튼을 못 찾아 스크롤만 했어요.</div>
+      <div class="quote"><small>IC-2-0401 · S03_김성현</small>검색창 말고 분야를 고르는 곳이 안 보여요.</div>
+      <div class="quote"><small>IC-2-0450 · J05_최하영</small>'필터' 글자가 너무 작아서 지나쳤어요.</div>
+    </div>
+  </div>
+</main>
+<script src="shell.js?v=12"></script>
+</body></html>

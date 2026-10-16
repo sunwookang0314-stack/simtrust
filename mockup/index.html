@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>SimTrust 화면 11개 · 목업</title>
+<link rel="stylesheet" href="base.css?v=12">
+<style>
+body{padding:40px 0 56px}
+h1{font-size:26px;font-weight:700;letter-spacing:-.02em}
+.sub{font-size:15px;color:var(--g700);margin-top:6px;line-height:1.6}
+.rules{display:flex;gap:28px;margin-top:18px;font-size:14px;color:var(--g700)}
+.rules b{color:var(--g900)}
+.grp{margin-top:36px}
+.grp h2{font-size:17px;font-weight:700;display:flex;align-items:baseline;gap:8px}
+.grp h2 small{font-size:13px;font-weight:500;color:var(--g700)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:12px}
+a.card{display:block;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 0 0 1px var(--g200)}
+a.card .img{height:262px;background-size:100% auto;background-position:top center;background-repeat:no-repeat;border-bottom:1px solid var(--g100)}
+a.card .cap{padding:12px 16px;display:flex;align-items:baseline;gap:8px}
+a.card .cap i{font-style:normal;font-size:13px;color:var(--g700)}
+a.card .cap b{font-size:15px;font-weight:700}
+a.card .cap span.id{margin-left:auto;font-size:12px;color:var(--g700)}
+.tg{margin-left:4px}
+</style></head>
+<body>
+<div class="in">
+  <h1>SimTrust 화면 11개 목업</h1>
+  <div class="sub">레퍼런스 조합 그대로예요. 뼈대는 토스증권 종목정보, 결론 문장은 토스 애널리스트 의견, 문턱 막대와 고칠 목록은 PageSpeed, 이유 목록은 네이버 플레이스에서 가져왔어요.<br>숫자·화면 ID·데모 상태 이름은 app/demo_data.py와 ui.py 그대로예요. 빈 칸은 '-'로 표시했어요. 카드를 누르면 그 화면이 열려요.</div>
+  <div class="rules"><span><b>색</b> 파랑 한 계열 + 회색. 파랑은 판정 단계와 AI 조건 0~3에만 써요</span><span><b>헤드라인</b> 모든 화면 첫 패널 맨 위, 데이터로 뒷받침되는 한 문장</span></div>
+
+  <div class="grp"><h2>창업자 화면<small>발표에서 먼저 보여줄 두 장</small></h2><div class="grid">
+    <a class="card" href="5-1.html"><div class="img" style="background-image:url(shot_5-1.png)"></div><div class="cap"><i>5-1</i><b>점검 결과</b><span class="tg">창업자</span><span class="id">ST-MV-5001</span></div></a>
+    <a class="card" href="4-2.html"><div class="img" style="background-image:url(shot_4-2.png)"></div><div class="cap"><i>4-2</i><b>신뢰도 지도</b><span class="tg">창업자</span><span class="id">ST-RP-4002</span></div></a>
+  </div></div>
+
+  <div class="grp"><h2>1. 벤치마크 준비</h2><div class="grid">
+    <a class="card" href="1-1.html"><div class="img" style="background-image:url(shot_1-1.png)"></div><div class="cap"><i>1-1</i><b>서비스·스냅샷</b><span class="id">ST-PR-1001</span></div></a>
+    <a class="card" href="1-2.html"><div class="img" style="background-image:url(shot_1-2.png)"></div><div class="cap"><i>1-2</i><b>정답지</b><span class="id">ST-PR-1002</span></div></a>
+    <a class="card" href="1-3.html"><div class="img" style="background-image:url(shot_1-3.png)"></div><div class="cap"><i>1-3</i><b>페르소나 세트</b><span class="id">ST-PR-1003</span></div></a>
+  </div></div>
+
+  <div class="grp"><h2>2. 시뮬레이션</h2><div class="grid">
+    <a class="card" href="2-1.html"><div class="img" style="background-image:url(shot_2-1.png)"></div><div class="cap"><i>2-1</i><b>실행 기록</b><span class="id">ST-SM-2001</span></div></a>
+    <a class="card" href="2-2.html"><div class="img" style="background-image:url(shot_2-2.png)"></div><div class="cap"><i>2-2</i><b>이슈 카드</b><span class="id">ST-SM-2002</span></div></a>
+    <a class="card" href="2-2.html?state=detail"><div class="img" style="background-image:url(shot_2-2_detail.png);background-position:bottom center"></div><div class="cap"><i>2-2</i><b>이슈 카드 · 상세</b><span class="id">데모 상태</span></div></a>
+  </div></div>
+
+  <div class="grp"><h2>3. 판정</h2><div class="grid">
+    <a class="card" href="3-1.html"><div class="img" style="background-image:url(shot_3-1.png)"></div><div class="cap"><i>3-1</i><b>가상 이슈 묶기</b><span class="id">ST-JD-3001</span></div></a>
+    <a class="card" href="3-2.html"><div class="img" style="background-image:url(shot_3-2.png)"></div><div class="cap"><i>3-2</i><b>이슈 매칭 판정</b><span class="id">ST-JD-3002</span></div></a>
+  </div></div>
+
+  <div class="grp"><h2>4. 결과<small>4-2 신뢰도 지도는 위 창업자 화면에 있어요</small></h2><div class="grid">
+    <a class="card" href="4-1.html"><div class="img" style="background-image:url(shot_4-1.png)"></div><div class="cap"><i>4-1</i><b>지표 대시보드</b><span class="id">ST-RP-4001</span></div></a>
+    <a class="card" href="4-3.html"><div class="img" style="background-image:url(shot_4-3.png)"></div><div class="cap"><i>4-3</i><b>시장성 비교</b><span class="id">ST-RP-4003</span></div></a>
+  </div></div>
+</div>
+</body></html>

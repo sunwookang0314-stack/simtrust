@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>4-2 신뢰도 지도 · SimTrust</title>
+<link rel="stylesheet" href="base.css?v=12">
+<style>
+.main{grid-template-columns:1fr}
+.body{display:grid;grid-template-columns:minmax(420px,520px) 1fr;gap:40px;margin-top:26px;align-items:start}
+svg text{font-family:'Pretendard Variable',sans-serif}
+#map{width:100%;height:auto}
+.rules{margin-top:18px;display:grid;grid-template-columns:auto 1fr;gap:8px 14px;font-size:14px;align-items:center}
+.rules .k{display:flex;align-items:center;gap:8px;font-weight:600;white-space:nowrap}
+.rules .v{color:var(--g700)}
+.rules .n{font-size:12px;color:var(--g700);width:16px}
+.notes{margin-top:22px;padding-top:18px;border-top:1px solid var(--g100);display:grid;gap:6px}
+.tbl td.t{font-weight:600;white-space:nowrap}
+.tbl .vtag{font-size:14px}
+.tbl td.vt{white-space:nowrap}
+details.dfold summary{list-style:none;cursor:pointer}
+details.dfold summary::-webkit-details-marker{display:none}
+details.dfold[open] summary svg{transform:rotate(180deg)}
+</style></head>
+<body data-no="4-2" data-state="0">
+<main class="in main">
+  <section class="panel">
+    <div class="hl-row" style="margin-bottom:0">
+      <h1 class="h2">유형 4개 중 <em>기능을 못 찾음</em>만 믿고 써도 돼요</h1>
+      <p class="lead">고정된 화면과 설명을 받은 가상 사용자가 실제 사용자의 지적을 유형별로 얼마나 맞혔는지 보여줘요.<br>다만 '기능을 못 찾음'은 경계라서 맞힌 게 한 건만 줄어도 참고용으로 내려가요.</p>
+    </div>
+
+    <div class="body">
+      <svg id="map" width="520" height="476" viewBox="0 0 520 476" role="img" aria-label="신뢰도 지도. 기능을 못 찾음은 정밀도 88%, 재현율 70%로 믿고 써도 됨이고 경계예요. 흐름 중간에 막힘은 75%, 50%로 참고용이고 경계예요. 용어를 이해 못 함은 40%, 22%로 사람에게 물어볼 것이에요. 취향·감성은 자료 부족이라 점을 찍지 않았어요."></svg>
+      <div>
+        <table class="tbl">
+          <thead><tr><th>유형</th><th>판정</th><th class="r">정밀도 · 재현율</th><th>한 줄 해석</th></tr></thead>
+          <tbody>
+            <tr><td class="t">기능을 못 찾음</td><td class="vt"><span class="vtag"><i class="dot d-trust"></i>믿고 써도 됨</span> <span class="edge">경계</span></td><td class="r" style="white-space:nowrap">88% · 70% <span class="muted">(7/10)</span></td><td>가상 사용자가 '못 찾음'이라고 하면 실제로도 그럴 가능성이 높음</td></tr>
+            <tr><td class="t">흐름 중간에 막힘</td><td class="vt"><span class="vtag"><i class="dot d-ref"></i>참고용</span> <span class="edge">경계</span></td><td class="r" style="white-space:nowrap">75% · 50% <span class="muted">(6/12)</span></td><td>막히는 지점은 대체로 맞히지만 절반은 놓침</td></tr>
+            <tr><td class="t">용어를 이해 못 함</td><td class="vt"><span class="vtag"><i class="dot d-ask"></i>사람에게 물어볼 것</span></td><td class="r" style="white-space:nowrap">40% · 22% <span class="muted">(2/9)</span></td><td>허위 지적이 많아 사람에게 다시 확인 필요</td></tr>
+            <tr class="muted"><td class="t">취향·감성</td><td><span class="vtag" style="color:var(--g700)"><i class="dot d-none"></i>자료 부족</span></td><td class="r" style="white-space:nowrap">재현율 0% (0/3)</td><td>정답지 이슈가 3건뿐이라 판정하지 않음</td></tr>
+          </tbody>
+        </table>
+
+        <h2 class="st-sm" style="margin-top:30px">판정 기준<small>위에서부터 차례로 적용</small></h2>
+        <div class="rules">
+          <span class="k"><span class="n">1</span><span class="vtag"><i class="dot d-none"></i>자료 부족</span></span><span class="v">정답지 건수나, 같은 문제끼리 묶은 가상 사용자 지적이 5건 미만</span>
+          <span class="k"><span class="n">2</span><span class="vtag"><i class="dot d-trust"></i>믿고 써도 됨</span></span><span class="v">정밀도·재현율 둘 다 70% 이상</span>
+          <span class="k"><span class="n">3</span><span class="vtag"><i class="dot d-ref"></i>참고용</span></span><span class="v">둘 다 50% 이상</span>
+          <span class="k"><span class="n">4</span><span class="vtag"><i class="dot d-ask"></i>사람에게 물어볼 것</span></span><span class="v">그 외</span>
+        </div>
+
+        <div class="notes note">
+          <p>정밀도는 지적 중 맞은 비율, 재현율은 실제 문제 중 맞힌 비율이에요. 점선이 판정 문턱이에요.</p>
+          <p>십자 막대는 표본이 적어서 값이 흔들릴 수 있는 범위예요.</p>
+          <p><span class="edge">경계</span>는 판정 문턱에 걸쳐 있어 정답지 한 건만 달라져도 한 단계 내려가는 경우예요.</p>
+          <p>취향·감성은 정답지가 3건뿐이라 점을 찍지 않았어요. 버튼 반응 속도처럼 직접 써봐야 보이는 문제는 비교 범위 밖이에요.</p>
+        </div>
+      </div>
+    </div>
+
+    <details class="dfold" style="margin-top:28px">
+      <summary class="fold"><span>상세 수치<small>흔들림 범위(95% 신뢰구간)와 서비스별 참고 · 건수가 작아 판정에는 쓰지 않음</small></span>
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="#6B7684" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <table class="tbl" style="margin-top:4px">
+        <thead><tr><th>유형</th><th class="r">정밀도 범위</th><th class="r">재현율 범위</th><th class="r">정답지 건수</th><th>링커리어 참고</th><th>캠퍼스픽 참고</th></tr></thead>
+        <tbody>
+          <tr><td class="t">기능을 못 찾음</td><td class="r">53–98%</td><td class="r">40–89%</td><td class="r">10</td><td>정밀도 80% · 재현율 67% · 정답지 6건</td><td>정밀도 100% · 재현율 75% · 정답지 4건</td></tr>
+          <tr><td class="t">흐름 중간에 막힘</td><td class="r">41–93%</td><td class="r">25–75%</td><td class="r">12</td><td>정밀도 80% · 재현율 57% · 정답지 7건</td><td>정밀도 67% · 재현율 40% · 정답지 5건</td></tr>
+          <tr><td class="t">용어를 이해 못 함</td><td class="r">12–77%</td><td class="r">6–55%</td><td class="r">9</td><td>정밀도 50% · 재현율 25% · 정답지 4건</td><td>정밀도 33% · 재현율 20% · 정답지 5건</td></tr>
+          <tr><td class="t">취향·감성</td><td class="r">-</td><td class="r">0–56%</td><td class="r">3</td><td>정밀도 - · 재현율 0% · 정답지 1건</td><td>정밀도 - · 재현율 0% · 정답지 2건</td></tr>
+        </tbody>
+      </table>
+    </details>
+  </section>
+</main>
+<script src="shell.js?v=12"></script>
+<script>
+// 정밀도(세로) × 재현율(가로) 평면. 판정 규칙이 그대로 구역이 된다.
+// 구역은 옅은 회색, 문턱은 "경계" 표식과 같은 점선, 신뢰구간은 그보다 옅게, 점만 판정색.
+const L = 64, T = 14, W = 440, H = 400;
+const x = v => L + v * W, y = v => T + (1 - v) * H;
+const C = {trust: "#3182F6", ref: "#90C2FF", ask: "#B0B8C1"};
+const P = [   // demo_data.type_table(2), TYPE_CI
+  {t: "기능을 못 찾음", p: .88, r: .70, pci: [.53, .98], rci: [.40, .89], v: "trust", edge: true, side: "right"},
+  {t: "흐름 중간에 막힘", p: .75, r: .50, pci: [.41, .93], rci: [.25, .75], v: "ref", edge: true, side: "left"},
+  {t: "용어를 이해 못 함", p: .40, r: .22, pci: [.12, .77], rci: [.06, .55], v: "ask", edge: false, side: "right"},
+];
+let s = "";
+const rect = (x0, y0, x1, y1, f) => `<rect x="${x(x0)}" y="${y(y1)}" width="${x(x1) - x(x0)}" height="${y(y0) - y(y1)}" fill="${f}"/>`;
+s += rect(0, 0, 1, 1, "#FFFFFF") + rect(.5, .5, 1, 1, "#F9FAFB") + rect(.7, .7, 1, 1, "#F2F4F6");
+s += `<rect x="${x(0)}" y="${y(1)}" width="${W}" height="${H}" fill="none" stroke="#D1D6DB"/>`;
+// 신뢰구간 십자 막대 (문턱보다 옅게)
+for (const d of P) {
+  s += `<line x1="${x(d.rci[0])}" y1="${y(d.p)}" x2="${x(d.rci[1])}" y2="${y(d.p)}" stroke="#8B95A1" stroke-width="1.2"/>`;
+  s += `<line x1="${x(d.r)}" y1="${y(d.pci[0])}" x2="${x(d.r)}" y2="${y(d.pci[1])}" stroke="#8B95A1" stroke-width="1.2"/>`;
+}
+// 판정 문턱: 점선 (SimTrust 고유 표식, 본문 "경계" 꼬리표와 같은 점선)
+for (const v of [.5, .7]) {
+  s += `<line x1="${x(v)}" y1="${y(0)}" x2="${x(v)}" y2="${y(1)}" stroke="#4E5968" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+  s += `<line x1="${x(0)}" y1="${y(v)}" x2="${x(1)}" y2="${y(v)}" stroke="#4E5968" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+}
+// 구역 이름 (각 구역 아래쪽 모서리)
+const zt = (vx, vy, t, a) => `<text x="${x(vx)}" y="${y(vy)}" font-size="12.5" font-weight="700" fill="#4E5968" text-anchor="${a}">${t}</text>`;
+s += zt(.02, .025, "사람에게 물어볼 것", "start") + zt(.52, .525, "참고용", "start") + zt(.98, .725, "믿고 써도 됨", "end");
+// 눈금
+for (const v of [0, .5, .7, 1]) {
+  s += `<text x="${x(v)}" y="${y(0) + 20}" font-size="12" fill="#4E5968" text-anchor="middle">${Math.round(v * 100)}%</text>`;
+  s += `<text x="${x(0) - 10}" y="${y(v) + 4}" font-size="12" fill="#4E5968" text-anchor="end">${Math.round(v * 100)}%</text>`;
+}
+s += `<text x="${x(.5)}" y="${y(0) + 44}" font-size="13" fill="#4E5968" text-anchor="middle">재현율 · 실제 문제 중 맞힌 비율</text>`;
+s += `<text transform="translate(16 ${y(.5)}) rotate(-90)" font-size="13" fill="#4E5968" text-anchor="middle">정밀도 · 지적 중 맞은 비율</text>`;
+// 점 + 유형 이름
+for (const d of P) {
+  s += `<circle cx="${x(d.r)}" cy="${y(d.p)}" r="10" fill="#fff"/><circle cx="${x(d.r)}" cy="${y(d.p)}" r="8" fill="${C[d.v]}" stroke="#191F28" stroke-width="1.5"/>`;
+  const dx = d.side === "right" ? 12 : -12;
+  s += `<text class="lab" data-side="${d.side}" data-edge="${d.edge}" x="${x(d.r) + dx}" y="${y(d.p) - (d.side === "left" ? 18 : 12)}" font-size="13" font-weight="700" fill="#191F28" text-anchor="${d.side === "right" ? "start" : "end"}" paint-order="stroke" stroke="#fff" stroke-width="4">${d.t}</text>`;
+}
+const svg = document.getElementById("map");
+svg.innerHTML = s;
+// 경계 유형은 이름 옆에 점선 꼬리표를 붙인다 (본문 .edge와 같은 모양)
+svg.querySelectorAll("text.lab").forEach(t => {
+  if (t.dataset.edge !== "true") return;
+  const w = 34, h = 18, gap = 6;
+  if (t.dataset.side === "left") {   // 이름을 꼬리표 폭만큼 왼쪽으로 밀고 꼬리표를 점 쪽에 둔다
+    t.setAttribute("x", Number(t.getAttribute("x")) - w - gap);
+    t.setAttribute("y", Number(t.getAttribute("y")) - 6);
+  }
+  const b = t.getBBox();
+  const bx = b.x + b.width + gap;
+  const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  g.innerHTML = `<rect x="${bx}" y="${b.y + b.height / 2 - h / 2}" width="${w}" height="${h}" rx="4" fill="#fff" stroke="#4E5968" stroke-dasharray="3 2"/>` +
+    `<text x="${bx + w / 2}" y="${b.y + b.height / 2 + 4}" font-size="11.5" font-weight="700" fill="#333D4B" text-anchor="middle">경계</text>`;
+  svg.append(g);
+});
+</script>
+</body></html>

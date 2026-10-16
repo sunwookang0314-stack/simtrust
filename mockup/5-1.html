@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>5-1 점검 결과 · SimTrust</title>
+<link rel="stylesheet" href="base.css?v=12">
+<style>
+.main{grid-template-columns:1fr 1fr}
+.full{grid-column:1/3}
+/* 고칠 순서 (PageSpeed 진단 목록): 두 묶음을 나란히, 6건이 첫 화면에 다 들어오게 */
+.fix{display:grid;grid-template-columns:1fr 1px 1fr;gap:36px}
+.fix .vline{background:var(--g100)}
+.grp{padding-bottom:10px;border-bottom:1px solid var(--g200)}
+.grp b{font-size:16px;font-weight:700}
+.grp b em{font-style:normal;margin-left:6px}
+.grp p{font-size:13px;color:var(--g700);margin-top:4px}
+.row{display:grid;grid-template-columns:1fr auto;gap:6px 16px;padding:13px 0;border-bottom:1px solid var(--g100)}
+.row:last-child{border-bottom:0}
+.row .t{font-size:15px;line-height:1.5}
+.row .m{grid-column:1;font-size:13px;color:var(--g700)}
+.row .m b{color:var(--g900);font-weight:700}
+.row .tags{grid-column:2;grid-row:1/3;display:flex;flex-direction:column;align-items:flex-end;gap:6px;padding-top:2px}
+.foot{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-top:20px;padding-top:16px;border-top:1px solid var(--g100)}
+.foot .note{margin:0}
+.btn-w{display:inline-flex;align-items:center;gap:6px;flex:none;background:var(--g100);color:var(--g800);font-size:14px;font-weight:600;border-radius:10px;padding:11px 16px}
+/* 유형별 판정 (PageSpeed 평가): 구간은 회색, 문턱은 점선 눈금, 핀만 판정색 */
+.types{display:grid;grid-template-columns:1fr 1fr;gap:28px 32px;margin-top:18px}
+.ty-hd{display:flex;align-items:center;gap:8px}
+.ty-hd .n{font-size:15px;font-weight:600}
+.ruler{position:relative;height:6px;margin-top:34px;border-radius:3px;background:var(--g200)}
+.ruler .th{position:absolute;top:-7px;height:20px;border-left:1.5px dashed var(--g700)}
+.ruler .th em{position:absolute;top:22px;left:0;transform:translateX(-50%);font-style:normal;font-size:12px;color:var(--g700);white-space:nowrap}
+.ruler .pin{position:absolute;top:-5px;width:2px;height:16px;background:var(--g900);margin-left:-1px}
+.ruler .pin:before{content:"";position:absolute;left:-5px;top:-9px;width:12px;height:12px;border-radius:50%;background:var(--pin);box-shadow:0 0 0 2px #fff,0 0 0 3.5px var(--g900)}
+.ruler .val{position:absolute;top:-34px;transform:translateX(-50%);font-size:14px;font-weight:700;white-space:nowrap}
+.ty-meta{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--g700);margin-top:30px}
+/* 시장 반응 */
+.rs-hd{display:flex;align-items:baseline;gap:8px;margin:22px 0 10px}
+.rs-hd b{font-size:15px;font-weight:700}
+.rs-hd span{font-size:13px;color:var(--g700)}
+.rr{background:#fff;box-shadow:inset 0 0 0 1px var(--g200)}
+.rr.use i{background:var(--g300)}.rr.use span{color:var(--g900)}
+.rr.nouse i{background:var(--g200)}.rr.nouse span{color:var(--g700)}
+.rr .q{position:relative;font-size:15px;font-weight:600;margin-left:0;padding-left:0}
+</style></head>
+<body data-no="5-1" data-state="0" data-extra="조건 · 조건 2 · 전체 페르소나|모델 · gpt-5-mini">
+<main class="in main">
+  <section class="panel full">
+    <div class="hl-row">
+      <h1 class="h2"><em>2건</em>은 바로 고치고, 4건은 먼저 사람에게 물어보세요</h1>
+      <p class="lead">판정은 이 지적 하나가 맞다는 뜻이 아니라, 비슷한 서비스 2곳에서 같은 유형의 지적이 얼마나 맞았는지예요.</p>
+    </div>
+    <div class="fix">
+      <div>
+        <div class="grp"><b>바로 고칠 것<em>2</em></b><p>둘 다 경계라 고친 뒤 실제 사용자 한 명에게 확인하세요</p></div>
+        <div class="row"><div class="t">모집 마감일이 상세 화면 어디에도 안 보임</div><div class="m">S3 동아리 상세 · 기능을 못 찾음 · 과제 <b>못 함</b></div><div class="tags"><span class="vtag"><i class="dot d-trust"></i>믿고 써도 됨</span><span class="edge">경계</span></div></div>
+        <div class="row"><div class="t">학교별로 거르는 필터가 목록 맨 아래에 있어 못 찾음</div><div class="m">S2 동아리 목록 · 기능을 못 찾음 · 과제 <b>헤매다 함</b></div><div class="tags"><span class="vtag"><i class="dot d-trust"></i>믿고 써도 됨</span><span class="edge">경계</span></div></div>
+      </div>
+      <div class="vline"></div>
+      <div>
+        <div class="grp"><b>먼저 물어볼 것<em>4</em></b><p>고치기 전에 실제 사용자 3~5명에게 먼저 물어보세요</p></div>
+        <div class="row"><div class="t">'지원하기'를 누르면 외부 구글폼으로 넘어가 돌아오는 길을 잃음</div><div class="m">S3 동아리 상세 · 흐름 중간에 막힘 · 과제 <b>못 함</b></div><div class="tags"><span class="vtag"><i class="dot d-ref"></i>참고용</span><span class="edge">경계</span></div></div>
+        <div class="row"><div class="t">관심 등록 후 관심 목록으로 가는 버튼이 없음</div><div class="m">S4 관심 목록 · 흐름 중간에 막힘 · 과제 <b>헤매다 함</b></div><div class="tags"><span class="vtag"><i class="dot d-ref"></i>참고용</span><span class="edge">경계</span></div></div>
+        <div class="row"><div class="t">'연합'과 '중앙' 동아리 구분이 무슨 뜻인지 모름</div><div class="m">S3 동아리 상세 · 용어를 이해 못 함 · 과제 <b>헤매다 함</b></div><div class="tags"><span class="vtag"><i class="dot d-ask"></i>사람에게 물어볼 것</span></div></div>
+        <div class="row"><div class="t">메인 일러스트가 유치해 보임</div><div class="m">S1 메인 · 취향·감성 · 과제 <b>바로 함</b></div><div class="tags"><span class="vtag"><i class="dot d-none"></i>자료 부족</span></div></div>
+      </div>
+    </div>
+    <div class="foot">
+      <p class="note"><span class="edge">경계</span>는 맞힌 게 한 건만 줄어도 판정이 한 단계 내려간다는 뜻이에요. 과제 결과(못 함 · 헤매다 함 · 바로 함)는 가상 사용자가 그 과제를 해냈는지예요.</p>
+      <a class="btn-w" href="4-2.html">판정 근거 자세히 보기</a>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2 class="st">유형별 판정<small>실제 문제 중 맞힌 비율 · 50%부터 참고용, 70%부터 믿고 써도 됨</small></h2>
+    <div class="types">
+      <div>
+        <div class="ty-hd"><span class="vtag"><i class="dot d-trust"></i></span><span class="n">기능을 못 찾음</span></div>
+        <div class="ruler" role="img" aria-label="기능을 못 찾음 70퍼센트, 믿고 써도 됨 문턱에 걸림"><i class="th" style="left:50%"><em>50%</em></i><i class="th" style="left:70%"><em>70%</em></i><i class="pin" style="left:70%;--pin:var(--v-trust)"></i><b class="val" style="left:70%">70%</b></div>
+        <div class="ty-meta">정답지 10건 중 7건 · 믿고 써도 됨 <span class="edge">경계</span></div>
+      </div>
+      <div>
+        <div class="ty-hd"><span class="vtag"><i class="dot d-ref"></i></span><span class="n">흐름 중간에 막힘</span></div>
+        <div class="ruler" role="img" aria-label="흐름 중간에 막힘 50퍼센트, 참고용 문턱에 걸림"><i class="th" style="left:50%"><em>50%</em></i><i class="th" style="left:70%"><em>70%</em></i><i class="pin" style="left:50%;--pin:var(--v-ref)"></i><b class="val" style="left:50%">50%</b></div>
+        <div class="ty-meta">정답지 12건 중 6건 · 참고용 <span class="edge">경계</span></div>
+      </div>
+      <div>
+        <div class="ty-hd"><span class="vtag"><i class="dot d-ask"></i></span><span class="n">용어를 이해 못 함</span></div>
+        <div class="ruler" role="img" aria-label="용어를 이해 못 함 22퍼센트, 사람에게 물어볼 것"><i class="th" style="left:50%"><em>50%</em></i><i class="th" style="left:70%"><em>70%</em></i><i class="pin" style="left:22%;--pin:var(--v-ask)"></i><b class="val" style="left:22%">22%</b></div>
+        <div class="ty-meta">정답지 9건 중 2건 · 사람에게 물어볼 것</div>
+      </div>
+      <div>
+        <div class="ty-hd"><span class="vtag"><i class="dot d-none"></i></span><span class="n">취향·감성</span></div>
+        <div class="ruler" role="img" aria-label="취향·감성 자료 부족, 판정하지 않음"></div>
+        <div class="ty-meta">정답지가 3건뿐이라 판정하지 않았어요 · 자료 부족</div>
+      </div>
+    </div>
+    <p class="note" style="margin-top:22px">판정은 지적이 맞은 비율과 실제 문제 중 맞힌 비율이 둘 다 문턱을 넘어야 해요. 여기선 세 유형 모두 맞힌 비율이 더 낮아서 그 값을 그렸어요.</p>
+  </section>
+
+  <section class="panel">
+    <h2 class="st">시장 반응<small>가상 사용자 10명 · 1–5점</small></h2>
+    <div class="kpis" style="grid-template-columns:1fr 1fr;margin-top:16px">
+      <div class="kpi"><span>보정한 사용 의향 (추정)</span><b>3.3<small>점 / 5</small></b></div>
+      <div class="kpi"><span>참고 · 비슷한 서비스 2곳을 처음 써 본 사람 평균</span><b>3.4<small>점 / 5</small></b></div>
+    </div>
+    <p class="note" style="margin-top:10px;font-size:14px">가상 사용자가 답한 3.8점에서 0.5점을 뺐어요. 비슷한 서비스 2곳에서 가상 사용자가 처음 써 본 사람보다 0.5점 높게 답했거든요.</p>
+    <div class="rs-hd"><b>이런 점 때문에 쓸 것 같아요</b><span>10명 참여</span></div>
+    <div class="rr use"><i style="width:70%"></i><span class="q">마감일이 한곳에 모여 있어 놓치지 않을 것 같음</span><span>7명</span></div>
+    <div class="rr use"><i style="width:50%"></i><span class="q">학교별로 모아 볼 수 있음</span><span>5명</span></div>
+    <div class="rs-hd"><b>이런 점 때문에 안 쓸 것 같아요</b></div>
+    <div class="rr nouse"><i style="width:60%"></i><span class="q">에브리타임 동아리 게시판과 내용이 겹침</span><span>6명</span></div>
+    <div class="rr nouse"><i style="width:40%"></i><span class="q">모집 공고 수가 적어 보임</span><span>4명</span></div>
+    <p class="note" style="margin-top:14px">비슷한 서비스 2곳에서 AI가 말한 이유는 실제 참가자 이유와 45%만 겹쳤어요. 이유는 결정 전에 사람에게 확인하세요.</p>
+  </section>
+</main>
+<script src="shell.js?v=12"></script>
+</body></html>

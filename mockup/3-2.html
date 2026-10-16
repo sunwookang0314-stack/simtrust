@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>3-2 이슈 매칭 판정 · SimTrust</title>
+<link rel="stylesheet" href="base.css?v=12">
+<style>
+.main{grid-template-columns:1fr}
+.sum{display:grid;grid-template-columns:repeat(3,minmax(140px,200px)) 1fr;gap:12px;align-items:stretch}
+.kpi em{display:block;font-style:normal;font-size:12px;color:var(--g600);margin-top:2px}
+.mix{padding-left:28px}
+.tbl td.diff{font-weight:700}
+.pick{display:grid;grid-template-columns:1fr 1.4fr;gap:20px;margin-top:4px}
+.box{border:1px solid var(--g200);border-radius:12px;padding:18px 20px}
+.box .hd{font-size:15px;font-weight:700}
+.box .hd small{font-size:13px;font-weight:400;color:var(--g600);margin-left:6px}
+.cand{display:grid;grid-template-columns:64px 1fr 120px;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--g100);font-size:14px}
+.cand:last-child{border:0}
+.cand .cid{font-family:inherit;font-size:14px;color:var(--g600)}
+.sim{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600}
+.sim .t{flex:1;height:8px;border-radius:4px;background:var(--g100);overflow:hidden}
+.sim .t i{display:block;height:100%;background:var(--g700);border-radius:4px}
+.evid{display:flex;gap:10px;align-items:flex-start;margin-top:16px;background:var(--g50);border-radius:12px;padding:14px 16px;font-size:14px;line-height:1.55;color:var(--g800)}
+.evid b{white-space:nowrap}
+</style></head>
+<body data-no="3-2" data-state="0">
+<main class="in main">
+  <div class="panel">
+    <div class="hl-row">
+      <h1 class="h2">가상 이슈 27건 중 15건이 실제 문제와 일치했어요</h1>
+      <p class="lead">판정자 A·B가 각자 판정한 뒤 다른 칸만 협의했어요. 판정자는 기능 설명서 작성자와 달라요.</p>
+    </div>
+    <div class="sum">
+      <div class="kpi"><span>판정 완료</span><b>100%</b></div>
+      <div class="kpi"><span>판정자 간 κ</span><b>0.68</b><em>기준 0.6 이상</em></div>
+      <div class="kpi"><span>협의</span><b>5<small>건</small></b></div>
+      <div class="mix">
+        <h2 class="st-sm" style="margin-bottom:10px">조건 2 판정 결과<small>가상 이슈 27건</small></h2>
+        <div class="stack" style="height:30px"><div style="width:55.6%;background:var(--g800);color:#fff">일치 15</div><div style="width:14.8%;background:var(--g600);color:#fff">유효 추가 4</div><div style="width:22.2%;background:var(--g300)">허위 지적 6</div><div class="faint" style="width:7.4%;background:var(--g200)">2</div></div>
+        <div class="legend" style="margin-top:8px"><span><i style="background:var(--g800)"></i>일치 15</span><span><i style="background:var(--g600)"></i>유효한 추가 문제 4</span><span><i style="background:var(--g300)"></i>허위 지적 6</span><span><i class="faint" style="background:var(--g200)"></i>판단 불가 2</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2 class="st">판정 기록<small>조건 2 · 27건 중 8건 표시 · 판정자 A·B가 다른 칸은 굵게</small></h2>
+    <table class="tbl" style="margin-top:14px">
+      <thead><tr><th>가상 이슈</th><th>판정자 A</th><th>판정자 B</th><th>일치 여부</th><th>최종 결과</th><th>메모</th></tr></thead>
+      <tbody>
+        <tr><td class="muted">VI-2-01</td><td>일치 · GT-L01</td><td>일치 · GT-L01</td><td>일치</td><td>일치 · GT-L01</td><td></td></tr>
+        <tr><td class="muted">VI-2-02</td><td>일치 · GT-L04</td><td>일치 · GT-L04</td><td>일치</td><td>일치 · GT-L04</td><td></td></tr>
+        <tr><td class="muted">VI-2-03</td><td>일치 · GT-C01</td><td>일치 · GT-C01</td><td>일치</td><td>일치 · GT-C01</td><td></td></tr>
+        <tr><td class="muted">VI-2-04</td><td>일치 · GT-C02</td><td>유효한 추가 문제</td><td class="diff">불일치</td><td>일치 · GT-C02</td><td class="muted">협의: 같은 접힘 영역 문제로 봄</td></tr>
+        <tr><td class="muted">VI-2-05</td><td>일치 · GT-L03</td><td>일치 · GT-L03</td><td>일치</td><td>일치 · GT-L03</td><td></td></tr>
+        <tr><td class="muted">VI-2-06</td><td>일치 · GT-L05</td><td>일치 · GT-L05</td><td>일치</td><td>일치 · GT-L05</td><td></td></tr>
+        <tr><td class="muted">VI-2-07</td><td>허위 지적</td><td>판단 불가</td><td class="diff">불일치</td><td>판단 불가</td><td class="muted">협의: 취향이라 정답지로 가릴 수 없음</td></tr>
+        <tr class="rowsel"><td style="font-weight:600">VI-2-08</td><td>허위 지적</td><td>허위 지적</td><td>일치</td><td><b>허위 지적</b></td><td class="muted">참가자 5명이 '활동비 안내가 명확'하다고 함</td></tr>
+      </tbody>
+    </table>
+
+    <div class="hr"></div>
+    <div class="pick">
+      <div class="box">
+        <div class="hd">가상 이슈 VI-2-08<small>최종 허위 지적 · 예시로 표시</small></div>
+        <div style="font-size:14px;color:var(--g600);margin-top:10px">S3 공고 상세 · 용어를 이해 못 함 · 헤매다 함</div>
+        <div style="font-size:15px;margin-top:6px;line-height:1.55">'활동비 지급' 기준이 무엇인지 모름</div>
+        <div class="note" style="margin-top:10px">메모 · 참가자 5명이 '활동비 안내가 명확'하다고 함</div>
+      </div>
+      <div class="box">
+        <div class="hd">후보 정답지 이슈<small>임베딩 유사도 · 후보 제시용 · 판정은 사람</small></div>
+        <div style="margin-top:6px">
+          <div class="cand"><span class="cid">GT-L03</span><span>'서포터즈'와 '기자단'의 차이를 모름</span><div class="sim"><div class="t"><i style="width:48%"></i></div>0.48</div></div>
+          <div class="cand"><span class="cid">GT-L01</span><span>분야 필터가 접혀 있어 필터가 없는 줄 앎</span><div class="sim"><div class="t"><i style="width:31%"></i></div>0.31</div></div>
+          <div class="cand"><span class="cid">GT-C03</span><span>'예선 접수'와 '본선 접수' 일정 구분이 헷갈림</span><div class="sim"><div class="t"><i style="width:29%"></i></div>0.29</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="evid"><b>허위 지적 근거</b><span>괜찮았던 점 GD-01 (링커리어 S3 공고 상세) · "활동비·혜택이 표로 정리돼 바로 이해함" · 5명</span></div>
+  </div>
+</main>
+<script src="shell.js?v=12"></script>
+</body></html>
