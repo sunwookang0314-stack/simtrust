@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>4-3 시장성 비교 · SimTrust</title>
+<link rel="stylesheet" href="base.css?v=12">
+<style>
+.main{grid-template-columns:1fr}
+.two{display:grid;grid-template-columns:1fr 1px 1fr;gap:40px;margin-top:30px}
+.two .vline{background:var(--g100)}
+.gchart{position:relative;height:190px;margin:34px 40px 0 0}
+.gchart .gl{position:absolute;left:0;right:0;border-top:1px solid var(--g100)}
+.gchart .gl span{position:absolute;right:-40px;top:-8px;font-size:12px}
+.gchart .gl.base{border-top-color:var(--g300)}
+.groups{position:absolute;inset:0;display:grid;grid-template-columns:repeat(5,1fr)}
+.grp{display:flex;align-items:flex-end;justify-content:center;gap:5px}
+.bar{position:relative;width:26px;border-radius:4px 4px 0 0;min-height:1px}
+.bar b{position:absolute;top:-20px;left:50%;transform:translateX(-50%);font-size:12px;font-weight:600;color:var(--g700);white-space:nowrap}
+.xl{display:grid;grid-template-columns:repeat(5,1fr);margin-right:40px;margin-top:10px;text-align:center;font-size:14px;color:var(--g700)}
+/* 사람(기준)은 잉크색, AI는 4-1과 같은 조건 2 색 */
+.hu{background:var(--g800)}.ai{background:var(--c2)}
+.big-rate{font-size:40px;font-weight:700;letter-spacing:-.02em;line-height:1}
+.tag{display:inline-block;font-size:12px;font-weight:600;color:var(--g700);background:var(--g100);border-radius:6px;padding:2px 7px;white-space:nowrap}
+.tbl q{quotes:"\201C" "\201D"}
+.tbl .rs{font-size:12px;color:var(--g600);margin-left:4px;white-space:nowrap}
+</style></head>
+<body data-no="4-3" data-state="0">
+<main class="in main">
+  <div class="panel">
+    <div class="hl-row" style="margin-bottom:0"><h1 class="h2">가상 사용자는 처음 쓴 참가자보다 사용 의향을 0.5점 높게 답했어요</h1>
+    <p class="lead">AI(조건 2) 평균 3.9점, 처음 쓴 참가자 평균 3.4점이에요. AI가 말한 이유 중 45%만 참가자 이유와 겹쳐요.</p></div>
+
+    <div class="two">
+      <div>
+        <h2 class="st">사용 의향 1–5 분포<small>처음 쓴 참가자 vs AI(조건 2)</small></h2>
+        <div class="gchart">
+          <div class="gl" style="top:0"><span>50%</span></div>
+          <div class="gl" style="top:50%"><span>25%</span></div>
+          <div class="gl base" style="top:100%"><span>0%</span></div>
+          <div class="groups">
+            <div class="grp"><div class="bar hu" style="height:15.4%"><b>8%</b></div><div class="bar ai" style="height:0%"><b>0%</b></div></div>
+            <div class="grp"><div class="bar hu" style="height:30.8%"><b>15%</b></div><div class="bar ai" style="height:10%"><b>5%</b></div></div>
+            <div class="grp"><div class="bar hu" style="height:46.2%"><b>23%</b></div><div class="bar ai" style="height:50%"><b>25%</b></div></div>
+            <div class="grp"><div class="bar hu" style="height:77%"><b>38%</b></div><div class="bar ai" style="height:90%"><b>45%</b></div></div>
+            <div class="grp"><div class="bar hu" style="height:30.8%"><b>15%</b></div><div class="bar ai" style="height:50%"><b>25%</b></div></div>
+          </div>
+        </div>
+        <div class="xl"><span>1점</span><span>2점</span><span>3점</span><span>4점</span><span>5점</span></div>
+        <div class="legend" style="margin-top:16px"><span><i class="hu"></i>처음 쓴 참가자</span><span><i class="ai"></i>AI (조건 2)</span></div>
+        <div class="kpis" style="grid-template-columns:1fr 1fr;margin-top:22px">
+          <div class="kpi"><span>처음 쓴 참가자 평균 · 13명</span><b>3.4<small>점</small></b></div>
+          <div class="kpi"><span>AI (조건 2) 평균 · 20명</span><b>3.9<small>점</small></b></div>
+        </div>
+      </div>
+      <div class="vline"></div>
+      <div>
+        <h2 class="st">쓸·안 쓸 이유 일치율</h2>
+        <div style="display:flex;align-items:baseline;gap:10px;margin-top:18px"><span class="big-rate">45%</span><span class="note">AI가 말한 이유가 참가자 이유와 일치한 비율</span></div>
+        <table class="tbl" style="margin-top:26px">
+          <thead><tr><th>구분</th><th>AI가 말한 이유</th><th>참가자가 말한 이유</th></tr></thead>
+          <tbody>
+            <tr><td><span class="tag">쓸 이유</span></td><td><q>마감일 알림이 와서 놓치지 않을 것 같음</q></td><td><q>마감일 알림이 와서 놓치지 않게 됨</q><span class="rs">RS-02</span></td></tr>
+            <tr><td><span class="tag">쓸 이유</span></td><td><q>상금 순으로 정렬해 고르기 편함</q></td><td><q>상금·마감으로 정렬해 공모전 고르기 편함</q><span class="rs">RS-06</span></td></tr>
+            <tr><td><span class="tag">안 쓸 이유</span></td><td><q>광고 배너가 많아 신뢰가 덜 감</q></td><td><q>첫 화면에 광고성 배너가 많아 정신없음</q><span class="rs">RS-04</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2 class="st">안 쓸 이유 vs 실제 이탈 이유<small>실제 이탈 이유는 그 서비스를 그만 쓴 참가자 3명에게서만 나와요</small></h2>
+    <table class="tbl" style="margin-top:16px">
+      <thead><tr><th style="width:28%">이유</th><th style="width:36%">AI (조건 2)</th><th>실제 이탈 참가자</th></tr></thead>
+      <tbody>
+        <tr><td style="font-weight:600">내 분야만 보기 어려움</td><td>AI 안 쓸 이유 1위 · 7명</td><td>실제 이탈 1명 <span class="muted">RS-01</span></td></tr>
+        <tr><td style="font-weight:600">다른 앱과 정보가 겹침</td><td>AI 안 쓸 이유 2위 · 4명</td><td>실제 이탈 1명 <span class="muted">RS-05</span></td></tr>
+        <tr><td style="font-weight:600">알림이 너무 잦음</td><td>AI 안 쓸 이유 3위 · 3명</td><td>실제 이탈 1명</td></tr>
+      </tbody>
+    </table>
+  </div>
+</main>
+<script src="shell.js?v=12"></script>
+</body></html>

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>1-2 정답지 · SimTrust</title>
+<link rel="stylesheet" href="base.css?v=12">
+<style>
+.main{grid-template-columns:1fr}
+.top-grid{display:grid;grid-template-columns:1fr minmax(360px,470px);gap:48px;margin-top:24px;align-items:start}
+.kpis{grid-template-columns:repeat(4,1fr)}
+.lockline{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:14px;color:var(--g700)}
+.ptabs{display:flex;gap:24px;border-bottom:1px solid var(--g200);margin-bottom:6px}
+.ptabs span{font-size:15px;color:var(--g700);font-weight:500;padding:0 2px 12px}
+.ptabs span.on{color:var(--g900);font-weight:700;box-shadow:inset 0 -2px 0 var(--g900)}
+.ptabs span small{font-size:13px;margin-left:4px;color:inherit}
+.ptabs span.off{color:var(--g600);cursor:default}
+.ptabs .ptabs-note{margin-left:auto;font-style:normal;font-size:12px;color:var(--g700);align-self:center;padding-bottom:12px}
+.tbl td.nw{white-space:nowrap}
+.res-bad{font-weight:700}
+</style></head>
+<body data-no="1-2" data-state="0">
+<main class="in main">
+  <div class="panel">
+    <div class="hl-row" style="margin-bottom:0"><h1 class="h2">참가자 12명에게서 실제 문제 34건을 모았어요</h1>
+    <div class="lockline"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" fill="#4E5968"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2" fill="none" stroke="#4E5968" stroke-width="1.6"/></svg>녹취록은 어떤 LLM에도 보내지 않아요. 사람이 직접 정리한 기록만 정답지로 써요.</div></div>
+    <div class="top-grid">
+      <div class="kpis">
+        <div class="kpi"><span>참가자</span><b>12<small>명</small></b></div>
+        <div class="kpi"><span>대면 · 화상</span><b>7 · 5</b></div>
+        <div class="kpi"><span>정답지 이슈</span><b>34<small>건</small></b></div>
+        <div class="kpi"><span>이유 · 괜찮았던 점</span><b>21 · 15</b></div>
+      </div>
+      <div>
+        <h2 class="st-sm" style="margin-bottom:8px">유형별 이슈<small>링커리어 18 · 캠퍼스픽 16</small></h2>
+        <div class="hbar" style="--lw:130px"><span>기능을 못 찾음</span><div class="t"><i style="width:83.3%"></i></div><b>10</b></div>
+        <div class="hbar" style="--lw:130px"><span>흐름 중간에 막힘</span><div class="t"><i style="width:100%"></i></div><b>12</b></div>
+        <div class="hbar" style="--lw:130px"><span>용어를 이해 못 함</span><div class="t"><i style="width:75%"></i></div><b>9</b></div>
+        <div class="hbar" style="--lw:130px"><span>취향·감성</span><div class="t"><i style="width:25%"></i></div><b>3</b></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="ptabs"><span class="on">이슈<small>34</small></span><span class="off">이유<small>21</small></span><span class="off">괜찮았던 점<small>15</small></span><span class="off">참가자-서비스<small>24</small></span><em class="ptabs-note">다른 탭은 목업에 그리지 않았어요</em></div>
+    <table class="tbl">
+      <thead><tr><th>ID</th><th>서비스</th><th>화면</th><th>유형</th><th>설명</th><th class="r">겪은 사람 수</th><th>가장 나쁜 결과</th><th>출처</th><th>정리자</th></tr></thead>
+      <tbody>
+        <tr><td class="nw muted">GT-L01</td><td class="nw">링커리어</td><td class="nw">S2 공고 목록</td><td class="nw">기능을 못 찾음</td><td>분야 필터가 접혀 있어 필터가 없는 줄 앎</td><td class="r">5</td><td class="nw">헤매다 함</td><td class="nw muted">IV-02 08:15</td><td class="muted">SH</td></tr>
+        <tr><td class="nw muted">GT-L02</td><td class="nw">링커리어</td><td class="nw">S2 공고 목록</td><td class="nw">기능을 못 찾음</td><td>마감일 기준 정렬을 찾지 못하고 스크롤로 찾음</td><td class="r">4</td><td class="nw">헤매다 함</td><td class="nw muted">IV-04 11:02</td><td class="muted">MW</td></tr>
+        <tr><td class="nw muted">GT-L03</td><td class="nw">링커리어</td><td class="nw">S3 공고 상세</td><td class="nw">용어를 이해 못 함</td><td>'서포터즈'와 '기자단'의 차이를 모름</td><td class="r">3</td><td class="nw">헤매다 함</td><td class="nw muted">IV-06 14:30</td><td class="muted">SW</td></tr>
+        <tr><td class="nw muted">GT-L04</td><td class="nw">링커리어</td><td class="nw">S5 관심 분야 설정</td><td class="nw">흐름 중간에 막힘</td><td>태그 선택 후 저장 버튼이 화면 밖에 있어 못 누름</td><td class="r">4</td><td class="nw res-bad">못 함</td><td class="nw muted">IV-07 21:48</td><td class="muted">SH</td></tr>
+        <tr><td class="nw muted">GT-L05</td><td class="nw">링커리어</td><td class="nw">S4 스크랩함</td><td class="nw">흐름 중간에 막힘</td><td>스크랩 후 어디서 다시 보는지 몰라 메인으로 돌아감</td><td class="r">3</td><td class="nw">헤매다 함</td><td class="nw muted">IV-09 09:20</td><td class="muted">MW</td></tr>
+        <tr><td class="nw muted">GT-C01</td><td class="nw">캠퍼스픽</td><td class="nw">S2 공모전 목록</td><td class="nw">기능을 못 찾음</td><td>상금 순 정렬이 드롭다운 안에 숨어 있음</td><td class="r">4</td><td class="nw">헤매다 함</td><td class="nw muted">IV-03 06:40</td><td class="muted">SW</td></tr>
+        <tr><td class="nw muted">GT-C02</td><td class="nw">캠퍼스픽</td><td class="nw">S3 공모전 상세</td><td class="nw">흐름 중간에 막힘</td><td>지원 방법이 접힘 영역 안에 있어 못 찾고 포기</td><td class="r">3</td><td class="nw res-bad">못 함</td><td class="nw muted">IV-05 17:05</td><td class="muted">SH</td></tr>
+        <tr><td class="nw muted">GT-C03</td><td class="nw">캠퍼스픽</td><td class="nw">S3 공모전 상세</td><td class="nw">용어를 이해 못 함</td><td>'예선 접수'와 '본선 접수' 일정 구분이 헷갈림</td><td class="r">2</td><td class="nw">헤매다 함</td><td class="nw muted">IV-08 12:10</td><td class="muted">MW</td></tr>
+        <tr><td class="nw muted">GT-C04</td><td class="nw">캠퍼스픽</td><td class="nw">S1 메인</td><td class="nw">취향·감성</td><td>배너가 광고처럼 보여 누르지 않음</td><td class="r">2</td><td class="nw">바로 함</td><td class="nw muted">IV-10 02:31</td><td class="muted">SW</td></tr>
+        <tr><td class="nw muted">GT-C05</td><td class="nw">캠퍼스픽</td><td class="nw">S4 캘린더</td><td class="nw">흐름 중간에 막힘</td><td>관심 공고가 캘린더에 바로 안 보여 새로고침 반복</td><td class="r">2</td><td class="nw">헤매다 함</td><td class="nw muted">IV-12 15:44</td><td class="muted">SH</td></tr>
+      </tbody>
+    </table>
+    <div class="note" style="margin-top:14px">34건 중 10건 표시 · 링커리어 18 / 캠퍼스픽 16 · 기능을 못 찾음 10 / 흐름 중간에 막힘 12 / 용어를 이해 못 함 9 / 취향·감성 3</div>
+  </div>
+</main>
+<script src="shell.js?v=12"></script>
+</body></html>
