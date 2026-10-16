@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>1-1 서비스·스냅샷 · SimTrust</title>
+<link rel="stylesheet" href="base.css?v=12">
+<style>
+.main{grid-template-columns:3fr 2fr}
+.full{grid-column:1/3}
+.svcs{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.svc{border:1px solid var(--g200);border-radius:12px;padding:16px 18px}
+.svc .nm{font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px}
+.svc .nm span{font-size:11px;font-weight:600;color:#fff;background:var(--g800);border-radius:5px;padding:2px 6px}
+.svc .mt{font-size:13px;color:var(--g600);margin-top:4px;line-height:1.5}
+.thumbs{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:14px}
+.th{height:96px;border-radius:10px;background:var(--g50);border:1px dashed var(--g300);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center}
+.th b{font-size:14px;font-weight:700;color:var(--g700)}
+.th span{font-size:12px;color:var(--g600)}
+.task{display:grid;grid-template-columns:36px 1fr;gap:12px;padding:16px 0;border-bottom:1px solid var(--g100)}
+.task:last-child{border:0}
+.task b{font-size:15px;font-weight:800;color:var(--g600)}
+.task p{font-size:15px;line-height:1.55}
+.chip{display:inline-block;font-size:12px;font-weight:600;color:var(--g700);background:var(--g100);border-radius:6px;padding:3px 8px}
+</style></head>
+<body data-no="1-1" data-state="0">
+<main class="in main">
+  <div class="panel full">
+    <div class="hl-row">
+      <h1 class="h2">두 서비스 모두 화면 5개, 과제 2개를 고정했어요</h1>
+      <p class="lead">사람과 AI가 같은 과제 문구를 받아요. AI는 실제 앱 대신 이 캡처와 기능 설명을 받아요.</p>
+    </div>
+    <div class="svcs">
+      <div class="svc"><div class="nm">링커리어<span>표시 중</span></div><div class="mt">정보 탐색형 · 캡처 2026/09/22 · 화면 5개 · 과제 2개</div></div>
+      <div class="svc"><div class="nm">에브리커리어(캠퍼스픽)</div><div class="mt">정보 탐색형 · 캡처 2026/09/24 · 화면 5개 · 과제 2개</div></div>
+    </div>
+    <h2 class="st" style="margin-top:32px">링커리어 스냅샷<small>화면 캡처는 private/ 폴더에만 두고 공개하지 않아요</small></h2>
+    <div class="thumbs">
+      <div class="th"><b>S1 메인</b><span>private/ · 비공개</span></div>
+      <div class="th"><b>S2 공고 목록</b><span>private/ · 비공개</span></div>
+      <div class="th"><b>S3 공고 상세</b><span>private/ · 비공개</span></div>
+      <div class="th"><b>S4 스크랩함</b><span>private/ · 비공개</span></div>
+      <div class="th"><b>S5 관심 분야 설정</b><span>private/ · 비공개</span></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2 class="st">화면별 기능 설명</h2>
+    <table class="tbl" style="margin-top:14px">
+      <thead><tr><th style="width:56px">화면</th><th style="width:130px">이름</th><th>기능 설명</th></tr></thead>
+      <tbody>
+        <tr><td class="muted">S1</td><td style="font-weight:600">메인</td><td>상단 검색창, 분야별 바로가기, 마감 임박 공고 캐러셀</td></tr>
+        <tr><td class="muted">S2</td><td style="font-weight:600">공고 목록</td><td>분야·대상·지역 필터(접힘), 정렬, 공고 카드 목록</td></tr>
+        <tr><td class="muted">S3</td><td style="font-weight:600">공고 상세</td><td>활동 내용, 혜택, 마감일, 스크랩·지원하기 버튼</td></tr>
+        <tr><td class="muted">S4</td><td style="font-weight:600">스크랩함</td><td>스크랩한 공고 목록, 마감일 알림 설정</td></tr>
+        <tr><td class="muted">S5</td><td style="font-weight:600">관심 분야 설정</td><td>분야·직무 태그 선택, 추천 공고 미리보기</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2 class="st">과제</h2>
+    <div style="margin-top:10px"><span class="chip">사람과 AI가 같은 문구를 받음</span></div>
+    <div style="margin-top:6px">
+      <div class="task"><b>T1</b><p>마감이 2주 넘게 남은 마케팅 서포터즈 공고를 하나 찾아 스크랩하세요.</p></div>
+      <div class="task"><b>T2</b><p>관심 분야를 '마케팅'으로 설정하고 추천 공고를 확인하세요.</p></div>
+    </div>
+  </div>
+</main>
+<script src="shell.js?v=12"></script>
+</body></html>
