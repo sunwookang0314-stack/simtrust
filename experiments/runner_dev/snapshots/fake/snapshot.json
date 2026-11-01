@@ -1,0 +1,32 @@
+{
+  "_설명": "AI 실행기 1단계 개발용 가짜 스냅샷. 실제 서비스가 아니다. 과제 문구는 사람 테스트 설계 v4 4장(docs/human-test/README.md)에서 가져왔다. 형식은 IF-03(register_snapshot.py)이 정해지면 그쪽에 맞춘다.",
+  "service": "fake",
+  "snapshot_version": "fake-0.1",
+  "screens": [
+    {
+      "screen_id": "S1",
+      "title": "홈",
+      "text": "맨 위에 검색창이 있다. 그 아래에 '공모전', '대외활동', '채용' 탭이 나란히 있다. 첫 화면에는 마감이 가까운 공고 다섯 개가 카드로 보인다. 오른쪽 아래에 '마이' 버튼이 있다.",
+      "image": "S1.png",
+      "feature_description": "FEATURE-ONLY-S1: 카드의 하트를 누르면 저장한 공고에 추가된다. 이 문장은 AI 입력에 들어가면 안 된다."
+    },
+    {
+      "screen_id": "S2",
+      "title": "공모전 목록",
+      "text": "위쪽에 분야 필터(기획, 디자인, IT, 마케팅)와 정렬(마감순, 최신순)이 있다. 공고 카드마다 제목, 주최, 마감일, 하트 아이콘이 있다.",
+      "image": "S2.png",
+      "feature_description": "FEATURE-ONLY-S2: 필터는 여러 개를 동시에 고를 수 있다."
+    },
+    {
+      "screen_id": "S3",
+      "title": "마이페이지",
+      "text": "'저장한 공고', '알림 설정', '내 정보' 메뉴가 세로로 있다. 알림 설정 안에는 '마감 3일 전 알림' 스위치가 꺼져 있다.",
+      "image": "S3.png",
+      "feature_description": "FEATURE-ONLY-S3: 알림 스위치를 켜면 저장한 공고에만 알림이 간다."
+    }
+  ],
+  "tasks": [
+    {"task_id": "T1", "text": "관심 분야 공모전 하나를 찾아서 저장해 보세요.", "start_screen": "S1"},
+    {"task_id": "T2", "text": "마감 알림을 받도록 설정해 보세요.", "start_screen": "S1"}
+  ]
+}
