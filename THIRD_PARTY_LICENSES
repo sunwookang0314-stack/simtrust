@@ -1,0 +1,42 @@
+Third-party notices for SimTrust
+================================
+
+SimTrust's own code is released under the MIT License (see LICENSE).
+The materials below come from third parties and stay under their own licenses.
+
+
+1. Nemotron-Personas-Korea  (data included in this repository)
+--------------------------------------------------------------
+Creator : NVIDIA Corporation
+Source  : https://huggingface.co/datasets/nvidia/Nemotron-Personas-Korea
+License : Creative Commons Attribution 4.0 International (CC BY 4.0)
+          https://creativecommons.org/licenses/by/4.0/
+
+Files   : experiments/personas_nemotron_korea/data/*.parquet
+          experiments/personas_nemotron_korea/personas/**/*.agent.json
+
+Changes : Records were filtered to approximate two groups (enrolled university
+          students and job seekers), sampled, and converted into TinyTroupe
+          agent JSON. Fields with no counterpart in the source data were left
+          empty rather than generated. See
+          experiments/personas_nemotron_korea/README.md for the exact steps.
+
+NVIDIA does not endorse SimTrust or this use of the data.
+
+
+2. TinyTroupe  (used as a dependency, not included)
+---------------------------------------------------
+Source  : https://github.com/microsoft/TinyTroupe
+License : MIT License
+          Copyright (c) Microsoft Corporation.
+
+
+3. genagents  (design referenced, not included)
+-----------------------------------------------
+Source  : https://github.com/joonspk-research/genagents
+License : MIT License
+          Copyright (c) 2024 Joon Sung Park
+
+
+Python packages installed with pip (streamlit, pandas, altair and others) are
+not included in this repository and remain under their own licenses.
