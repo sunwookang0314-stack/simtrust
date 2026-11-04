@@ -1,7 +1,7 @@
-"""AI 실행기 (TRD IF-05, FR-03). 1단계 뼈대.
+"""AI 실행기 (TRD IF-05, FR-03). 2단계: 폼 B 질문 흐름.
 
-페르소나마다 스냅샷의 화면과 과제를 주고, AI 응답과 실행 기록을 파일로 남긴다.
-작업 범위는 docs/work-orders/kim-minwoo/AI실행기.md(11/1 개정판),
+페르소나마다 스냅샷의 캡처를 보여주고 AI 제시 프로토콜 순서대로 질문한 뒤, AI 응답과 실행 기록을 파일로 남긴다.
+작업 범위는 docs/work-orders/kim-minwoo/AI실행기.md(11/1 개정판)와 AI제시프로토콜.md,
 요구사항은 TRD FR-03, NFR-02/04/05/06, 6장 공통 규칙, 7장 실행 기록.
 
 사용법:
@@ -9,9 +9,14 @@
     python scripts/run_simulation.py --service fake --platform app --condition 2 --repeat 1 --seed 1 \
         --config configs/simulation.dev.json --limit-personas 1
 
-1단계라서 아직 안 하는 것
-- 폼 B 질문 순서대로 묻기, 이미지 입력 다듬기, 질문 파일 읽기: 프로토콜 v0.1이 나오면 2단계에서 넣는다.
-  지금은 과제마다 시작 화면 하나를 보여주고 한 번 행동하게 한다.
+질문 흐름 (프로토콜 6번 (b), 참고 초안 6번)
+    시작 안내 -> 섹션 안내와 캡처(see() 한 번) -> Q-AI-USE -> Q-AI-WHY-USE -> Q-AI-NOUSE -> Q-4-7
+    쓸 것 같은 기능이 하나도 없으면 Q-AI-WHY-USE, 안 쓸 것 같은 기능이 하나도 없으면 Q-AI-NOUSE를 건너뛴다.
+    Q-4-7은 폼에서 필수라 늘 묻는다. 문구와 기능 목록은 실행 설정의 protocol_dir에서 읽는다.
+
+아직 안 하는 것
+- 질문 순서 (a): 강선우 결정 전이라 (b)만 짰다. (a)로 정해지면 넣는다.
+- 기능별 제시(프로토콜 1번 ②): 3단계 실측 뒤 정한다. 지금은 캡처를 한 번에 보여준다(①).
 - 조건 3(후기 검색 붙이기): 후기 출처가 정해지면 넣는다. 지금은 종료 코드 1로 막는다.
 
 종료 코드 (TRD 6장)
@@ -137,8 +142,22 @@ CONFIG_KEYS = {
     "meta_dir": (str,),
     "cache_dir": (str,),
     "protocol_version": (str, type(None)),
-    "task_prompt_template": (str,),
+    "protocol_dir": (str,),
+    "question_order": (str,),
+    "max_image_stimuli_to_recall": (int,),
+    "auto_image_description": (bool,),
+    "require_random_capture_names": (bool,),
+    "tinytroupe_log_dir": (str, type(None)),
 }
+
+# 프로토콜 파일. 문구는 질문 ID마다 파일 하나다 (프로토콜 9번)
+QUESTION_FILES = ["START", "SECTION4", "Q-AI-USE", "Q-AI-WHY-USE", "Q-AI-NOUSE", "Q-4-7"]
+# 문구 안의 자리. Q-4-7은 폼 문구 그대로라 자리가 없어야 한다
+PLACEHOLDERS = {"SECTION4": ["{service_name}", "{platform_label}"], "Q-AI-USE": ["{features}"],
+                "Q-AI-NOUSE": ["{options_4_6}"]}
+# 폼 3-3 보기와 맞춘다
+PLATFORM_LABEL = {"app": "앱", "web": "웹사이트"}
+RANDOM_CAPTURE_NAME = re.compile(r"[0-9a-f]{8}\.png")
 
 
 def load_json(path: Path, what: str):
@@ -184,16 +203,69 @@ def validate_config(cfg) -> list:
         problems.append("max_actions_before_done 은 1 이상이어야 한다 (기본값 15를 쓴다)")
     if not _nonempty_str(cfg["neutral_agent_name"]):
         problems.append("neutral_agent_name 이 비어 있다 (조건 0·1 에이전트 이름)")
-    if "{task}" not in cfg["task_prompt_template"]:
-        problems.append("task_prompt_template 에 {task} 자리가 없다")
+    if cfg["question_order"] != "b":
+        problems.append(f"question_order 는 지금 b 만 된다 ((a)는 강선우 결정 뒤에 넣는다): {cfg['question_order']!r}")
+    if cfg["max_image_stimuli_to_recall"] < 1:
+        problems.append("max_image_stimuli_to_recall 은 1 이상이어야 한다 (0이면 TinyTroupe가 전부 다시 넣는다)")
     return problems
+
+
+def _read_text(path: Path) -> str:
+    # 윈도에서 git이 줄바꿈을 CRLF로 바꿔 받을 수 있다. 폼 문구와 글자가 같아야 해서 LF로 맞춘다
+    return path.read_text(encoding="utf-8").replace("\r\n", "\n").rstrip("\n")
+
+
+def load_protocol(protocol_dir: Path):
+    """기능 목록, 4-6 보기, 질문 문구를 읽는다. 문제가 있으면 목록으로 돌려준다."""
+    problems = []
+    if not protocol_dir.is_dir():
+        return None, [f"프로토콜 폴더가 없다: {protocol_dir}"]
+    features, seen = [], set()
+    path = protocol_dir / "features.txt"
+    if not path.is_file():
+        problems.append(f"기능 목록 파일이 없다: {path}")
+    else:
+        for n, line in enumerate(_read_text(path).split("\n"), 1):
+            if not line.strip():
+                continue
+            fid, sep, name = line.partition("|")
+            if not sep or not re.fullmatch(r"F\d+", fid.strip()) or not name.strip():
+                problems.append(f"features.txt {n}행이 'F숫자|기능 이름' 형식이 아니다: {line!r}")
+                continue
+            if fid in seen:
+                problems.append(f"기능 ID가 겹친다: {fid}")
+            seen.add(fid)
+            features.append((fid.strip(), name.strip()))
+        if not features and not problems:
+            problems.append("features.txt 가 비어 있다")
+    path = protocol_dir / "options_4-6.txt"
+    options = [x.strip() for x in _read_text(path).split("\n") if x.strip()] if path.is_file() else []
+    if not options:
+        problems.append(f"4-6 보기 파일이 없거나 비어 있다: {path}")
+    questions = {}
+    for qid in QUESTION_FILES:
+        path = protocol_dir / "questions" / f"{qid}.txt"
+        if not path.is_file():
+            problems.append(f"질문 파일이 없다: {path}")
+            continue
+        text = _read_text(path)
+        if not text.strip():
+            problems.append(f"질문 파일이 비어 있다: {path}")
+        for ph in PLACEHOLDERS.get(qid, []):
+            if ph not in text:
+                problems.append(f"{qid}.txt 에 {ph} 자리가 없다")
+        if qid == "Q-4-7" and re.search(r"\{[a-z_0-9]+\}", text):
+            problems.append("Q-4-7.txt 는 폼 문구 그대로여야 해서 {자리}를 넣으면 안 된다")
+        questions[qid] = text
+    return {"features": features, "options_4_6": options, "questions": questions}, problems
 
 
 def _nonempty_str(v):
     return isinstance(v, str) and v.strip() != ""
 
 
-def validate_snapshot(snap, service: str, platform: str, input_mode: str, images_dir) -> list:
+def validate_snapshot(snap, service: str, platform: str, input_mode: str, images_dir,
+                      require_random_names: bool = False, feature_ids=None) -> list:
     if not isinstance(snap, dict):
         return ["스냅샷의 최상위가 객체가 아니다"]
     problems = []
@@ -203,6 +275,15 @@ def validate_snapshot(snap, service: str, platform: str, input_mode: str, images
         problems.append(f"스냅샷 platform 이 {platform!r} 가 아니다: {snap.get('platform')!r}")
     if not _nonempty_str(snap.get("snapshot_version")):
         problems.append("스냅샷에 snapshot_version 이 없다")
+    if not _nonempty_str(snap.get("service_name")):
+        problems.append("스냅샷에 service_name 이 없다 (캡처에 실제로 뜨는 서비스 이름, 프로토콜 8번)")
+    missing = snap.get("missing_features", [])
+    if not isinstance(missing, list):
+        problems.append("missing_features 는 기능 ID 목록이어야 한다")
+    elif feature_ids is not None:
+        for fid in missing:
+            if fid not in feature_ids:
+                problems.append(f"missing_features 의 {fid!r} 가 features.txt 에 없다")
 
     screens = snap.get("screens")
     if not isinstance(screens, list) or not screens:
@@ -226,29 +307,12 @@ def validate_snapshot(snap, service: str, platform: str, input_mode: str, images
             img = s.get("image")
             if not _nonempty_str(img):
                 problems.append(f"{sid}: 이미지 입력인데 image 가 비어 있다")
-            elif images_dir is not None and not (images_dir / img).is_file():
+                continue
+            if images_dir is not None and not (images_dir / img).is_file():
                 problems.append(f"{sid}: 화면 캡처 파일이 없다: {images_dir / img}")
-
-    tasks = snap.get("tasks")
-    if not isinstance(tasks, list) or not tasks:
-        problems.append("스냅샷 tasks 가 비어 있거나 목록이 아니다")
-        tasks = []
-    task_ids = set()
-    for i, t in enumerate(tasks):
-        if not isinstance(t, dict):
-            problems.append(f"tasks[{i}] 가 객체가 아니다")
-            continue
-        tid = t.get("task_id")
-        if not (isinstance(tid, str) and re.fullmatch(r"T\d+", tid)):
-            problems.append(f"tasks[{i}].task_id 가 T숫자 형식이 아니다: {tid!r}")
-            continue
-        if tid in task_ids:
-            problems.append(f"task_id 가 겹친다: {tid}")
-        task_ids.add(tid)
-        if not _nonempty_str(t.get("text")):
-            problems.append(f"{tid}: 과제 문구 text 가 비어 있다")
-        if t.get("start_screen") not in screen_ids:
-            problems.append(f"{tid}: start_screen 이 screens 에 없다: {t.get('start_screen')!r}")
+            # 캡처 파일 경로가 글자로 모델 입력에 들어간다. 이름에 기능 이름이나 S번호가 있으면 힌트가 된다(프로토콜 3번)
+            if require_random_names and not RANDOM_CAPTURE_NAME.fullmatch(Path(img).name):
+                problems.append(f"{sid}: 캡처 파일 이름이 무작위 16진수 8자리 + .png 가 아니다: {img}")
     return problems
 
 
@@ -424,6 +488,7 @@ class RunState:
         self.tokens_used = tokens_before  # 실제 호출만 센다. 캐시 응답은 돈이 안 든다
         self.totals = _new_counts()
         self.episode = _new_counts()
+        self.requests = []  # 이번 에피소드의 요청마다 들어간 이미지 장수 (캐시 응답 포함)
 
     def add(self, key, n=1):
         self.totals[key] += n
@@ -432,6 +497,15 @@ class RunState:
 
 _STATE = None
 _GUARDS_INSTALLED = False
+
+
+def count_images(messages) -> int:
+    n = 0
+    for m in messages or []:
+        content = m.get("content") if isinstance(m, dict) else None
+        if isinstance(content, list):
+            n += sum(1 for p in content if isinstance(p, dict) and p.get("type") == "image_url")
+    return n
 
 
 def _is_empty(result) -> bool:
@@ -519,6 +593,9 @@ def install_guards():
 
     def checked_send(self, *args, **kwargs):
         st = _STATE
+        if st is not None:
+            # 요청 한 번에 이미지가 몇 장 들어가는지 센다(AI실행기.md 이미지 입력). 캐시보다 앞이라 캐시 응답도 센다
+            st.requests.append(count_images(args[0] if args else kwargs.get("current_messages")))
         attempts = 1 + (st.empty_retries if st is not None else 0)
         for _ in range(attempts):
             result = orig_send(self, *args, **kwargs)
@@ -595,19 +672,88 @@ def build_agent(condition: int, unit: dict, neutral_name: str):
     return TinyPerson.load_specification(json.loads(json.dumps(unit["spec"])))
 
 
-def make_step(task: dict, screen: dict, actions) -> dict:
+def _no_image_description(self, image_refs, user_context=None):
+    # TinyPerson._describe_images 대신 쓴다. 영어 요약 호출을 하지 않는다 (프로토콜 3번)
+    return ""
+
+
+def relocate_tinytroupe_log(log_dir: Path, name: str):
+    """TinyTroupe는 실행한 폴더에 tinytroupe.*.log를 만들고 프롬프트 전문을 남긴다.
+    실제 캡처 시범 내용은 비공개라서 실행 설정의 폴더(git 제외)로 옮긴다."""
+    import logging
+
+    from tinytroupe.utils import config as tt_config
+
+    log_dir.mkdir(parents=True, exist_ok=True)
+    for logger in (logging.getLogger(), logging.getLogger("tinytroupe")):
+        for h in list(logger.handlers):
+            if not (isinstance(h, logging.FileHandler) and Path(h.baseFilename).name.startswith("tinytroupe.")):
+                continue
+            old = Path(h.baseFilename)
+            new = type(h)(str(log_dir / name), encoding="utf-8")
+            new.setFormatter(h.formatter)
+            new.setLevel(h.level)
+            logger.removeHandler(h)
+            h.close()
+            logger.addHandler(new)
+            if getattr(tt_config, "_file_handler", None) is h:
+                tt_config._file_handler = new
+            # import 때 이미 쓴 앞부분은 새 파일 앞에 붙이고 원래 파일은 지운다
+            if old.exists() and old.resolve() != (log_dir / name).resolve():
+                head = old.read_text(encoding="utf-8", errors="replace")
+                if head:
+                    with open(log_dir / name, "r+", encoding="utf-8") as f:
+                        rest = f.read()
+                        f.seek(0)
+                        f.write(head + rest)
+                old.unlink()
+
+
+def fill(template: str, **values) -> str:
+    text = template
+    for key, value in values.items():
+        text = text.replace("{" + key + "}", value)
+    return text
+
+
+# 실행 중에 다음 질문을 건너뛸지 정할 때만 쓴다. 원문은 그대로 남기고, 정식 정리는 추출 단계(IF-06)가 한다
+_NOUSE = re.compile(r"안\s*쓸|쓰지\s*않|안\s*쓰|사용하지\s*않|안\s*사용")
+_USE = re.compile(r"쓸\s*것\s*같|쓸\s*거\s*같|사용할\s*것\s*같")
+
+
+def feature_keys(name: str) -> list:
+    # "공고 저장 (스크랩, 찜, 북마크)"를 AI가 "공고 저장"으로 줄여 쓰는 경우까지 잡는다
+    keys = [name, name.split(" (")[0]]
+    return [k for k in dict.fromkeys(keys) if k]
+
+
+def parse_use_answers(text: str, features: list) -> dict:
+    """기능마다 "use" / "nouse" / "unknown". 한 줄(또는 문장)에 기능 이름과 답이 같이 있어야 판정한다."""
+    pieces = [p for p in re.split(r"[\n.;]", text or "") if p.strip()]
+    result = {}
+    for fid, name in features:
+        hits = [p for p in pieces if any(k in p for k in feature_keys(name))]
+        joined = " ".join(hits)
+        if not hits:
+            result[fid] = "unknown"
+        elif _NOUSE.search(joined) and not _USE.search(_NOUSE.sub("", joined)):
+            result[fid] = "nouse"
+        elif _USE.search(joined) and not _NOUSE.search(joined):
+            result[fid] = "use"
+        else:
+            result[fid] = "unknown"
+    return result
+
+
+def split_actions(actions) -> dict:
     raw = []
     for a in actions or []:
         act = a.get("action", {}) if isinstance(a, dict) else {}
         raw.append({"type": act.get("type"), "content": act.get("content"), "target": act.get("target")})
-    think = "\n".join(x["content"] for x in raw if x["type"] == "THINK" and x["content"])
-    talk = "\n".join(x["content"] for x in raw if x["type"] == "TALK" and x["content"])
     return {
-        "task_id": task["task_id"],
-        "screen_shown": screen["screen_id"],
         "actions": raw,  # AI 행동 원문
-        "think": think,
-        "talk": talk,
+        "think": "\n".join(x["content"] for x in raw if x["type"] == "THINK" and x["content"]),
+        "talk": "\n".join(x["content"] for x in raw if x["type"] == "TALK" and x["content"]),
     }
 
 
@@ -616,8 +762,11 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
 
     st = _STATE
     st.episode = _new_counts()
+    st.requests = []
     pid = unit["persona_id"]
     run_id = f"{ctx['batch_id']}_{pid}_r{repeat}"
+    proto = ctx["protocol"]
+    q = proto["questions"]
 
     cache_file = None
     if ctx["cfg"]["cache"]:
@@ -631,20 +780,60 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
     else:
         force_api_cache(False)
 
+    asked_features = ctx["asked_features"]
+    answers, parsed_use, abort, error_detail = [], None, None, None
     started = time.time()
-    steps, abort, error_detail = [], None, None
+
+    def ask(agent, qid, text):
+        before = len(st.requests)
+        actions = agent.listen_and_act(text, return_actions=True, communication_display=False)
+        images = max(st.requests[before:], default=0)
+        entry = {
+            "question_id": qid,
+            "feature_id": "",  # (b)에서는 질문 하나가 기능 여럿을 묻는다
+            "asked": True,
+            "skipped": None,
+            # 그 질문 때 모델 입력에 들어간 캡처. ①에서는 see()로 묶은 캡처가 질문마다 다시 들어간다
+            "captures": ctx["capture_names"] if images else [],
+            "images_in_request": images,
+        }
+        entry.update(split_actions(actions))
+        answers.append(entry)
+        return entry
+
+    def skip(qid, reason, feature_id=""):
+        answers.append({"question_id": qid, "feature_id": feature_id, "asked": False, "skipped": reason,
+                        "captures": [], "images_in_request": 0, "actions": [], "think": "", "talk": ""})
+
     try:
         agent = build_agent(ctx["condition"], unit, ctx["cfg"]["neutral_agent_name"])
-        for task in ctx["tasks"]:
-            screen = ctx["screens"][task["start_screen"]]
-            # 프로토콜 2번: 화면별 기능 설명(feature_description)은 사람이 못 보는 정보라 넣지 않는다
-            if ctx["input_mode"] == "text":
-                agent.see(description=screen["text"])
-            else:
-                agent.see(images=[str(ctx["images_dir"] / screen["image"])])
-            prompt = ctx["cfg"]["task_prompt_template"].replace("{task}", task["text"])
-            actions = agent.listen_and_act(prompt, return_actions=True, communication_display=False)
-            steps.append(make_step(task, screen, actions))
+        # 시작 안내 (폼 설명 대응, 프로토콜 8번). "처음 보는 서비스" 문장은 페르소나가 아니라 여기에 둔다(7번)
+        agent.listen(q["START"])
+        # 섹션 안내와 캡처를 see() 한 번에 준다. 나눠서 주면 이전 화면 다시 보여주기(1)로 마지막 묶음만 남는다
+        section = fill(q["SECTION4"], service_name=ctx["service_name"], platform_label=ctx["platform_label"])
+        # 프로토콜 2번: 화면별 기능 설명(feature_description)과 S번호는 넣지 않는다
+        if ctx["input_mode"] == "image":
+            agent.see(images=ctx["image_paths"], description=section)
+        else:
+            texts = "\n\n".join(f"화면 {i}: {s['text']}" for i, s in enumerate(ctx["screens"], 1))
+            agent.see(description=f"{section}\n\n{texts}")
+
+        features_text = "\n".join(name for _, name in asked_features)
+        use = ask(agent, "Q-AI-USE", fill(q["Q-AI-USE"], features=features_text))
+        parsed_use = parse_use_answers(use["talk"] or use["think"], asked_features)
+        # 판정이 안 된 기능이 있으면 두 꼬리 질문을 다 묻는다. 건너뛰어서 답을 잃는 것보다 낫다
+        if any(v in ("use", "unknown") for v in parsed_use.values()):
+            ask(agent, "Q-AI-WHY-USE", q["Q-AI-WHY-USE"])
+        else:
+            skip("Q-AI-WHY-USE", "쓸 것 같은 기능 없음")
+        if any(v in ("nouse", "unknown") for v in parsed_use.values()):
+            ask(agent, "Q-AI-NOUSE", fill(q["Q-AI-NOUSE"], options_4_6="\n".join(proto["options_4_6"])))
+        else:
+            skip("Q-AI-NOUSE", "안 쓸 것 같은 기능 없음")
+        ask(agent, "Q-4-7", q["Q-4-7"])  # 폼에서 필수라 늘 묻는다
+        # 캡처가 없는 기능은 묻지 않고 기록만 남긴다 (참고 초안 3번)
+        for fid in ctx["missing_features"]:
+            skip("", "없음", feature_id=fid)
     except AbortRun as e:
         abort = e
     except Exception as e:
@@ -654,6 +843,7 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
     elapsed = round(time.time() - started, 1)
 
     status = "성공" if abort is None else f"{abort.label}: {abort}"
+    asked = [a for a in answers if a["asked"]]
     meta = {
         # TRD 7장 실행 기록 13칸 (platform은 TRD v0.3에 추가)
         "run_id": run_id,
@@ -681,14 +871,21 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
         "action_truncations": st.episode["truncated"],
         # 아래는 이 구현에서 더한 칸 (TRD 6장: 입력 파일 경로와 설정을 남긴다)
         "batch_id": ctx["batch_id"],
+        "question_order": ctx["cfg"]["question_order"],
+        "questions_asked": [a["question_id"] for a in asked],
+        "images_per_request": list(st.requests),
         "calls_real": st.episode["calls_real"],
         "calls_cached": st.episode["calls_cached"],
         "empty_responses": st.episode["empty"],
         "length_cutoffs": st.episode["length"],
         "max_actions_before_done": ctx["cfg"]["max_actions_before_done"],
+        "max_image_stimuli_to_recall": ctx["cfg"]["max_image_stimuli_to_recall"],
+        "auto_image_description": ctx["cfg"]["auto_image_description"],
         "neutral_agent_name": ctx["cfg"]["neutral_agent_name"] if ctx["condition"] in (0, 1) else None,
         "config_file": ctx["config_file"],
         "snapshot_file": ctx["snapshot_file"],
+        "protocol_dir": ctx["protocol_dir"],
+        "capture_files": ctx["capture_files"],
         "persona_file": _rel(unit["path"], ctx["root"]) if "path" in unit else None,
     }
     if error_detail:
@@ -700,7 +897,7 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
 
     if abort is None:
         # 한 줄 = 한 에피소드 (서비스 x 플랫폼 x 조건 x 페르소나 x 회차). 실패한 에피소드는 실행 기록에만 남긴다.
-        # 형식은 2단계에서 프로토콜 10번에 맞춰 질문 단위(answers)로 바꾼다.
+        # 원문은 다 남기고 허용값 정리는 추출 단계에서 한다 (프로토콜 10번)
         line = {
             "run_id": run_id,
             "batch_id": ctx["batch_id"],
@@ -712,15 +909,19 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
             "protocol_version": ctx["cfg"]["protocol_version"],
             "snapshot_version": ctx["snapshot_version"],
             "input_mode": ctx["input_mode"],
+            "question_order": ctx["cfg"]["question_order"],
             "status": "성공",
-            "steps": steps,
+            "features": [{"feature_id": fid, "name": name} for fid, name in ctx["all_features"]],
+            "use_parsed_at_runtime": parsed_use,  # 꼬리 질문을 건너뛸지 정하는 데만 썼다
+            "answers": answers,
         }
         ctx["raw_path"].parent.mkdir(parents=True, exist_ok=True)
         with ctx["raw_path"].open("a", encoding="utf-8") as f:
             f.write(json.dumps(line, ensure_ascii=False) + "\n")
 
-    text = "\n".join(s["think"] + "\n" + s["talk"] for s in steps)
-    return {"run_id": run_id, "ok": abort is None, "elapsed": elapsed, "text": text, "abort": abort}
+    text = "\n".join(a["think"] + "\n" + a["talk"] for a in asked)
+    return {"run_id": run_id, "ok": abort is None, "elapsed": elapsed, "text": text, "abort": abort,
+            "questions": len(asked), "images": list(st.requests)}
 
 
 def decide_exit_code(episodes: list, fatal) -> int:
@@ -770,6 +971,10 @@ def summarize(ctx: dict, episodes: list, exit_code: int) -> dict:
         "empty_rate": rate(t["empty"], t["messages"]),
         "length_cutoff_rate": rate(t["length"], responses),
         "action_truncations": t["truncated"],
+        "questions_asked": sum(e["questions"] for e in ok),
+        # 요청 한 번에 들어간 이미지 장수 (AI실행기.md 숫자 요약). 텍스트 모드면 0
+        "images_per_request_max": max((n for e in episodes for n in e["images"]), default=0),
+        "images_per_request_min": min((n for e in episodes for n in e["images"]), default=0),
         "hangul_ratio": round(hangul_ratio(all_text), 3) if ok else None,
         "hangul_ratio_min_episode": round(min(per_episode), 3) if per_episode else None,
         "elapsed_sec": elapsed,
@@ -797,6 +1002,8 @@ def print_summary(s: dict) -> None:
     print(f"  빈 응답 비율 : {pct(s['empty_rate'])}")
     print(f"  길이 초과    : {pct(s['length_cutoff_rate'])} (finish_reason=length)")
     print(f"  행동 잘림    : {s['action_truncations']}회")
+    print(f"  질문         : {s['questions_asked']}개 물음 (성공한 에피소드 합계)")
+    print(f"  요청당 이미지: {s['images_per_request_min']}~{s['images_per_request_max']}장")
     print(f"  한글 비율    : 전체 {pct(s['hangul_ratio'])}, 에피소드 최저 {pct(s['hangul_ratio_min_episode'])}")
     per_ep = "-" if s["sec_per_episode"] is None else f"{s['sec_per_episode']}초"
     print(f"  걸린 시간    : {s['elapsed_sec']}초, 에피소드 평균 {per_ep}")
@@ -818,11 +1025,18 @@ def run(args, root: Path) -> int:
     if problems:
         raise Stop(EXIT_INPUT, "실행 설정 검증 실패\n  - " + "\n  - ".join(problems))
 
+    protocol_dir = root / cfg["protocol_dir"]
+    protocol, problems = load_protocol(protocol_dir)
+    if problems:
+        raise Stop(EXIT_INPUT, "프로토콜 파일 검증 실패\n  - " + "\n  - ".join(problems))
+    feature_ids = [fid for fid, _ in protocol["features"]]
+
     # 앱과 웹은 화면이 달라서 스냅샷도 플랫폼마다 따로 둔다
     snapshot_path = root / cfg["snapshot_root"] / args.service / args.platform / "snapshot.json"
     snap = load_json(snapshot_path, "스냅샷")
     images_dir = root / cfg["images_root"] / args.service / args.platform if cfg["images_root"] else None
-    problems = validate_snapshot(snap, args.service, args.platform, cfg["input_mode"], images_dir)
+    problems = validate_snapshot(snap, args.service, args.platform, cfg["input_mode"], images_dir,
+                                 cfg["require_random_capture_names"], feature_ids)
 
     personas_dir = root / cfg["personas_dir"].replace("{service}", args.service)
     if not personas_dir.is_dir():
@@ -848,15 +1062,29 @@ def run(args, root: Path) -> int:
 
     model, max_completion_tokens = check_tinytroupe_settings(config_manager, provider)
 
+    stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    batch_id = f"{args.service}_{args.platform}_c{args.condition}_{stamp}_{secrets.token_hex(2)}"
+    if cfg["tinytroupe_log_dir"]:
+        relocate_tinytroupe_log(root / cfg["tinytroupe_log_dir"], f"tinytroupe.{batch_id}.log")
+
     install_guards()
     # 기본값 15를 그대로 쓴다. 3으로 낮추면 [THINK, THINK, TALK, DONE]이 [THINK, THINK, DONE]이 돼서 답이 사라진다.
     # (TRD FR-03-07의 "호출 3회"는 TRD v0.3에서 고친다)
     TinyPerson.MAX_ACTIONS_BEFORE_DONE = cfg["max_actions_before_done"]
     # 응답 내용이 화면에 찍히지 않게 한다 (print_summary 주석 참고)
     TinyPerson.communication_display = False
+    # 프로토콜 3번: 이전 화면 다시 보여주기 수, 자동 영어 요약
+    TinyPerson.MAX_IMAGE_STIMULI_TO_RECALL = cfg["max_image_stimuli_to_recall"]
+    if not cfg["auto_image_description"]:
+        # 사람은 못 받는 영어 해석 문장이고, 클래스 공용 캐시를 거쳐 다른 에피소드에도 들어간다
+        TinyPerson._describe_images = _no_image_description
 
-    stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-    batch_id = f"{args.service}_{args.platform}_c{args.condition}_{stamp}_{secrets.token_hex(2)}"
+    missing = snap.get("missing_features", [])
+    screens = snap["screens"]
+    image_paths = []
+    if cfg["input_mode"] == "image":
+        # 경로가 글자로 모델 입력에 들어가서 PC 경로가 안 보이게 리포 기준 상대 경로로 넘긴다
+        image_paths = [_rel(images_dir / s["image"], root) for s in screens]
     ctx = {
         "root": root,
         "cfg": cfg,
@@ -874,8 +1102,17 @@ def run(args, root: Path) -> int:
         "input_mode": cfg["input_mode"],
         "images_dir": images_dir,
         "snapshot_version": snap["snapshot_version"],
-        "screens": {s["screen_id"]: s for s in snap["screens"]},
-        "tasks": snap["tasks"],
+        "service_name": snap["service_name"],
+        "platform_label": PLATFORM_LABEL[args.platform],
+        "screens": screens,
+        "image_paths": image_paths,
+        "capture_names": [Path(p).name for p in image_paths],
+        "capture_files": image_paths,
+        "protocol": protocol,
+        "protocol_dir": _rel(protocol_dir, root),
+        "all_features": protocol["features"],
+        "asked_features": [f for f in protocol["features"] if f[0] not in missing],
+        "missing_features": missing,
         "config_file": _rel(config_path, root),
         "snapshot_file": _rel(snapshot_path, root),
         "raw_path": root / cfg["raw_responses_path"],
@@ -886,7 +1123,8 @@ def run(args, root: Path) -> int:
     _STATE = RunState(cfg["token_cap"], cfg["empty_retries"], tokens_before)
 
     print(f"[실행] {batch_id}: {provider}/{model}, {args.platform}, 조건 {args.condition}, "
-          f"{'슬롯' if args.condition == 0 else '페르소나'} {len(units)} x 반복 {args.repeat}, 과제 {len(ctx['tasks'])}개")
+          f"{'슬롯' if args.condition == 0 else '페르소나'} {len(units)} x 반복 {args.repeat}, "
+          f"캡처 {len(screens)}장({cfg['input_mode']}), 기능 {len(ctx['asked_features'])}개")
 
     episodes, fatal = [], None
     for unit in units:

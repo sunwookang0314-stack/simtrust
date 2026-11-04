@@ -1,10 +1,11 @@
 {
-  "_설명": "AI 실행기 1단계 개발용 설정. 가짜 화면, 임시 페르소나, 무료 Gemini로 돈다. 본실험 값이 아니다.",
+  "_설명": "AI 실행기 개발용 설정. 가짜 화면, 임시 페르소나, 무료 Gemini로 돈다. 본실험 값이 아니다.",
   "_neutral_agent_name": "조건 0·1 에이전트 이름. 프로토콜 v0.1 참고 초안 7번의 제안(참여자)을 따랐다.",
-  "_task_prompt_template": "임시 문구다. 프로토콜 v0.1의 [고정·AI 공통] 문구가 나오면 그걸로 바꾼다.",
+  "_protocol_dir": "개발용 질문 파일. 4-3 행, 4-6 보기, 4-7은 배포된 폼에서 글자 그대로 뽑았고, AI 전용 문구는 v0.1 참고 초안의 제안을 그대로 옮겼다. 프로토콜 v0.1이 정해지면 docs/ai-protocol/로 바꾼다.",
+  "_require_random_capture_names": "개발용 가짜 화면은 S1.png 같은 이름이라 끈다. 실제 캡처는 켠다(프로토콜 3번).",
   "snapshot_root": "experiments/runner_dev/snapshots",
   "personas_dir": "experiments/personas_nemotron_korea/personas/students_in_progress",
-  "images_root": null,
+  "images_root": "experiments/runner_dev/images",
   "input_mode": "text",
   "token_cap": 200000,
   "empty_retries": 2,
@@ -15,5 +16,10 @@
   "meta_dir": "runs/dev/meta",
   "cache_dir": "runs/dev/cache",
   "protocol_version": null,
-  "task_prompt_template": "지금 보고 있는 화면에서 다음 과제를 해 보세요.\n과제: {task}\n어디를 보고 무엇을 누를지, 왜 그렇게 하는지 생각과 말로 표현해 주세요. 막히거나 헷갈리는 곳이 있으면 그것도 말해 주세요."
+  "protocol_dir": "experiments/runner_dev/protocol",
+  "question_order": "b",
+  "max_image_stimuli_to_recall": 1,
+  "auto_image_description": false,
+  "require_random_capture_names": false,
+  "tinytroupe_log_dir": "runs/dev/logs"
 }

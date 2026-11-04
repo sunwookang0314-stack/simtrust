@@ -1,4 +1,4 @@
-"""scripts/run_simulation.py 오프라인 테스트. API 키 없이 돈다.
+"""scripts/run_simulation.py, scripts/check_image_input.py 오프라인 테스트. API 키 없이 돈다.
 
 TinyTroupe의 실제 API 호출 함수(_raw_model_call)만 가짜로 바꾸고, 에이전트, 캐시, 실행기는 그대로 쓴다.
 그래서 실제 Gemini, gpt-5-mini 응답으로 도는지는 이 테스트로 확인되지 않는다.
@@ -22,11 +22,14 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+PROTOCOL = REPO / "experiments/runner_dev/protocol"
 
-# 임시 폴더에 리포 모양을 만든다: config.ini, 가짜 스냅샷(앱·웹), 임시 페르소나 2명
+# 임시 폴더에 리포 모양을 만든다: config.ini, 가짜 스냅샷(앱·웹), 가짜 화면, 프로토콜 파일, 임시 페르소나 2명
 TMP = Path(tempfile.mkdtemp(prefix="simtrust_runner_test_"))
 shutil.copyfile(REPO / "config.gemini.ini", TMP / "config.ini")
 shutil.copytree(REPO / "experiments/runner_dev/snapshots", TMP / "snapshots")
+shutil.copytree(REPO / "experiments/runner_dev/images", TMP / "images")
+shutil.copytree(PROTOCOL, TMP / "protocol")
 (TMP / "personas").mkdir()
 PERSONA_SRC = sorted((REPO / "experiments/personas_nemotron_korea/personas/students_in_progress").glob("*.json"))[:2]
 for p in PERSONA_SRC:
@@ -44,11 +47,34 @@ import openai
 from openai.types.chat import ChatCompletion
 from tinytroupe.clients.openai_client import OpenAIClient
 
+import check_image_input as cii
 import run_simulation as rs
+
+FEATURES = [line.split("|", 1)[1] for line in (PROTOCOL / "features.txt").read_text(encoding="utf-8").splitlines()
+            if line.strip()]
+
+
+def decode(text):
+    # TinyTroupe는 페르소나와 메시지를 json.dumps 기본값으로 넣어서 한글이 \uXXXX로 나간다
+    # (agent/tiny_person.py:319, agent/action_generator.py:125). 비교하려고 되돌린다.
+    text = re.sub(r"\\+u([0-9a-fA-F]{4})", lambda m: chr(int(m.group(1), 16)), text)
+    return text.replace("\\n", "\n").replace('\\"', '"')
+
+
+def squash(text):
+    # 역슬래시, 공백·줄바꿈, 따옴표를 뺀다
+    return re.sub(r'[\\\s"]', "", text)
+
+
+def message_text(message):
+    content = message.get("content")
+    if isinstance(content, list):  # 이미지가 든 메시지
+        return " ".join(p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text")
+    return content if isinstance(content, str) else json.dumps(content, ensure_ascii=False, default=str)
 
 
 class FakeAPI:
-    """실제 API 대신 응답한다. mode로 정상, 빈 응답, 인증 오류 등을 고른다."""
+    """실제 API 대신 응답한다. 마지막 사용자 메시지를 보고 어느 질문인지 가려 그럴듯한 답을 준다."""
 
     def __init__(self):
         self.reset()
@@ -56,19 +82,38 @@ class FakeAPI:
     def reset(self, mode="ok"):
         self.mode = mode
         self.calls = 0
-        self.prompts = []
+        self.prompts = []  # 요청 전체 (디코딩 전)
+        self.last_user = []  # 요청마다 마지막 사용자 메시지 (디코딩 후)
 
     def decoded(self, i):
-        # TinyTroupe는 페르소나와 메시지를 json.dumps 기본값으로 넣어서 한글이 \uXXXX로 나간다
-        # (agent/tiny_person.py:319, agent/action_generator.py:125). 비교하려고 되돌린다.
-        return re.sub(r"\\+u([0-9a-fA-F]{4})", lambda m: chr(int(m.group(1), 16)), self.prompts[i])
+        return decode(self.prompts[i])
 
     def sent_text(self):
         return "\n".join(self.decoded(i) for i in range(len(self.prompts)))
 
+    def answer_for(self, question, mark):
+        if self.mode == "read_screen":
+            return "공모전, 대외활동, 채용 탭과 마감 3일 전 알림이 보여요"
+        if question == "use":
+            if self.mode == "all_use":
+                return "\n".join(f"{f}: 쓸 것 같다 {mark}" for f in FEATURES)
+            verdict = ["쓸 것 같다", "안 쓸 것 같다", "쓸 것 같다", "안 쓸 것 같다"]
+            return "\n".join(f"{f}: {v} {mark}" for f, v in zip(FEATURES, verdict))
+        if question == "why":
+            return f"공고 검색·필터: 인턴 공고를 찾으려고 쓸 것 같고 조건을 한 번에 걸 수 있어서 편할 것 같다 {mark}"
+        if question == "nouse":
+            return f"공고 저장: 나한테 필요 없을 것 같아서 {mark}"
+        if question == "q47":
+            return f"공고 저장: 지금은 카톡 나에게 보내기로 따로 모아 둡니다 {mark}"
+        return f"화면을 봤어요 {mark}"
+
     def __call__(self, client_self, model, params):
         self.calls += 1
-        self.prompts.append(json.dumps(params.get("messages"), ensure_ascii=False, default=str))
+        messages = params.get("messages") or []
+        self.prompts.append(json.dumps(messages, ensure_ascii=False, default=str))
+        users = [m for m in messages if m.get("role") == "user"]
+        last = decode(message_text(users[-1])) if users else ""
+        self.last_user.append(last)
         request = httpx.Request("POST", "https://example.invalid")
         if self.mode == "auth":
             raise openai.AuthenticationError("bad key", response=httpx.Response(401, request=request), body=None)
@@ -81,28 +126,22 @@ class FakeAPI:
             raise openai.NotFoundError("model not found", response=httpx.Response(404, request=request), body=None)
         if self.mode == "empty" or (self.mode == "empty_once" and self.calls == 1):
             content, finish = "", "length"
-        elif self.mode == "read_screen":
-            # 이미지 확인 스크립트용. 화면 글자 일부만 읽은 답
-            content = json.dumps({
-                "actions": [{"type": "TALK", "content": "공모전, 대외활동, 채용 탭과 마감 3일 전 알림이 보여요", "target": ""},
-                            {"type": "DONE", "content": "", "target": ""}],
-                "cognitive_state": {"goals": "읽기", "context": ["화면"], "attention": "글자", "emotions": "보통"},
-            }, ensure_ascii=False)
-            finish = "stop"
         else:
+            question = ("q47" if "안 쓰게 됐거나 안 써본 기능이 있다면" in last else
+                        "nouse" if "안 쓸 것 같은 이유에 가까운" in last else
+                        "why" if "쓸 것 같다고 고른 기능마다" in last else
+                        "use" if "중 하나로 답해주세요" in last else "other")
             # 호출마다 #001 같은 표시가 붙는다. 캐시가 안 먹으면 결과가 달라지고, 기억이 새면 다음 프롬프트에 보인다
             mark = f"#{self.calls:03d}"
-            actions = [
-                {"type": "THINK", "content": f"공모전 탭부터 봐야겠다 {mark}", "target": ""},
-                {"type": "TALK", "content": f"공모전 탭을 누를게요 {mark}", "target": ""},
-            ]
+            actions = [{"type": "THINK", "content": f"화면을 다시 떠올려 본다 {mark}", "target": ""},
+                       {"type": "TALK", "content": self.answer_for(question, mark), "target": ""}]
             if self.mode == "long":
                 # 행동 상한보다 긴 목록. TinyTroupe가 잘라야 한다
                 actions = [{"type": "THINK", "content": f"생각 {k} {mark}", "target": ""} for k in range(6)] + actions
             actions.append({"type": "DONE", "content": "", "target": ""})
             content = json.dumps({
                 "actions": actions,
-                "cognitive_state": {"goals": "과제", "context": ["앱"], "attention": "탭", "emotions": "보통"},
+                "cognitive_state": {"goals": "답하기", "context": ["화면"], "attention": "질문", "emotions": "보통"},
             }, ensure_ascii=False)
             finish = "stop"
         return ChatCompletion.model_validate({
@@ -117,8 +156,8 @@ FAKE = FakeAPI()
 OpenAIClient._raw_model_call = lambda self, model, params: FAKE(self, model, params)
 
 BASE_CFG = json.loads((REPO / "configs/simulation.dev.json").read_text(encoding="utf-8"))
-BASE_CFG["snapshot_root"] = "snapshots"
-BASE_CFG["personas_dir"] = "personas"
+BASE_CFG.update({"snapshot_root": "snapshots", "personas_dir": "personas", "images_root": "images",
+                 "protocol_dir": "protocol"})
 
 
 def write_cfg(name, **override):
@@ -127,6 +166,7 @@ def write_cfg(name, **override):
         "raw_responses_path": f"out_{name}/raw.jsonl",
         "meta_dir": f"out_{name}/meta",
         "cache_dir": f"out_{name}/cache",
+        "tinytroupe_log_dir": f"out_{name}/logs",
     })
     cfg.update(override)
     path = TMP / f"cfg_{name}.json"
@@ -169,33 +209,42 @@ def args(cfg, condition=2, repeat=1, limit=1, service="fake", platform="app"):
     return argv
 
 
+def make_snapshot(service, **change):
+    snap = json.loads((TMP / "snapshots/fake/app/snapshot.json").read_text(encoding="utf-8"))
+    snap["service"] = service
+    snap.update(change)
+    (TMP / "snapshots" / service / "app").mkdir(parents=True, exist_ok=True)
+    (TMP / "snapshots" / service / "app" / "snapshot.json").write_text(json.dumps(snap, ensure_ascii=False),
+                                                                       encoding="utf-8")
+
+
+def qids(line):
+    return [(a["question_id"], a["asked"]) for a in line["answers"]]
+
+
+ALL_ASKED = [("Q-AI-USE", True), ("Q-AI-WHY-USE", True), ("Q-AI-NOUSE", True), ("Q-4-7", True)]
+
+
 class TestRunSimulation(unittest.TestCase):
     def setUp(self):
         FAKE.reset()
         os.environ["OPENAI_BASE_URL"] = GEMINI_URL
         os.environ["OPENAI_API_KEY"] = "test-not-a-real-key"
 
-    def test_ok_then_cache_rerun_gives_same_result(self):
-        cfg = write_cfg("cache")
-        code, log = run(*args(cfg, repeat=2))
+    def test_question_flow_and_raw_format(self):
+        cfg = write_cfg("flow")
+        code, log = run(*args(cfg))
         self.assertEqual(code, 0, log)
-        first = read_raw("cache")
-        self.assertEqual(len(first), 2)
-        calls_first = FAKE.calls
-        self.assertGreater(calls_first, 0)
-        # 회차마다 캐시가 따로라서 두 회차 응답이 다르다 (같이 쓰면 같아진다)
-        self.assertNotEqual(first[0]["steps"], first[1]["steps"])
-
-        FAKE.reset()
-        code, log = run(*args(cfg, repeat=2))
-        self.assertEqual(code, 0, log)
-        self.assertEqual(FAKE.calls, 0, "다시 돌렸는데 API를 불렀다 (캐시 재현 실패)")
-        second = read_raw("cache")[2:]
-        self.assertEqual([x["steps"] for x in first], [x["steps"] for x in second])
-
-        summary = last_summary("cache")
-        self.assertEqual(summary["calls_real"], 0)
-        self.assertEqual(summary["calls_cached"], calls_first)
+        self.assertEqual(FAKE.calls, 4)  # 질문 4개, 질문마다 호출 1번
+        line = read_raw("flow")[0]
+        self.assertEqual(qids(line), ALL_ASKED)
+        self.assertEqual(line["use_parsed_at_runtime"], {"F1": "use", "F2": "nouse", "F3": "use", "F4": "nouse"})
+        self.assertEqual([f["name"] for f in line["features"]], FEATURES)
+        for a in line["answers"]:
+            self.assertTrue(a["talk"])
+            self.assertTrue(a["think"])
+            self.assertEqual(a["feature_id"], "")
+        self.assertEqual((line["platform"], line["question_order"]), ("app", "b"))
 
     def test_meta_has_trd_fields_and_no_key(self):
         cfg = write_cfg("meta")
@@ -210,34 +259,112 @@ class TestRunSimulation(unittest.TestCase):
                     "protocol_version", "snapshot_version", "action_truncations"]:
             self.assertIn(key, meta)
         self.assertEqual(meta["status"], "성공")
-        self.assertEqual(meta["platform"], "app")
-        self.assertEqual(meta["seed"], 7)
+        self.assertEqual(meta["questions_asked"], [q for q, _ in ALL_ASKED])
+        self.assertEqual(meta["images_per_request"], [0, 0, 0, 0])  # 텍스트 모드
         self.assertEqual(meta["max_actions_before_done"], 15)
         self.assertNotIn("test-not-a-real-key", json.dumps(meta, ensure_ascii=False))
-        line = read_raw("meta")[0]
-        self.assertEqual(line["platform"], "app")
-        self.assertEqual([s["task_id"] for s in line["steps"]], ["T1", "T2"])
-        self.assertTrue(line["steps"][0]["talk"])
+
+    def test_question_texts_are_sent_as_written(self):
+        cfg = write_cfg("texts")
+        code, log = run(*args(cfg))
+        self.assertEqual(code, 0, log)
+        sent = FAKE.sent_text()
+        q = lambda name: (PROTOCOL / "questions" / f"{name}.txt").read_text(encoding="utf-8").strip()  # noqa: E731
+        # 폼 4-7 문구가 글자 그대로 간다. JSON 이스케이프가 몇 겹인지와 상관없이 보려고 공백·역슬래시·따옴표를 빼고 비교한다
+        self.assertIn(squash(q("Q-4-7")), squash(sent))
+        self.assertIn(squash(q("START")), squash(sent))
+        self.assertIn("아래는 가짜공고 앱 화면입니다", sent)
+        for name in FEATURES:
+            self.assertIn(name, FAKE.last_user[0])
+        for option in (PROTOCOL / "options_4-6.txt").read_text(encoding="utf-8").split("\n"):
+            if option.strip():
+                self.assertIn(option.strip(), FAKE.last_user[2])
+        self.assertNotRegex(sent, r"\{(features|options_4_6|service_name|platform_label)\}")
+        self.assertIn("마감이 가까운 공고", sent)  # 화면 설명은 들어간다
+        self.assertNotIn("FEATURE-ONLY", sent)  # 기능 설명은 안 들어간다 (프로토콜 2번)
+
+    def test_follow_up_skipped_when_no_feature_needs_it(self):
+        FAKE.reset("all_use")
+        cfg = write_cfg("allyes")
+        code, log = run(*args(cfg))
+        self.assertEqual(code, 0, log)
+        self.assertEqual(FAKE.calls, 3)
+        line = read_raw("allyes")[0]
+        self.assertEqual(qids(line), [("Q-AI-USE", True), ("Q-AI-WHY-USE", True), ("Q-AI-NOUSE", False),
+                                      ("Q-4-7", True)])
+        self.assertEqual(line["answers"][2]["skipped"], "안 쓸 것 같은 기능 없음")
+
+    def test_missing_feature_is_recorded_not_asked(self):
+        make_snapshot("miss", missing_features=["F3"])
+        cfg = write_cfg("miss")
+        code, log = run(*args(cfg, service="miss"))
+        self.assertEqual(code, 0, log)
+        self.assertNotIn("마감 알림", FAKE.last_user[0])
+        line = read_raw("miss")[0]
+        self.assertIn({"question_id": "", "feature_id": "F3", "asked": False, "skipped": "없음", "captures": [],
+                       "images_in_request": 0, "actions": [], "think": "", "talk": ""}, line["answers"])
+
+    def test_image_mode_bundles_captures_without_auto_description(self):
+        cfg = write_cfg("image", input_mode="image")
+        code, log = run(*args(cfg))
+        self.assertEqual(code, 0, log)
+        self.assertEqual(FAKE.calls, 4)  # 자동 영어 요약 호출이 따로 없다
+        self.assertNotIn("Describe the image", FAKE.sent_text())
+        line = read_raw("image")[0]
+        for a in line["answers"]:
+            # 캡처 3장을 see() 한 번에 줬고, 이전 화면 다시 보여주기 1이라 질문마다 3장이 들어간다
+            self.assertEqual(a["images_in_request"], 3, a["question_id"])
+            self.assertEqual(a["captures"], ["S1.png", "S2.png", "S3.png"])
+        meta = read_metas("image")[0]
+        self.assertEqual(meta["capture_files"], ["images/fake/app/S1.png", "images/fake/app/S2.png",
+                                                 "images/fake/app/S3.png"])
+        self.assertEqual(last_summary("image")["images_per_request_max"], 3)
+
+    def test_random_capture_names_can_be_required(self):
+        cfg = write_cfg("randname", input_mode="image", require_random_capture_names=True)
+        code, log = run(*args(cfg))
+        self.assertEqual(code, 4, log)
+        self.assertIn("무작위 16진수", log)
+        self.assertEqual(FAKE.calls, 0)
+
+    def test_tinytroupe_log_is_moved(self):
+        cfg = write_cfg("logs")
+        code, log = run(*args(cfg))
+        self.assertEqual(code, 0, log)
+        self.assertTrue(list((TMP / "out_logs" / "logs").glob("tinytroupe.*.log")))
+        self.assertEqual(list(TMP.glob("tinytroupe.*.log")), [])
+
+    def test_ok_then_cache_rerun_gives_same_result(self):
+        cfg = write_cfg("cache")
+        code, log = run(*args(cfg, repeat=2))
+        self.assertEqual(code, 0, log)
+        first = read_raw("cache")
+        self.assertEqual(len(first), 2)
+        calls_first = FAKE.calls
+        # 회차마다 캐시가 따로라서 두 회차 응답이 다르다 (같이 쓰면 같아진다)
+        self.assertNotEqual(first[0]["answers"], first[1]["answers"])
+
+        FAKE.reset()
+        code, log = run(*args(cfg, repeat=2))
+        self.assertEqual(code, 0, log)
+        self.assertEqual(FAKE.calls, 0, "다시 돌렸는데 API를 불렀다 (캐시 재현 실패)")
+        second = read_raw("cache")[2:]
+        self.assertEqual([x["answers"] for x in first], [x["answers"] for x in second])
+        summary = last_summary("cache")
+        self.assertEqual((summary["calls_real"], summary["calls_cached"]), (0, calls_first))
 
     def test_platforms_use_own_snapshot_and_cache(self):
         cfg = write_cfg("platform")
         code, log = run(*args(cfg, platform="web"))
         self.assertEqual(code, 0, log)
-        self.assertIn("PC 브라우저 화면이다", FAKE.sent_text())  # 웹 스냅샷에만 있는 문장
+        sent = FAKE.sent_text()
+        self.assertIn("PC 브라우저 화면이다", sent)  # 웹 스냅샷에만 있는 문장
+        self.assertIn("아래는 가짜공고 웹사이트 화면입니다", sent)  # 폼 3-3 보기와 같은 이름
         code, log = run(*args(cfg, platform="app"))
         self.assertEqual(code, 0, log)
         self.assertEqual([x["platform"] for x in read_raw("platform")], ["web", "app"])
         groups = sorted(p.name for p in (TMP / "out_platform" / "cache").iterdir())
-        self.assertEqual(len(groups), 2)
         self.assertTrue(groups[0].startswith("fake_app_c2_") and groups[1].startswith("fake_web_c2_"), groups)
-
-    def test_feature_description_not_sent(self):
-        cfg = write_cfg("feature")
-        code, log = run(*args(cfg))
-        self.assertEqual(code, 0, log)
-        sent = FAKE.sent_text()
-        self.assertIn("마감이 가까운 공고", sent)  # S1 화면 설명은 들어간다
-        self.assertNotIn("FEATURE-ONLY", sent)  # 기능 설명은 안 들어간다
 
     def test_condition0_uses_ten_slots_and_neutral_name(self):
         cfg = write_cfg("c0")
@@ -271,13 +398,13 @@ class TestRunSimulation(unittest.TestCase):
         cfg = write_cfg("memory", cache=False)
         code, log = run(*args(cfg, limit=2))
         self.assertEqual(code, 0, log)
-        self.assertEqual(FAKE.calls, 4)  # 에피소드 2개 x 과제 2개
-        # 같은 에피소드 안에서는 앞 과제 답을 기억한다. 이게 안 보이면 아래 검사가 의미 없다
+        self.assertEqual(FAKE.calls, 8)  # 에피소드 2개 x 질문 4개
+        # 같은 에피소드 안에서는 앞 질문 답을 기억한다. 이게 안 보이면 아래 검사가 의미 없다
         self.assertIn("#001", FAKE.decoded(1))
-        for i in (2, 3):
+        for i in range(4, 8):
             sent = FAKE.decoded(i)
-            self.assertNotIn("#001", sent, "두 번째 에피소드에 첫 번째 에피소드 답이 들어갔다")
-            self.assertNotIn("#002", sent, "두 번째 에피소드에 첫 번째 에피소드 답이 들어갔다")
+            for mark in ("#001", "#002", "#003", "#004"):
+                self.assertNotIn(mark, sent, "두 번째 에피소드에 첫 번째 에피소드 답이 들어갔다")
             self.assertNotIn(name_a, sent, "두 번째 에피소드에 첫 번째 페르소나가 들어갔다")
 
     def test_action_truncation_is_counted(self):
@@ -288,7 +415,7 @@ class TestRunSimulation(unittest.TestCase):
         summary = last_summary("trunc")
         self.assertEqual(summary["action_truncations"], FAKE.calls)
         self.assertEqual(read_metas("trunc")[0]["action_truncations"], FAKE.calls)
-        self.assertIn("행동 잘림    : 2회", log)
+        self.assertIn(f"행동 잘림    : {FAKE.calls}회", log)
 
         FAKE.reset()
         cfg = write_cfg("notrunc")
@@ -304,7 +431,7 @@ class TestRunSimulation(unittest.TestCase):
         self.assertEqual(read_raw("cap"), [])
 
     def test_cost_cap_counts_previous_runs(self):
-        # 첫 실행: 호출 2번 x 1,100 토큰 = 2,200
+        # 첫 실행: 호출 4번 x 1,100 토큰 = 4,400
         cfg = write_cfg("cumul", cache=False)
         code, log = run(*args(cfg))
         self.assertEqual(code, 0, log)
@@ -313,12 +440,11 @@ class TestRunSimulation(unittest.TestCase):
             json.dumps({"provider": "openai", "tokens_in": 10**9, "tokens_out": 0}), encoding="utf-8")
 
         FAKE.reset()
-        cfg = write_cfg("cumul", cache=False, token_cap=2500)
+        cfg = write_cfg("cumul", cache=False, token_cap=5000)
         code, log = run(*args(cfg))
         self.assertEqual(code, 3, log)
-        self.assertEqual(FAKE.calls, 1)  # 2,200에서 한 번 부르면 3,300이라 다음 호출 전에 멈춘다
-        summary = last_summary("cumul")
-        self.assertEqual(summary["tokens_before"], 2200)
+        self.assertEqual(FAKE.calls, 1)  # 4,400에서 한 번 부르면 5,500이라 다음 호출 전에 멈춘다
+        self.assertEqual(last_summary("cumul")["tokens_before"], 4400)
 
         # 이전 기록을 못 읽으면 누적을 셀 수 없으니 아무것도 안 하고 멈춘다
         FAKE.reset()
@@ -390,25 +516,32 @@ class TestRunSimulation(unittest.TestCase):
         self.assertEqual(summary["failure_rate"], 0.05)
 
     def test_input_errors(self):
-        bad = json.loads((TMP / "snapshots/fake/app/snapshot.json").read_text(encoding="utf-8"))
-        bad["service"] = "bad"
-        bad["tasks"][0]["start_screen"] = "S9"
-        (TMP / "snapshots/bad/app").mkdir(parents=True, exist_ok=True)
-        (TMP / "snapshots/bad/app/snapshot.json").write_text(json.dumps(bad, ensure_ascii=False), encoding="utf-8")
+        make_snapshot("noname", service_name="")
         wrong = json.loads((TMP / "snapshots/fake/web/snapshot.json").read_text(encoding="utf-8"))
         wrong["service"] = "mixed"  # 웹 스냅샷을 앱 자리에 둔 경우
         (TMP / "snapshots/mixed/app").mkdir(parents=True, exist_ok=True)
         (TMP / "snapshots/mixed/app/snapshot.json").write_text(json.dumps(wrong, ensure_ascii=False), encoding="utf-8")
+        make_snapshot("badmiss", missing_features=["F9"])
+        shutil.copytree(TMP / "protocol", TMP / "protocol_bad")
+        (TMP / "protocol_bad/questions/Q-4-7.txt").write_text("{features} 안 쓰게 됐거나", encoding="utf-8")
+        shutil.copytree(TMP / "protocol", TMP / "protocol_noopt")
+        (TMP / "protocol_noopt/options_4-6.txt").unlink()
         cfg = write_cfg("input")
         cases = [
-            ("start_screen 오류", args(cfg, service="bad"), 4),
+            ("서비스 이름 없음", args(cfg, service="noname"), 4),
             ("플랫폼이 다른 스냅샷", args(cfg, service="mixed"), 4),
+            ("없는 기능 ID", args(cfg, service="badmiss"), 4),
             ("스냅샷 없음", args(cfg, service="nothing"), 1),
             ("조건 3", args(cfg, condition=3), 1),
             ("옵션 누락", ["--service", "fake"], 1),
             ("플랫폼 값 오류", args(cfg, platform="tablet"), 1),
             ("행동 상한 0", args(write_cfg("input_actions", max_actions_before_done=0)), 4),
             ("중립 이름 비어 있음", args(write_cfg("input_name", neutral_agent_name=" ")), 4),
+            ("질문 순서 a", args(write_cfg("input_order", question_order="a")), 4),
+            ("이전 화면 0", args(write_cfg("input_recall", max_image_stimuli_to_recall=0)), 4),
+            ("프로토콜 폴더 없음", args(write_cfg("input_proto", protocol_dir="nothing")), 4),
+            ("4-7에 자리", args(write_cfg("input_q47", protocol_dir="protocol_bad")), 4),
+            ("4-6 보기 없음", args(write_cfg("input_opt", protocol_dir="protocol_noopt")), 4),
             ("모르는 설정 키", args(write_cfg("input_key", tokn_cap=10)), 4),
         ]
         for label, argv, expected in cases:
@@ -419,9 +552,25 @@ class TestRunSimulation(unittest.TestCase):
         self.assertFalse((TMP / "out_input").exists())
 
 
-import check_image_input as cii  # noqa: E402
+class TestParseUseAnswers(unittest.TestCase):
+    FEATS = [(f"F{i}", name) for i, name in enumerate(FEATURES, 1)]
 
-shutil.copytree(REPO / "experiments/runner_dev/images", TMP / "images")
+    def test_line_per_feature(self):
+        text = ("공고 검색·필터: 쓸 것 같다\n공고 저장 (스크랩, 찜, 북마크): 안 쓸 것 같다\n"
+                "마감 알림 - 쓸 거 같아요\n추천 공고 목록: 쓰지 않을 것 같아요")
+        self.assertEqual(rs.parse_use_answers(text, self.FEATS),
+                         {"F1": "use", "F2": "nouse", "F3": "use", "F4": "nouse"})
+
+    def test_short_names_and_unknown(self):
+        text = "공고 저장은 쓸 것 같아요. 마감 알림은 잘 모르겠어요."
+        self.assertEqual(rs.parse_use_answers(text, self.FEATS),
+                         {"F1": "unknown", "F2": "use", "F3": "unknown", "F4": "unknown"})
+
+    def test_mixed_sentence_is_unknown(self):
+        # 한 문장에 쓸·안 쓸이 같이 있으면 어느 기능 답인지 못 가려서 unknown으로 둔다
+        text = "공고 검색·필터는 쓸 것 같고 마감 알림은 안 쓸 것 같다"
+        result = rs.parse_use_answers(text, self.FEATS)
+        self.assertEqual((result["F1"], result["F3"]), ("unknown", "unknown"))
 
 
 class TestCheckImageInput(unittest.TestCase):
