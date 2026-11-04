@@ -1,7 +1,8 @@
 {
-  "_설명": "AI 실행기 1단계 개발용 가짜 스냅샷. 실제 서비스가 아니다. 과제 문구는 사람 테스트 설계 v4 4장(docs/human-test/README.md)에서 가져왔다. 형식은 IF-03(register_snapshot.py)이 정해지면 그쪽에 맞춘다.",
+  "_설명": "AI 실행기 1단계 개발용 가짜 스냅샷. 실제 서비스가 아니다. 과제 문구는 사람 테스트 설계 v4 4장(docs/human-test/README.md)에서 가져왔다. 형식은 IF-03(register_snapshot.py)이 정해지면 그쪽에 맞춘다. 앱과 웹은 화면이 달라서 플랫폼마다 스냅샷을 따로 둔다.",
   "service": "fake",
-  "snapshot_version": "fake-0.1",
+  "platform": "app",
+  "snapshot_version": "fake-0.2",
   "screens": [
     {
       "screen_id": "S1",
@@ -26,7 +27,15 @@
     }
   ],
   "tasks": [
-    {"task_id": "T1", "text": "관심 분야 공모전 하나를 찾아서 저장해 보세요.", "start_screen": "S1"},
-    {"task_id": "T2", "text": "마감 알림을 받도록 설정해 보세요.", "start_screen": "S1"}
+    {
+      "task_id": "T1",
+      "text": "관심 분야 공모전 하나를 찾아서 저장해 보세요.",
+      "start_screen": "S1"
+    },
+    {
+      "task_id": "T2",
+      "text": "마감 알림을 받도록 설정해 보세요.",
+      "start_screen": "S1"
+    }
   ]
 }

@@ -1,5 +1,6 @@
 {
-  "_설명": "AI 실행기 1단계 개발용 설정. 가짜 화면 + 임시 페르소나 + 무료 Gemini. 본실험 값이 아니다.",
+  "_설명": "AI 실행기 1단계 개발용 설정. 가짜 화면, 임시 페르소나, 무료 Gemini로 돈다. 본실험 값이 아니다.",
+  "_neutral_agent_name": "조건 0·1 에이전트 이름. 프로토콜 v0.1 참고 초안 7번의 제안(참여자)을 따랐다.",
   "_task_prompt_template": "임시 문구다. 프로토콜 v0.1의 [고정·AI 공통] 문구가 나오면 그걸로 바꾼다.",
   "snapshot_root": "experiments/runner_dev/snapshots",
   "personas_dir": "experiments/personas_nemotron_korea/personas/students_in_progress",
@@ -7,7 +8,8 @@
   "input_mode": "text",
   "token_cap": 200000,
   "empty_retries": 2,
-  "max_calls_per_action": 3,
+  "max_actions_before_done": 15,
+  "neutral_agent_name": "참여자",
   "cache": true,
   "raw_responses_path": "runs/dev/raw_responses.jsonl",
   "meta_dir": "runs/dev/meta",

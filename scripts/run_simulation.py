@@ -1,21 +1,22 @@
 """AI 실행기 (TRD IF-05, FR-03). 1단계 뼈대.
 
 페르소나마다 스냅샷의 화면과 과제를 주고, AI 응답과 실행 기록을 파일로 남긴다.
-작업 범위는 AI실행기.md, 요구사항은 TRD FR-03, NFR-02/04/05, 6장 공통 규칙, 7장 실행 기록.
+작업 범위는 docs/work-orders/kim-minwoo/AI실행기.md(11/1 개정판),
+요구사항은 TRD FR-03, NFR-02/04/05/06, 6장 공통 규칙, 7장 실행 기록.
 
 사용법:
     python scripts/use_provider.py gemini
-    python scripts/run_simulation.py --service fake --condition 2 --repeat 1 --seed 1 \
+    python scripts/run_simulation.py --service fake --platform app --condition 2 --repeat 1 --seed 1 \
         --config configs/simulation.dev.json --limit-personas 1
 
 1단계라서 아직 안 하는 것
-- 단계형 진행(클릭 -> 화면 대응)과 과제 뒤 질문: 프로토콜 v0.1이 나오면 넣는다.
+- 폼 B 질문 순서대로 묻기, 이미지 입력 다듬기, 질문 파일 읽기: 프로토콜 v0.1이 나오면 2단계에서 넣는다.
   지금은 과제마다 시작 화면 하나를 보여주고 한 번 행동하게 한다.
 - 조건 3(후기 검색 붙이기): 후기 출처가 정해지면 넣는다. 지금은 종료 코드 1로 막는다.
 
 종료 코드 (TRD 6장)
     0 정상 / 1 사용법 오류, 입력 파일 없음 / 2 설정 불일치, 인증
-    3 비용 상한 / 4 입력 검증 실패 / 5 API 실패, 빈 응답
+    3 비용 상한 / 4 입력 검증 실패 / 5 API 실패 (전부 실패했거나 실패율이 NFR-06 문턱을 넘을 때)
 """
 
 import argparse
@@ -33,6 +34,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = "configs/simulation.json"
 GEMINI_HOST = "generativelanguage.googleapis.com"
+PLATFORMS = ("app", "web")
 
 EXIT_OK, EXIT_USAGE, EXIT_SETTINGS, EXIT_COST, EXIT_INPUT, EXIT_API = 0, 1, 2, 3, 4, 5
 
@@ -40,8 +42,14 @@ EXIT_OK, EXIT_USAGE, EXIT_SETTINGS, EXIT_COST, EXIT_INPUT, EXIT_API = 0, 1, 2, 3
 MAX_COMPLETION_LIMIT = {"openai": 2048, "gemini": 8192}
 CONCURRENCY_LIMIT = {"openai": 2, "gemini": 1}
 
-# FR-03-07: 한 번의 행동에서 이어지는 호출은 3회 이하
-MAX_CALLS_PER_ACTION_LIMIT = 3
+# FR-03-01: 조건 0은 슬롯 C0-01~C0-10으로 돌린다 (다른 조건의 페르소나 10명과 호출 수를 맞춘다)
+CONDITION0_SLOTS = 10
+
+# NFR-06: 에피소드 실패율이 이 값을 넘으면 종료 코드 5
+FAILURE_RATE_LIMIT = 0.05
+
+# 시간 환산용. 대조 서비스 2 x 조건 4 x 페르소나 10 x 반복 3 x 플랫폼 2 (AI제시프로토콜.md 235행)
+PLANNED_EPISODES = 480
 
 
 class Stop(Exception):
@@ -55,24 +63,29 @@ class Stop(Exception):
 # 실행 도중 멈추는 신호들. 일부러 Exception이 아니라 BaseException을 상속한다.
 # TinyTroupe send_message가 except Exception으로 오류를 전부 잡아 재시도한 뒤 None을 돌려주기 때문에,
 # Exception으로 던지면 TinyTroupe 안에서 삼켜지고 빈 응답만 조용히 쌓인다.
+# fatal이 True면 다음 에피소드도 같은 이유로 실패하니 실행 전체를 멈춘다.
 class AbortRun(BaseException):
     code = EXIT_API
     label = "실패"
+    fatal = False
 
 
 class AuthFailed(AbortRun):
     code = EXIT_SETTINGS
     label = "실패(인증)"
+    fatal = True
 
 
 class SettingsFailed(AbortRun):
     code = EXIT_SETTINGS
     label = "실패(설정)"
+    fatal = True
 
 
 class CostCapReached(AbortRun):
     code = EXIT_COST
     label = "중단(비용 상한)"
+    fatal = True
 
 
 class ApiFailed(AbortRun):
@@ -91,11 +104,12 @@ class _Parser(argparse.ArgumentParser):
 def parse_args(argv):
     ap = _Parser(description="AI 실행기 (TRD IF-05)")
     ap.add_argument("--service", required=True)
+    ap.add_argument("--platform", required=True, choices=PLATFORMS, help="캡처 플랫폼. 에이전트 하나에는 한 플랫폼 화면만 준다")
     ap.add_argument("--condition", required=True, type=int, choices=[0, 1, 2, 3])
     ap.add_argument("--repeat", required=True, type=int)
     ap.add_argument("--seed", required=True, type=int)
     ap.add_argument("--config", default=DEFAULT_CONFIG, help=f"실행 설정 JSON (기본 {DEFAULT_CONFIG})")
-    ap.add_argument("--limit-personas", type=int, default=None, help="시범 실행용. 앞에서부터 N명만 쓴다")
+    ap.add_argument("--limit-personas", type=int, default=None, help="시범 실행용. 앞에서부터 N명(조건 0은 N슬롯)만 쓴다")
     args = ap.parse_args(argv)
     if args.repeat < 1:
         ap.error("--repeat 는 1 이상이어야 한다")
@@ -116,7 +130,8 @@ CONFIG_KEYS = {
     "input_mode": (str,),
     "token_cap": (int,),
     "empty_retries": (int,),
-    "max_calls_per_action": (int,),
+    "max_actions_before_done": (int,),
+    "neutral_agent_name": (str,),
     "cache": (bool,),
     "raw_responses_path": (str,),
     "meta_dir": (str,),
@@ -165,8 +180,10 @@ def validate_config(cfg) -> list:
         problems.append("token_cap 은 1 이상이어야 한다")
     if not 0 <= cfg["empty_retries"] <= 5:
         problems.append("empty_retries 는 0~5 여야 한다")
-    if not 1 <= cfg["max_calls_per_action"] <= MAX_CALLS_PER_ACTION_LIMIT:
-        problems.append(f"max_calls_per_action 은 1~{MAX_CALLS_PER_ACTION_LIMIT} 여야 한다 (FR-03-07)")
+    if cfg["max_actions_before_done"] < 1:
+        problems.append("max_actions_before_done 은 1 이상이어야 한다 (기본값 15를 쓴다)")
+    if not _nonempty_str(cfg["neutral_agent_name"]):
+        problems.append("neutral_agent_name 이 비어 있다 (조건 0·1 에이전트 이름)")
     if "{task}" not in cfg["task_prompt_template"]:
         problems.append("task_prompt_template 에 {task} 자리가 없다")
     return problems
@@ -176,12 +193,14 @@ def _nonempty_str(v):
     return isinstance(v, str) and v.strip() != ""
 
 
-def validate_snapshot(snap, service: str, input_mode: str, images_dir) -> list:
+def validate_snapshot(snap, service: str, platform: str, input_mode: str, images_dir) -> list:
     if not isinstance(snap, dict):
         return ["스냅샷의 최상위가 객체가 아니다"]
     problems = []
     if snap.get("service") != service:
         problems.append(f"스냅샷 service 가 {service!r} 가 아니다: {snap.get('service')!r}")
+    if snap.get("platform") != platform:
+        problems.append(f"스냅샷 platform 이 {platform!r} 가 아니다: {snap.get('platform')!r}")
     if not _nonempty_str(snap.get("snapshot_version")):
         problems.append("스냅샷에 snapshot_version 이 없다")
 
@@ -274,6 +293,31 @@ def load_personas(personas_dir: Path, limit):
     return units, problems
 
 
+def previous_tokens(meta_dir: Path, provider: str) -> int:
+    """비용 상한은 본실험 전체 누적으로 센다. 같은 실행 기록 폴더에 남은 이전 에피소드의 토큰을 더한다.
+
+    명령은 서비스 x 플랫폼 x 조건으로 나눠 도니까 명령마다 따로 세면 상한의 몇 배까지 쓸 수 있다.
+    제공자가 다른 기록(예: 무료 Gemini로 돌린 개발 기록)은 이 예산에서 돈이 나가지 않아서 뺀다.
+    """
+    if not meta_dir.is_dir():
+        return 0
+    total, broken = 0, []
+    for path in sorted(meta_dir.glob("*.json")):
+        if path.name.endswith(".summary.json"):
+            continue  # 요약은 에피소드 기록을 다시 더한 것이라 두 번 세게 된다
+        try:
+            meta = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            broken.append(path.name)
+            continue
+        if meta.get("provider") == provider:
+            total += int(meta.get("tokens_in") or 0) + int(meta.get("tokens_out") or 0)
+    if broken:
+        # 못 읽은 기록을 빼고 세면 상한보다 더 쓸 수 있다. 고친 뒤에 다시 돌린다.
+        raise Stop(EXIT_INPUT, f"이전 실행 기록을 읽지 못해서 누적 토큰을 셀 수 없다: {', '.join(broken)}")
+    return total
+
+
 # ---------------------------------------------------------------------------
 # 설정 검사 (종료 코드 2)
 # ---------------------------------------------------------------------------
@@ -354,7 +398,7 @@ def tinytroupe_commit() -> str:
 
 
 # ---------------------------------------------------------------------------
-# TinyTroupe 클라이언트 감싸기: 비용 상한, 인증 오류, 빈 응답, 호출 집계
+# TinyTroupe 감싸기: 비용 상한, 인증 오류, 빈 응답, 호출 집계, 행동 목록 잘림
 # ---------------------------------------------------------------------------
 
 def _new_counts():
@@ -366,16 +410,18 @@ def _new_counts():
         "messages": 0,  # send_message 결과 수 (재시도 포함)
         "empty": 0,  # 그중 빈 응답 또는 실패(None)
         "length": 0,  # finish_reason=length
+        "truncated": 0,  # 행동 목록이 MAX_ACTIONS_BEFORE_DONE보다 길어서 잘린 횟수
     }
 
 
 class RunState:
     """이번 실행의 호출 집계. 아래 감싼 함수들이 여기에 쓴다."""
 
-    def __init__(self, token_cap: int, empty_retries: int):
+    def __init__(self, token_cap: int, empty_retries: int, tokens_before: int = 0):
         self.token_cap = token_cap
         self.empty_retries = empty_retries
-        self.tokens_used = 0  # 실제 호출만 센다. 캐시 응답은 돈이 안 든다
+        self.tokens_before = tokens_before  # 이전 실행에서 이미 쓴 토큰
+        self.tokens_used = tokens_before  # 실제 호출만 센다. 캐시 응답은 돈이 안 든다
         self.totals = _new_counts()
         self.episode = _new_counts()
 
@@ -402,11 +448,12 @@ def _is_auth_error(e) -> bool:
 
     if isinstance(e, (openai.AuthenticationError, openai.PermissionDeniedError)):
         return True
-    # Gemini 호환 주소가 틀린 키에 401 대신 400을 줄 경우를 대비한다. 실제 응답으로는 아직 확인하지 않았다.
-    # TinyTroupe는 400을 받으면 재시도 없이 None을 돌려주므로, 여기서 못 가려내면 빈 응답(종료 코드 5)으로 끝난다.
+    # Gemini 호환 주소는 틀린 키에 401 대신 400을 준다. 2026-11-04 틀린 키로 실제 호출해 보니
+    # 400, INVALID_ARGUMENT, "Please pass a valid API key" 였다 (API_KEY_INVALID 표시는 없었다).
+    # TinyTroupe는 400을 받으면 None을 돌려주므로, 여기서 못 가려내면 빈 응답 재시도 뒤 종료 코드 5로 끝난다.
     if isinstance(e, openai.BadRequestError):
         text = f"{e} {getattr(e, 'body', '')}"
-        return "API_KEY_INVALID" in text or "API key not valid" in text
+        return any(s in text for s in ("valid API key", "API key not valid", "API_KEY_INVALID"))
     return False
 
 
@@ -416,17 +463,22 @@ def install_guards():
     if _GUARDS_INSTALLED:
         return
     import openai
+    from tinytroupe.agent import TinyPerson
+    from tinytroupe.agent.action_generator import ActionGenerator
     from tinytroupe.clients.openai_client import OpenAIClient
 
     orig_raw = OpenAIClient._raw_model_call
     orig_update = OpenAIClient._update_cost_stats
     orig_send = OpenAIClient.send_message
+    orig_generate = ActionGenerator.generate_next_actions
 
     def guarded_raw(self, model, chat_api_params):
         st = _STATE
         # 상한은 다음 실제 호출 전에 본다. 그래서 마지막 호출 하나만큼은 넘을 수 있다.
         if st is not None and st.tokens_used >= st.token_cap:
-            raise CostCapReached(f"누적 토큰 {st.tokens_used:,} 이 상한 {st.token_cap:,} 에 닿았다")
+            raise CostCapReached(
+                f"누적 토큰 {st.tokens_used:,}(이전 실행 {st.tokens_before:,} 포함)이 상한 {st.token_cap:,} 에 닿았다"
+            )
         # Gemini 호환 주소는 frequency/presence_penalty를 400으로 거부한다 (FINDINGS 3번, run_smoke.py와 같은 처리)
         base_url = os.getenv("OPENAI_BASE_URL") or ""
         if base_url and "openai.com" not in base_url:
@@ -480,9 +532,20 @@ def install_guards():
             self.invalidate_last_cache_entry()
         raise ApiFailed(f"빈 응답 또는 API 실패 ({attempts}번 시도)")
 
+    def counting_generate(self, agent, current_messages):
+        # TinyTroupe는 행동 목록이 상한보다 길면 앞부분만 남기고 마지막을 DONE으로 바꾸면서 로그를 안 남긴다
+        # (tiny_person.py 872~875행). 잘리면 답(TALK)이 사라질 수 있어서 여기서 센다.
+        result = orig_generate(self, agent, current_messages)
+        st = _STATE
+        actions = result[0] if isinstance(result, tuple) and result else None
+        if st is not None and isinstance(actions, list) and len(actions) > TinyPerson.MAX_ACTIONS_BEFORE_DONE:
+            st.add("truncated")
+        return result
+
     OpenAIClient._raw_model_call = guarded_raw
     OpenAIClient._update_cost_stats = counting_update
     OpenAIClient.send_message = checked_send
+    ActionGenerator.generate_next_actions = counting_generate
     _GUARDS_INSTALLED = True
 
 
@@ -507,21 +570,22 @@ def hangul_ratio(text: str) -> float:
     return ko / len(letters)
 
 
-def build_agent(condition: int, unit: dict):
+def build_agent(condition: int, unit: dict, neutral_name: str):
     from tinytroupe.agent import TinyPerson
 
-    # 같은 이름의 에이전트가 남아 있으면 TinyTroupe가 ValueError를 낸다. 에피소드마다 비운다.
+    # 에피소드마다 새 에이전트를 만든다. 같은 에이전트를 다시 쓰면 이전 에피소드가 기억 앞부분에 남고,
+    # 같은 이름으로 다시 만들면 TinyTroupe가 "이미 쓰는 이름" 오류를 낸다. 그래서 등록부터 비운다.
     TinyPerson.clear_agents()
     if condition == 0:
-        # FR-03-01: 페르소나 없이 같은 과제. 이름 자리에는 슬롯 ID만 둔다.
-        return TinyPerson(name=unit["persona_id"])
+        # FR-03-01: 페르소나 없이 같은 과제. 이름은 조건 0·1 공통 중립 이름 (프로토콜 7번)
+        return TinyPerson(name=neutral_name)
     persona = unit["spec"]["persona"]
     if condition == 1:
-        # FR-03-02: 나이와 직업만 남긴다. 이름도 성별 단서가 돼서 페르소나 ID로 바꾼다.
+        # FR-03-02: 나이와 직업만 남긴다. 한국 이름은 성별 단서라서 중립 이름으로 바꾼다.
         spec = {
             "type": "TinyPerson",
             "persona": {
-                "name": unit["persona_id"],
+                "name": neutral_name,
                 "age": persona["age"],
                 "occupation": {"title": persona["occupation"]["title"]},
             },
@@ -540,13 +604,10 @@ def make_step(task: dict, screen: dict, actions) -> dict:
     talk = "\n".join(x["content"] for x in raw if x["type"] == "TALK" and x["content"])
     return {
         "task_id": task["task_id"],
-        "step_no": 1,  # 1단계는 과제당 한 번. 단계형 진행은 프로토콜 v0.1 뒤
         "screen_shown": screen["screen_id"],
         "actions": raw,  # AI 행동 원문
         "think": think,
         "talk": talk,
-        "screen_mapped": None,  # 클릭 -> 화면 대응은 2단계
-        "mark": None,  # 찍어 두지 않은 화면 등 표시는 2단계
     }
 
 
@@ -560,9 +621,11 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
 
     cache_file = None
     if ctx["cfg"]["cache"]:
-        # FR-03-05: 페르소나(조건 0은 슬롯)와 회차마다 캐시를 따로 쓴다.
+        # FR-03-05: 서비스 x 플랫폼 x 조건 x 페르소나(조건 0은 슬롯) x 회차마다 캐시를 따로 쓴다.
         # 같이 쓰면 TinyTroupe가 같은 요청에 같은 답을 돌려줘서 반복이 전부 똑같아진다.
-        cache_file = ctx["cache_dir"] / f"{ctx['service']}_c{ctx['condition']}_{ctx['model_tag']}" / f"{pid}_r{repeat}.json"
+        # force_api_cache는 모든 클라이언트에 걸리는 전역 설정이라 에피소드마다 다시 지정하고 순서대로 돈다.
+        group = f"{ctx['service']}_{ctx['platform']}_c{ctx['condition']}_{ctx['model_tag']}"
+        cache_file = ctx["cache_dir"] / group / f"{pid}_r{repeat}.json"
         cache_file.parent.mkdir(parents=True, exist_ok=True)
         force_api_cache(True, str(cache_file))
     else:
@@ -571,7 +634,7 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
     started = time.time()
     steps, abort, error_detail = [], None, None
     try:
-        agent = build_agent(ctx["condition"], unit)
+        agent = build_agent(ctx["condition"], unit, ctx["cfg"]["neutral_agent_name"])
         for task in ctx["tasks"]:
             screen = ctx["screens"][task["start_screen"]]
             # 프로토콜 2번: 화면별 기능 설명(feature_description)은 사람이 못 보는 정보라 넣지 않는다
@@ -592,7 +655,7 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
 
     status = "성공" if abort is None else f"{abort.label}: {abort}"
     meta = {
-        # TRD 7장 실행 기록 13칸
+        # TRD 7장 실행 기록 13칸 (platform은 TRD v0.3에 추가)
         "run_id": run_id,
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "provider": ctx["provider"],
@@ -600,6 +663,7 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
         "model": ctx["model"],
         "tinytroupe_commit": ctx["tinytroupe_commit"],
         "service": ctx["service"],
+        "platform": ctx["platform"],
         "condition": ctx["condition"],
         "persona_id": pid,
         "repeat": repeat,
@@ -611,16 +675,18 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
         "tokens_out": st.episode["tokens_out"],
         "elapsed_sec": elapsed,
         "status": status,
-        # AI실행기.md에서 더하기로 한 칸
+        # AI실행기.md에서 더하기로 한 칸 (TRD v0.3에 들어감)
         "protocol_version": ctx["cfg"]["protocol_version"],
         "snapshot_version": ctx["snapshot_version"],
+        "action_truncations": st.episode["truncated"],
         # 아래는 이 구현에서 더한 칸 (TRD 6장: 입력 파일 경로와 설정을 남긴다)
         "batch_id": ctx["batch_id"],
         "calls_real": st.episode["calls_real"],
         "calls_cached": st.episode["calls_cached"],
         "empty_responses": st.episode["empty"],
         "length_cutoffs": st.episode["length"],
-        "max_calls_per_action": ctx["cfg"]["max_calls_per_action"],
+        "max_actions_before_done": ctx["cfg"]["max_actions_before_done"],
+        "neutral_agent_name": ctx["cfg"]["neutral_agent_name"] if ctx["condition"] in (0, 1) else None,
         "config_file": ctx["config_file"],
         "snapshot_file": ctx["snapshot_file"],
         "persona_file": _rel(unit["path"], ctx["root"]) if "path" in unit else None,
@@ -633,11 +699,13 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
     )
 
     if abort is None:
-        # 한 줄 = 한 에피소드 (서비스 x 페르소나 x 회차). 형식은 2단계에서 프로토콜 10번에 맞춰 확정한다.
+        # 한 줄 = 한 에피소드 (서비스 x 플랫폼 x 조건 x 페르소나 x 회차). 실패한 에피소드는 실행 기록에만 남긴다.
+        # 형식은 2단계에서 프로토콜 10번에 맞춰 질문 단위(answers)로 바꾼다.
         line = {
             "run_id": run_id,
             "batch_id": ctx["batch_id"],
             "service": ctx["service"],
+            "platform": ctx["platform"],
             "condition": ctx["condition"],
             "persona_id": pid,
             "repeat": repeat,
@@ -646,7 +714,6 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
             "input_mode": ctx["input_mode"],
             "status": "성공",
             "steps": steps,
-            "answers": [],  # 과제 뒤 질문은 2단계
         }
         ctx["raw_path"].parent.mkdir(parents=True, exist_ok=True)
         with ctx["raw_path"].open("a", encoding="utf-8") as f:
@@ -656,6 +723,15 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
     return {"run_id": run_id, "ok": abort is None, "elapsed": elapsed, "text": text, "abort": abort}
 
 
+def decide_exit_code(episodes: list, fatal) -> int:
+    if fatal is not None:
+        return fatal.code
+    failed = sum(1 for e in episodes if not e["ok"])
+    if episodes and (failed == len(episodes) or failed / len(episodes) > FAILURE_RATE_LIMIT):
+        return EXIT_API
+    return EXIT_OK
+
+
 def summarize(ctx: dict, episodes: list, exit_code: int) -> dict:
     st = _STATE
     t = st.totals
@@ -663,9 +739,8 @@ def summarize(ctx: dict, episodes: list, exit_code: int) -> dict:
     responses = t["calls_real"] + t["calls_cached"]
     all_text = "\n".join(e["text"] for e in ok)
     per_episode = [hangul_ratio(e["text"]) for e in ok]
-    tasks_run = len(ok) * len(ctx["tasks"])
     elapsed = round(sum(e["elapsed"] for e in episodes), 1)
-    sec_per_task = round(sum(e["elapsed"] for e in ok) / tasks_run, 1) if tasks_run else None
+    sec_per_episode = round(sum(e["elapsed"] for e in ok) / len(ok), 1) if ok else None
 
     def rate(n, d):
         return round(n / d, 3) if d else None
@@ -673,6 +748,7 @@ def summarize(ctx: dict, episodes: list, exit_code: int) -> dict:
     return {
         "batch_id": ctx["batch_id"],
         "service": ctx["service"],
+        "platform": ctx["platform"],
         "condition": ctx["condition"],
         "seed": ctx["seed"],
         "provider": ctx["provider"],
@@ -682,22 +758,26 @@ def summarize(ctx: dict, episodes: list, exit_code: int) -> dict:
         "episodes_planned": ctx["episodes_planned"],
         "episodes_run": len(episodes),
         "episodes_ok": len(ok),
-        "tasks_run": tasks_run,
         "calls_real": t["calls_real"],
         "calls_cached": t["calls_cached"],
         "tokens_in": t["tokens_in"],
         "tokens_out": t["tokens_out"],
         "tokens_total": t["tokens_in"] + t["tokens_out"],
+        "tokens_before": st.tokens_before,
+        "tokens_cumulative": st.tokens_used,
         "token_cap": st.token_cap,
         "failure_rate": rate(len(episodes) - len(ok), len(episodes)),
         "empty_rate": rate(t["empty"], t["messages"]),
         "length_cutoff_rate": rate(t["length"], responses),
+        "action_truncations": t["truncated"],
         "hangul_ratio": round(hangul_ratio(all_text), 3) if ok else None,
         "hangul_ratio_min_episode": round(min(per_episode), 3) if per_episode else None,
         "elapsed_sec": elapsed,
-        "sec_per_task": sec_per_task,
-        # NFR-05 참고용: 과제 실행 60회(조건 하나)를 지금 속도로 순서대로 돌리면 걸릴 시간. 캐시 응답이면 의미 없다
-        "hours_for_60_tasks": round(sec_per_task * 60 / 3600, 2) if sec_per_task and t["calls_real"] else None,
+        "sec_per_episode": sec_per_episode,
+        # NFR-05 참고용: 계획한 에피소드 전체를 지금 속도로 순서대로 돌리면 걸릴 시간. 캐시 응답이면 의미 없다
+        "hours_for_planned_episodes": (
+            round(sec_per_episode * PLANNED_EPISODES / 3600, 1) if sec_per_episode and t["calls_real"] else None
+        ),
     }
 
 
@@ -711,15 +791,17 @@ def print_summary(s: dict) -> None:
     print(f"[요약] {s['batch_id']}  종료 코드 {s['exit_code']}")
     print(f"  에피소드     : 성공 {s['episodes_ok']} / 실행 {s['episodes_run']} / 계획 {s['episodes_planned']}")
     print(f"  호출         : 실제 {s['calls_real']}회, 캐시 {s['calls_cached']}회")
-    print(f"  토큰         : 입력 {s['tokens_in']:,} + 출력 {s['tokens_out']:,} = {s['tokens_total']:,} (상한 {s['token_cap']:,})")
-    print(f"  실패 비율    : {pct(s['failure_rate'])}")
+    print(f"  토큰         : 이번 {s['tokens_total']:,} (입력 {s['tokens_in']:,} + 출력 {s['tokens_out']:,})")
+    print(f"  누적 토큰    : {s['tokens_cumulative']:,} / 상한 {s['token_cap']:,} (이전 실행 {s['tokens_before']:,})")
+    print(f"  실패 비율    : {pct(s['failure_rate'])} (NFR-06 문턱 {FAILURE_RATE_LIMIT * 100:.0f}%)")
     print(f"  빈 응답 비율 : {pct(s['empty_rate'])}")
     print(f"  길이 초과    : {pct(s['length_cutoff_rate'])} (finish_reason=length)")
+    print(f"  행동 잘림    : {s['action_truncations']}회")
     print(f"  한글 비율    : 전체 {pct(s['hangul_ratio'])}, 에피소드 최저 {pct(s['hangul_ratio_min_episode'])}")
-    per_task = "-" if s["sec_per_task"] is None else f"{s['sec_per_task']}초"
-    print(f"  걸린 시간    : {s['elapsed_sec']}초, 과제 1회 평균 {per_task}")
-    if s["hours_for_60_tasks"] is not None:
-        print(f"  60회 환산    : {s['hours_for_60_tasks']}시간 (NFR-05 기준 8시간)")
+    per_ep = "-" if s["sec_per_episode"] is None else f"{s['sec_per_episode']}초"
+    print(f"  걸린 시간    : {s['elapsed_sec']}초, 에피소드 평균 {per_ep}")
+    if s["hours_for_planned_episodes"] is not None:
+        print(f"  {PLANNED_EPISODES}에피소드 환산: {s['hours_for_planned_episodes']}시간 (순서대로 돌릴 때)")
     print("=" * 60)
 
 
@@ -736,10 +818,11 @@ def run(args, root: Path) -> int:
     if problems:
         raise Stop(EXIT_INPUT, "실행 설정 검증 실패\n  - " + "\n  - ".join(problems))
 
-    snapshot_path = root / cfg["snapshot_root"] / args.service / "snapshot.json"
+    # 앱과 웹은 화면이 달라서 스냅샷도 플랫폼마다 따로 둔다
+    snapshot_path = root / cfg["snapshot_root"] / args.service / args.platform / "snapshot.json"
     snap = load_json(snapshot_path, "스냅샷")
-    images_dir = root / cfg["images_root"] / args.service if cfg["images_root"] else None
-    problems = validate_snapshot(snap, args.service, cfg["input_mode"], images_dir)
+    images_dir = root / cfg["images_root"] / args.service / args.platform if cfg["images_root"] else None
+    problems = validate_snapshot(snap, args.service, args.platform, cfg["input_mode"], images_dir)
 
     personas_dir = root / cfg["personas_dir"].replace("{service}", args.service)
     if not personas_dir.is_dir():
@@ -750,13 +833,14 @@ def run(args, root: Path) -> int:
         raise Stop(EXIT_INPUT, "입력 검증 실패\n  - " + "\n  - ".join(problems))
 
     if args.condition == 0:
-        # FR-03-01: 다른 조건과 호출 수를 맞추려고 페르소나 수만큼 슬롯을 돌린다
-        units = [{"persona_id": f"C0-{i:02d}"} for i in range(1, len(personas) + 1)]
+        n_slots = min(CONDITION0_SLOTS, args.limit_personas or CONDITION0_SLOTS)
+        units = [{"persona_id": f"C0-{i:02d}"} for i in range(1, n_slots + 1)]
     else:
         units = personas
 
     # --- 설정 검사 ---
     provider, base_url = check_env(root)
+    tokens_before = previous_tokens(root / cfg["meta_dir"], provider)
     os.chdir(root)  # TinyTroupe는 import 시점에 현재 폴더의 config.ini를 읽는다
     import tinytroupe  # noqa: F401
     from tinytroupe import config_manager
@@ -765,16 +849,19 @@ def run(args, root: Path) -> int:
     model, max_completion_tokens = check_tinytroupe_settings(config_manager, provider)
 
     install_guards()
-    # FR-03-07: TinyTroupe 기본값 15를 낮춘다
-    TinyPerson.MAX_ACTIONS_BEFORE_DONE = cfg["max_calls_per_action"]
+    # 기본값 15를 그대로 쓴다. 3으로 낮추면 [THINK, THINK, TALK, DONE]이 [THINK, THINK, DONE]이 돼서 답이 사라진다.
+    # (TRD FR-03-07의 "호출 3회"는 TRD v0.3에서 고친다)
+    TinyPerson.MAX_ACTIONS_BEFORE_DONE = cfg["max_actions_before_done"]
     # 응답 내용이 화면에 찍히지 않게 한다 (print_summary 주석 참고)
     TinyPerson.communication_display = False
 
-    batch_id = f"{args.service}_c{args.condition}_{datetime.now().strftime('%Y%m%dT%H%M%S')}_{secrets.token_hex(2)}"
+    stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    batch_id = f"{args.service}_{args.platform}_c{args.condition}_{stamp}_{secrets.token_hex(2)}"
     ctx = {
         "root": root,
         "cfg": cfg,
         "service": args.service,
+        "platform": args.platform,
         "condition": args.condition,
         "seed": args.seed,  # 지금은 기록만 한다. TinyTroupe가 API에 seed를 넘기지 않는다
         "batch_id": batch_id,
@@ -796,25 +883,30 @@ def run(args, root: Path) -> int:
         "cache_dir": root / cfg["cache_dir"],
         "episodes_planned": len(units) * args.repeat,
     }
-    _STATE = RunState(cfg["token_cap"], cfg["empty_retries"])
+    _STATE = RunState(cfg["token_cap"], cfg["empty_retries"], tokens_before)
 
-    print(f"[실행] {batch_id}: {provider}/{model}, 조건 {args.condition}, "
+    print(f"[실행] {batch_id}: {provider}/{model}, {args.platform}, 조건 {args.condition}, "
           f"{'슬롯' if args.condition == 0 else '페르소나'} {len(units)} x 반복 {args.repeat}, 과제 {len(ctx['tasks'])}개")
 
-    episodes, exit_code = [], EXIT_OK
+    episodes, fatal = [], None
     for unit in units:
         for repeat in range(1, args.repeat + 1):
             ep = run_episode(ctx, unit, repeat)
             episodes.append(ep)
             print(f"  {ep['run_id']}: {'성공' if ep['ok'] else ep['abort'].label} ({ep['elapsed']}초)")
-            if not ep["ok"]:
-                # 한 번 실패하면 멈춘다. 같은 원인으로 나머지가 줄줄이 실패하면서 비용만 쓰는 걸 막는다.
-                exit_code = ep["abort"].code
+            if ep["ok"]:
+                continue
+            if ep["abort"].fatal:
+                # 인증, 설정, 비용 상한은 다음 에피소드도 같은 이유로 막힌다. 바로 멈춘다.
+                fatal = ep["abort"]
                 print(f"[중단] {ep['abort']}", file=sys.stderr)
                 break
-        if exit_code != EXIT_OK:
+            # 그 밖의 실패는 실행 기록에 남기고 다음 에피소드로 간다. 종료 코드는 끝에서 실패율로 정한다.
+            print(f"[실패] {ep['abort']} (다음 에피소드로 넘어간다)", file=sys.stderr)
+        if fatal is not None:
             break
 
+    exit_code = decide_exit_code(episodes, fatal)
     summary = summarize(ctx, episodes, exit_code)
     ctx["meta_dir"].mkdir(parents=True, exist_ok=True)
     (ctx["meta_dir"] / f"{batch_id}.summary.json").write_text(
