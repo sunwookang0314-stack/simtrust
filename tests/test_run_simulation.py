@@ -81,6 +81,14 @@ class FakeAPI:
             raise openai.NotFoundError("model not found", response=httpx.Response(404, request=request), body=None)
         if self.mode == "empty" or (self.mode == "empty_once" and self.calls == 1):
             content, finish = "", "length"
+        elif self.mode == "read_screen":
+            # 이미지 확인 스크립트용. 화면 글자 일부만 읽은 답
+            content = json.dumps({
+                "actions": [{"type": "TALK", "content": "공모전, 대외활동, 채용 탭과 마감 3일 전 알림이 보여요", "target": ""},
+                            {"type": "DONE", "content": "", "target": ""}],
+                "cognitive_state": {"goals": "읽기", "context": ["화면"], "attention": "글자", "emotions": "보통"},
+            }, ensure_ascii=False)
+            finish = "stop"
         else:
             # 호출마다 #001 같은 표시가 붙는다. 캐시가 안 먹으면 결과가 달라지고, 기억이 새면 다음 프롬프트에 보인다
             mark = f"#{self.calls:03d}"
@@ -409,6 +417,53 @@ class TestRunSimulation(unittest.TestCase):
                 self.assertEqual(code, expected, log)
         self.assertEqual(FAKE.calls, 0)
         self.assertFalse((TMP / "out_input").exists())
+
+
+import check_image_input as cii  # noqa: E402
+
+shutil.copytree(REPO / "experiments/runner_dev/images", TMP / "images")
+
+
+class TestCheckImageInput(unittest.TestCase):
+    def setUp(self):
+        FAKE.reset("read_screen")
+        os.environ["OPENAI_BASE_URL"] = GEMINI_URL
+        os.environ["OPENAI_API_KEY"] = "test-not-a-real-key"
+
+    def run_check(self, name, *extra):
+        out, err = io.StringIO(), io.StringIO()
+        argv = ["--service", "fake", "--platform", "app", "--snapshot-root", "snapshots",
+                "--images-root", "images", "--out", f"out_{name}", *extra]
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = cii.main(argv, root=TMP)
+        reports = sorted((TMP / f"out_{name}").glob("*.json"))
+        return code, out.getvalue() + err.getvalue(), json.loads(reports[-1].read_text(encoding="utf-8"))
+
+    def test_images_bundled_without_auto_description(self):
+        code, log, report = self.run_check("imgcheck")
+        self.assertEqual(code, 0, log)
+        by_mode = {x["mode"]: x for x in report["results"]}
+        # 캡처 3장을 see() 한 번에 묶어서 요청 하나에 같이 들어간다
+        self.assertEqual(by_mode["image"]["images_per_request"], [3])
+        self.assertEqual(by_mode["text"]["images_per_request"], [0])
+        # 자동 영어 요약 요청이 따로 나가지 않는다 (질문 하나에 호출 하나)
+        self.assertEqual(by_mode["image"]["auto_description_requests"], 0)
+        self.assertEqual(FAKE.calls, 2)
+        self.assertNotIn("Describe the image", FAKE.sent_text())
+        self.assertEqual(report["settings"]["max_image_stimuli_to_recall"], 1)
+        # 답에 있는 공통 글자만 맞은 것으로 센다
+        shared = by_mode["image"]["score_talk"]["shared"]
+        self.assertEqual(shared["hit"], 4)
+        self.assertIn("마이", shared["missed"])
+
+    def test_bad_modes_and_recall_are_usage_errors(self):
+        for argv in (["--modes", "video"], ["--recall", "0"]):
+            with self.subTest(argv=argv):
+                with contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit) as cm:
+                        cii.main(argv, root=TMP)
+                self.assertEqual(cm.exception.code, 1)
+        self.assertEqual(FAKE.calls, 0)
 
 
 if __name__ == "__main__":
