@@ -1,0 +1,264 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "SimTrust 사람 테스트 데이터 흐름",
+    "viewBox": [
+      1080,
+      560
+    ],
+    "quality_profile": "showcase",
+    "legend": {
+      "mode": "hidden"
+    }
+  },
+  "stages": [
+    {
+      "label": "수집"
+    },
+    {
+      "label": "원자료"
+    },
+    {
+      "label": "정답 계산"
+    },
+    {
+      "label": "사람↔AI 비교"
+    },
+    {
+      "label": "결과"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "test",
+      "type": "frontend",
+      "label": "사람 테스트",
+      "sublabel": "설문(과제 전) → 세션",
+      "stage": 0,
+      "row": 1,
+      "width": 128
+    },
+    {
+      "id": "participants",
+      "type": "security",
+      "label": "참가자 속성",
+      "sublabel": "비공개 · 자격·성별·학교",
+      "stage": 1,
+      "row": 0,
+      "width": 136
+    },
+    {
+      "id": "records",
+      "type": "database",
+      "label": "구조화 기록",
+      "sublabel": "공개 · 경험·과제·의향",
+      "stage": 1,
+      "row": 1,
+      "width": 136
+    },
+    {
+      "id": "units",
+      "type": "security",
+      "label": "units 원자료",
+      "sublabel": "비공개 · 발언·관찰 1줄씩",
+      "stage": 1,
+      "row": 2,
+      "width": 136
+    },
+    {
+      "id": "rules",
+      "type": "messagebus",
+      "label": "rules.json",
+      "sublabel": "공개 · 해시 동결",
+      "stage": 2,
+      "row": 0,
+      "width": 128
+    },
+    {
+      "id": "gt",
+      "type": "database",
+      "label": "공개 정답 패키지",
+      "sublabel": "정답지·노출표 · 처음 그룹",
+      "stage": 2,
+      "row": 1,
+      "width": 136
+    },
+    {
+      "id": "coders",
+      "type": "backend",
+      "label": "정리 2인",
+      "sublabel": "최종 ID만 붙임",
+      "stage": 2,
+      "row": 2,
+      "width": 128
+    },
+    {
+      "id": "ai",
+      "type": "external",
+      "label": "AI 가상 사용자",
+      "sublabel": "같은 문구·화면",
+      "stage": 3,
+      "row": 0,
+      "width": 128
+    },
+    {
+      "id": "compare",
+      "type": "backend",
+      "label": "사람↔AI 비교",
+      "sublabel": "판정 2인·κ / 분포",
+      "stage": 3,
+      "row": 1,
+      "width": 128
+    },
+    {
+      "id": "map",
+      "type": "frontend",
+      "label": "신뢰도 지도",
+      "sublabel": "유형별 판정",
+      "stage": 4,
+      "row": 0
+    },
+    {
+      "id": "market",
+      "type": "frontend",
+      "label": "시장성 비교",
+      "sublabel": "첫인상·이탈 따로",
+      "stage": 4,
+      "row": 2
+    }
+  ],
+  "flows": [
+    {
+      "id": "f-attr",
+      "from": "test",
+      "to": "participants",
+      "label": "자격·속성",
+      "variant": "security"
+    },
+    {
+      "id": "f-rec",
+      "from": "test",
+      "to": "records",
+      "label": "경험·경로·의향",
+      "variant": "emphasis",
+      "labelDy": 12
+    },
+    {
+      "id": "f-units",
+      "from": "test",
+      "to": "units",
+      "label": "이유·막힘·좋은 점",
+      "variant": "security"
+    },
+    {
+      "id": "f-merge",
+      "from": "units",
+      "to": "coders",
+      "label": "같은 문제 묶기",
+      "variant": "security"
+    },
+    {
+      "id": "f-ids",
+      "from": "coders",
+      "to": "gt",
+      "label": "최종 ID",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f-rules",
+      "from": "rules",
+      "to": "gt",
+      "label": "계산식 적용",
+      "variant": "default",
+      "labelAt": [
+        530,
+        214
+      ]
+    },
+    {
+      "id": "f-signal",
+      "from": "records",
+      "to": "gt",
+      "label": "결과·그룹·노출",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f-ratio",
+      "from": "participants",
+      "to": "ai",
+      "label": "구성 비율만",
+      "variant": "dashed",
+      "route": "top-channel"
+    },
+    {
+      "id": "f-ai",
+      "from": "ai",
+      "to": "compare",
+      "label": "가상 이슈·이유·의향",
+      "variant": "default",
+      "labelAt": [
+        745,
+        214
+      ]
+    },
+    {
+      "id": "f-gt",
+      "from": "gt",
+      "to": "compare",
+      "label": "정답·노출·의향",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f-map",
+      "from": "compare",
+      "to": "map",
+      "label": "정밀도·재현율",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f-market",
+      "from": "compare",
+      "to": "market",
+      "label": "의향 분포·이유 일치",
+      "variant": "default"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "색 읽는 법",
+      "items": [
+        "빨간 노드·선 = 비공개 (참가자 속성, units, 녹음·녹화)",
+        "AI로는 구성 비율 숫자만 넘어감",
+        "정답 패키지는 처음 쓴 사람 응답으로만 만듦"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "기존 자료로 다시 계산",
+      "items": [
+        "유형 합치기·쪼개기 (기대·실제·행동 원자료)",
+        "결과 기준을 더 엄격하게",
+        "화면 재캡처 (페이지 제목 → S번호 대응표)"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "새 세션이 필요한 것",
+      "items": [
+        "과제 추가 (파일 구조는 그대로, 행만 늘어남)",
+        "서비스·분야 추가 (스냅샷 패키지만 교체)"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "본실험 전에 동결",
+      "items": [
+        "고정 문구와 AI 제시 프로토콜",
+        "rules.json 해시 (다른 값은 민감도 분석으로만)",
+        "현장 3분 상한 (나중에 느슨하게 못 바꿈)"
+      ]
+    }
+  ]
+}

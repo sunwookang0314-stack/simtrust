@@ -11,3 +11,6 @@ __pycache__/
 *.pyc
 
 experiments/personas_nemotron_korea/WORK_LOG.md
+
+# 사람 테스트 원자료 (참가자 정보, 녹음·녹취록, 화면 캡처·녹화) - 절대 커밋 금지
+private/
