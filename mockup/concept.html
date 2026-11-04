@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SimTrust 한눈에 보기</title>
+<link rel="stylesheet" href="base.css?v=12">
+<style>
+/* 발표용 개념 애니메이션. 1280×720 무대 하나를 화면 폭에 맞춰 키우고 줄인다.
+   판정 문턱(70%·50%)과 판정 이름은 app/demo_data.py TRUST_RULES·verdict()와 같다. 숫자는 예시. */
+body{background:#F5F6F8;padding:20px 0 32px}
+.wrap{width:100%;max-width:min(1312px,calc((100vh - 210px) * 16 / 9 + 32px));margin:0 auto;padding:0 16px}
+.brand{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.brand .logo{flex:none}
+.brand p{font-size:15px;color:var(--g700);line-height:1.5;border-left:1px solid var(--g300);padding-left:14px}
+.frame{position:relative;width:100%;aspect-ratio:16/9;background:#fff;border-radius:20px;box-shadow:0 0 0 1px var(--g200);overflow:hidden}
+.stage{position:absolute;left:0;top:0;width:1280px;height:720px;transform-origin:0 0}
+.el{position:absolute;left:0;top:0;transition:transform .9s cubic-bezier(.2,.8,.2,1),opacity .6s ease;will-change:transform}
+
+.cap{width:1150px}
+.cap h1{max-width:820px}
+.cap .no{font-size:14px;font-weight:700;color:var(--b500)}
+.cap h1{font-size:30px;font-weight:700;letter-spacing:-.02em;margin-top:6px;line-height:1.3}
+.cap p{font-size:17px;color:var(--g700);margin-top:8px;line-height:1.55}
+.ex{right:28px;top:28px;left:auto;font-size:12px;color:var(--g600);background:var(--g100);border-radius:6px;padding:5px 9px}
+
+/* 영역: 위 = AI 페르소나(파랑), 아래 = 실제 대학생 데이터(회색), 오른쪽 아래 = AI 다수결(연파랑) */
+.zone{border-radius:20px;transition:transform .9s cubic-bezier(.2,.8,.2,1),opacity .6s ease}
+.zone.za{background:#F4F8FF;box-shadow:inset 0 0 0 1.5px var(--b100)}
+.zone.zh{background:var(--g100);box-shadow:inset 0 0 0 1.5px var(--g200)}
+.zone.zm{background:#F4F8FF;box-shadow:inset 0 0 0 1.5px var(--b100)}
+.ztab{width:28px;border-radius:10px;writing-mode:vertical-rl;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;letter-spacing:.08em;text-orientation:upright}
+.ztab.a{background:var(--b500)}.ztab.h{background:var(--g800)}
+.links line{stroke:var(--g500);stroke-width:1.5;stroke-dasharray:4 4}
+.feat{width:420px;padding:28px 32px;border-radius:20px;background:#fff;box-shadow:0 0 0 1px var(--g200),0 12px 32px rgba(0,0,0,.06);text-align:center}
+.feat small{font-size:15px;color:var(--g600)}
+.feat b{display:block;font-size:30px;font-weight:800;margin-top:6px}
+.feat span{display:block;font-size:16px;color:var(--g700);margin-top:10px}
+.side{width:340px;padding:18px 22px;border-radius:14px;background:var(--g50);font-size:16px;line-height:1.5;color:var(--g700);text-align:center}
+.side b{display:block;font-size:18px;color:var(--g900);margin-bottom:4px}
+
+.hu{width:48px;height:48px;border-radius:50%;display:grid;place-items:center}
+.ai{width:26px;height:26px;border-radius:50%;background:var(--b50);box-shadow:inset 0 0 0 2px var(--b300);transition:transform .9s cubic-bezier(.2,.8,.2,1),opacity .6s ease,background .3s,box-shadow .3s}
+.ai{cursor:pointer}
+.ai:hover{box-shadow:inset 0 0 0 2px var(--b600),0 0 0 4px var(--b100)}
+.ai.sel{background:var(--b600);box-shadow:0 0 0 5px var(--b100)}
+.ai.jo{background:var(--b100);box-shadow:inset 0 0 0 2px var(--b500)}
+.ai.talk{background:var(--b500);box-shadow:0 0 0 6px rgba(49,130,246,.2)}
+.grp{font-size:14px;font-weight:700;color:var(--g800);width:120px;line-height:1.4}
+.grp small{display:block;font-size:12px;font-weight:500;color:var(--g600)}
+.grp.l{text-align:right}
+.hu{background:var(--g800);color:#fff}
+/* 페르소나 카드: 원을 누르면 뜬다 */
+.pcard{width:320px;padding:18px 20px;border-radius:16px;background:#fff;box-shadow:0 0 0 1px var(--g200),0 16px 40px rgba(0,0,0,.14);opacity:0;pointer-events:none;transition:opacity .2s;z-index:10}
+.pcard.on{opacity:1;pointer-events:auto}
+.pcard .hd{display:flex;align-items:center;gap:10px}
+.pcard .av{width:36px;height:36px;border-radius:50%;background:var(--b50);box-shadow:inset 0 0 0 2px var(--b300);display:grid;place-items:center;font-size:15px;font-weight:800;color:var(--b600)}
+.pcard .av.jo{background:var(--b100);box-shadow:inset 0 0 0 2px var(--b500)}
+.pcard .nm{font-size:18px;font-weight:800}
+.pcard .nm span{font-size:14px;font-weight:500;color:var(--g700);margin-left:6px}
+.pcard .x{margin-left:auto;width:28px;height:28px;border:0;border-radius:8px;background:var(--g100);color:var(--g700);font-size:16px;cursor:pointer}
+.pcard .tags{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
+.pcard .tags span{height:24px;padding:0 9px;border-radius:6px;background:var(--g100);font-size:12px;font-weight:600;color:var(--g700);display:inline-flex;align-items:center}
+.pcard .tags span.st{background:var(--b50);color:var(--b700)}
+.pcard dl{margin-top:12px;font-size:13px;line-height:1.5}
+.pcard dt{font-size:12px;font-weight:700;color:var(--g600);margin-top:8px}
+.pcard dd{color:var(--g800)}
+.hu i{position:absolute;top:54px;left:50%;transform:translateX(-50%);font-style:normal;font-size:12px;font-weight:500;color:var(--g600);white-space:nowrap}
+
+/* 이유 칩: 말한 AI가 많을수록 크고(scale) 진하다(t1~t3). +/− 는 쓸/안 쓸 이유 */
+.chip{width:200px;height:34px;border-radius:17px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap;transition:transform .9s cubic-bezier(.2,.8,.2,1),opacity .6s ease,background .4s,color .4s,box-shadow .4s,outline-color .4s}
+.chip em{font-style:normal;font-weight:800}
+.chip small{font-size:11px;font-weight:600;opacity:.75}
+.t1{background:var(--b50);color:var(--b700)}
+.t2{background:var(--b200);color:var(--b700)}
+.t3{background:var(--b600);color:#fff}
+.chip.pass{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--b500),0 8px 18px rgba(49,130,246,.3)}
+.chip.stuck{background:var(--g100);color:var(--g500);text-decoration:line-through}
+.chip.cand{background:#fff;color:var(--b700);text-decoration:none;outline:2px dashed var(--b500);outline-offset:-2px}
+.rowlab{font-size:14px;font-weight:700;color:var(--g700);width:110px;text-align:right}
+.size{width:150px;font-size:12px;color:var(--g700);line-height:1}
+.size b{display:block;font-size:12px;margin-bottom:8px}
+.size span{display:flex;align-items:center;gap:8px;margin-top:6px}
+.size i{display:block;border-radius:8px}
+
+.sieve{width:896px;height:80px;border-radius:16px;background:repeating-linear-gradient(45deg,var(--g200) 0 2px,transparent 2px 12px),repeating-linear-gradient(-45deg,var(--g200) 0 2px,transparent 2px 12px),var(--g50);box-shadow:inset 0 0 0 2px var(--g300)}
+.sieve2{width:220px;background:repeating-linear-gradient(45deg,var(--g300) 0 2px,transparent 2px 22px),repeating-linear-gradient(-45deg,var(--g300) 0 2px,transparent 2px 22px),var(--g50)}
+.sieve.shake{animation:shake .5s}
+@keyframes shake{25%{margin-top:5px}50%{margin-top:-2px}75%{margin-top:2px}}
+.sievelab{font-size:13px;color:var(--g600);line-height:1.4}
+.sievelab b{color:var(--g800)}
+.candlab{width:220px;text-align:center;font-size:13px;font-weight:700;color:var(--b700)}
+.hole{width:136px;height:50px;border-radius:12px;background:#fff;border:1.5px solid var(--g600);display:grid;place-items:center;padding:0 10px;font-size:12px;line-height:1.35;color:var(--g700);text-align:center;transition:transform .9s cubic-bezier(.2,.8,.2,1),opacity .6s ease,border-color .3s,background .3s}
+.hole.hit{border:1.5px solid var(--b500);background:var(--b50);color:var(--b700)}
+/* AI가 놓친 이유: 사람은 말했는데 AI는 아무도 안 한 말. 파랑·회색 규칙의 유일한 예외(빨강) */
+.hole.missed{border:2px dashed #F04452;background:#FFF5F6;color:#D22030;animation:blink 1.1s ease-in-out 3}
+@keyframes blink{50%{box-shadow:0 0 0 7px rgba(240,68,82,.18)}}
+.miss{font-size:12px;font-weight:700;color:#D22030;width:136px;text-align:center;line-height:1.4}
+.miss small{display:block;font-size:11px;font-weight:500}
+.meas .t em{font-style:normal;color:#D22030;font-weight:600}
+
+.meas{width:440px;height:110px;border-radius:16px;background:#fff;padding:16px 20px}
+.meas .t{display:flex;align-items:center;gap:8px}
+.meas .t b{font-size:17px}
+.meas .t span{font-size:13px;color:var(--g700)}
+.meas .t strong{margin-left:auto;font-size:24px;font-weight:800;color:var(--b600)}
+.bar{position:relative;height:14px;border-radius:7px;background:var(--g200);margin-top:12px}
+.meas.cand{width:220px;background:#fff;outline:2px dashed var(--b300);outline-offset:-2px;font-size:13px;line-height:1.45;color:var(--g700)}
+.meas.cand b{display:block;font-size:16px;color:var(--b700);margin-bottom:4px}
+.meas.cand small{display:block;margin-top:4px;font-size:12px;color:var(--g600)}
+.bar .f{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:7px;background:var(--b500);transition:width 1.2s cubic-bezier(.2,.8,.2,1) .3s}
+.bar .th{position:absolute;top:-6px;bottom:-6px;border-left:2px dashed var(--g600)}
+.bar .th small{position:absolute;top:22px;left:-14px;font-size:11px;color:var(--g600);white-space:nowrap}
+.verd{display:inline-flex;height:28px;padding:0 12px;border-radius:15px;align-items:center;font-size:14px;font-weight:700}
+
+/* 신뢰도 지도: 기능 4줄 × (쓸/안 쓸) 2열. 칸은 판정 색으로 채우고(진할수록 믿을 만함) 판정 이름과 % 하나만 둔다.
+   근거는 칸을 누르면, 확인할 것(후보·놓친 이유)은 펼치기 버튼을 누르면 나온다 */
+.cell{border-radius:14px;background:#fff;box-shadow:inset 0 0 0 1.5px var(--g200);padding:12px 16px}
+.cell.vc{display:flex;flex-direction:column;justify-content:center;padding:0 22px;cursor:pointer}
+.vc .vr{display:flex;align-items:baseline;justify-content:space-between}
+.vc .vn{font-size:18px;font-weight:700}
+.vc .vp{font-size:24px;font-weight:800}
+.vc .det{font-size:12px;opacity:.85;max-height:0;overflow:hidden;transition:max-height .3s,margin .3s}
+.vc.open .det{max-height:20px;margin-top:4px}
+.cell.fc{background:var(--g50);box-shadow:none;display:flex;flex-direction:column;justify-content:center;font-size:17px;font-weight:700}
+.cell.fc.now{box-shadow:inset 0 0 0 2px var(--b500)}
+.cell.fc small{font-size:12px;font-weight:600;color:var(--b600)}
+.mbtn{width:250px;height:32px;border-radius:16px;border:0;display:flex;align-items:center;justify-content:center;background:var(--g800);color:#fff;font:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:transform .6s cubic-bezier(.2,.8,.2,1),opacity .6s ease,background .2s}
+.mbtn:hover{background:var(--g900)}
+.cell.lc{display:flex;flex-wrap:wrap;gap:6px;align-content:center;padding:8px 12px}
+.lc .none{font-size:13px;color:var(--g400);padding-left:4px}
+.pc{height:26px;padding:0 10px;border-radius:13px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.pc small{font-weight:500;opacity:.75}
+.pc.c{color:var(--b700);background:#fff;outline:1.5px dashed var(--b500);outline-offset:-1.5px}
+.pc.m{color:#D22030;background:#FFF5F6;outline:1.5px dashed #F04452;outline-offset:-1.5px}
+.mh{font-size:14px;font-weight:700;color:var(--g700);white-space:nowrap}
+.mh small{font-size:12px;font-weight:500;color:var(--g500);margin-left:4px}
+.legend .pc{height:20px;font-size:11px}
+.mnote{font-size:13px;color:var(--g600)}
+.legend{font-size:13px;color:var(--g700);display:flex;gap:16px;align-items:center}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+/* 판정 4단계 색 (base.css --v-*). 진한 파랑일수록 믿을 만함 */
+.v-trust{background:var(--v-trust);color:#fff}.v-ref{background:var(--v-ref);color:var(--b700)}
+.v-ask{background:var(--v-ask);color:#fff}.v-none{background:var(--v-none);color:var(--g600)}
+
+.ctrl{display:flex;align-items:center;gap:10px;margin-top:16px;flex-wrap:wrap}
+.ctrl button{height:40px;padding:0 16px;border-radius:10px;border:0;background:var(--g100);color:var(--g800);font:inherit;font-size:15px;font-weight:600;cursor:pointer}
+.ctrl button.pri{background:var(--b500);color:#fff}
+.ctrl button:disabled{opacity:.4;cursor:default}
+.dots{display:flex;gap:6px;flex:1;justify-content:center;flex-wrap:wrap}
+.dots button{height:32px;padding:0 12px;font-size:13px;font-weight:500;background:transparent;color:var(--g600)}
+.dots button.on{background:var(--b50);color:var(--b700);font-weight:700}
+.hint{font-size:13px;color:var(--g600);margin-top:10px;text-align:center}
+@media (prefers-reduced-motion:reduce){.el,.chip,.hole,.bar .f{transition-duration:0s!important;transition-delay:0s!important}.sieve.shake{animation:none}}
+</style></head>
+<body>
+<div class="wrap">
+  <div class="brand"><div class="logo"><i></i>SimTrust</div><p>대학생 공고·취업 서비스의 기능마다 AI 가상 사용자가 말하는 쓸 이유와 안 쓸 이유가 실제 대학생 응답과 얼마나 맞는지 재서, 어떤 이유를 믿어도 되는지 판정해 주는 오픈소스 도구</p></div>
+  <div class="frame" id="frame"><div class="stage" id="stage"></div></div>
+  <div class="ctrl">
+    <button id="prev">이전</button>
+    <div class="dots" id="dots"></div>
+    <button id="auto">자동 재생</button>
+    <button id="next" class="pri">다음</button>
+  </div>
+  <div class="hint">← → 또는 스페이스로 넘겨요 · 숫자는 예시예요</div>
+</div>
+<script>
+const W = 1280, H = 720;
+const STEPS = [
+  {dot: "질문", h: "대학생 서비스, 기능마다 쓸 이유와 안 쓸 이유가 궁금해요",
+   p: "실제 대학생에게 물으면 몇 주, AI 가상 사용자에게 물으면 몇 분이에요. 그런데 AI의 말을 믿어도 될까요?"},
+  {dot: "AI 가상 사용자", h: "AI 가상 사용자 30명이 기능을 써 보고 이유를 말해요",
+   p: "위쪽은 AI 영역이에요. 재학생 15명·취준생 15명 페르소나가 말하고, 같은 말을 한 AI가 많을수록 칩이 커요."},
+  {dot: "실제 대학생", h: "아래쪽은 실제 대학생 데이터예요",
+   p: "실제 대학생 6명의 응답으로 거름망 구멍을 만들어요. 구멍 하나가 사람이 한 말 하나예요."},
+  {dot: "거름망", h: "위에서 AI가 한 말을 아래 거름망에 부어요",
+   p: "사람도 한 말만 ① 구멍을 통과해요. 걸린 말 중 AI 10명 이상이 말한 큰 칩은 ② 다수결 망에 남아요."},
+  {dot: "판정", h: "얼마나 통과했는지 재서 판정해요",
+   p: "쓸 이유 4개 중 3개 통과 → 믿고 써도 됨, 안 쓸 이유 4개 중 2개 → 참고용. 다수결 후보는 점수에서 빼고 따로 확인해요."},
+  {dot: "신뢰도 지도", h: "AI가 말한 쓸 이유는 기능 4개 중 2개에서 믿고 써도 돼요",
+   p: "기능마다 거름망을 돌리면 이 신뢰도 지도가 나와요. 믿을 칸은 바로 쓰고, 후보는 사람에게 확인해요."},
+];
+
+// 무대 좌표 (px). 가상 사용자 줄 → 이유 두 줄 → 거름망 → 통과한 이유 → 사람 / 측정판
+// experiments/personas_nemotron_korea/personas/ 의 30명 (재학생 15 → 취준생 15, manifest.json 순서)
+// n 이름, a 나이, g 성별, r 지역, job 취준생 여부, goal 진로 목표 첫 문장, likes 좋아하는 것 3개. 전공은 원본 데이터에 없다
+const AI = [
+  {"n": "김지원", "a": 19, "g": "여", "r": "대전 유성구", "job": false, "goal": "정해진 매뉴얼과 체계가 확실한 전문직 자격증 취득을 준비하며, 오차 없이 완벽하게 업무를 처리하는 행정 전문가가 되어 안정적인 기반을 잡고자 합니다.", "likes": ["갑천변 풍경 사진 촬영", "기초 화장품 성분 분석", "유튜브 일상 브이로그 시청"]},
+  {"n": "김윤민", "a": 19, "g": "여", "r": "경기 시흥시", "job": false, "goal": "타인의 감정을 세심하게 읽는 능력을 살려, 적당한 사회적 교류가 있으면서도 자신의 전문성을 발휘할 수 있는 뷰티 큐레이터나 브랜드 콘텐츠 기획자를 꿈꿉니다.", "likes": ["시화나래 조력공원 산책", "리그 오브 레전드 랭크 게임", "틱톡 뷰티 챌린지"]},
+  {"n": "김성현", "a": 19, "g": "남", "r": "서울 은평구", "job": false, "goal": "갑작스러운 변화보다는 매일의 루틴이 어느 정도 보장되는 안정적인 환경에서 자신의 몫을 다하는 삶을 꿈꿉니다.", "likes": ["불광천 산책로 조깅", "SF 소설 및 추리 소설 독서", "지역별 특색 있는 시장 음식 탐방"]},
+  {"n": "황민정", "a": 22, "g": "여", "r": "서울 노원구", "job": false, "goal": "거창한 야망보다는 매달 고정적인 수입이 보장되는 안정적인 사무직이나 서비스직 취업을 목표로 하고 있습니다.", "likes": ["양평 두물머리 풍경 출사", "나물 비빔밥 맛집 탐방", "반려견과 동네 공원 산책"]},
+  {"n": "이동하", "a": 22, "g": "남", "r": "서울 성북구", "job": false, "goal": "게임 기획자가 되기 위해 매일 정해진 분량의 분석 리포트를 작성하며 포트폴리오를 체계적으로 구축하고 있습니다.", "likes": ["을지로 수제 버거 맛집 탐방", "동네 목욕탕에서 시간 보내기", "일본 만화 전권 수집 및 아카이빙"]},
+  {"n": "이가영", "a": 19, "g": "여", "r": "경상남 김해시", "job": false, "goal": "정해진 출퇴근 시간과 엄격한 위계질서가 있는 조직보다는, 자신의 감각을 온전히 발휘할 수 있는 독립적인 창작 활동이나 프리랜서 디자이너로서의 삶을 꿈꿉니다.", "likes": ["웹툰 및 일본 만화 감상", "코인 노래방 가창", "김해 지역 산책로 탐방"]},
+  {"n": "백현수", "a": 19, "g": "남", "r": "경상남 창원시 진해구", "job": false, "goal": "당장 거창한 성공을 좇기보다는 내 삶의 리듬을 깨지 않는 선에서 안정적으로 월급을 받을 수 있는 사무직이나 기술직 자리를 찾고 있습니다.", "likes": ["로파이 음악 감상", "스릴러 장르 웹툰 정주행", "지식 기반 팟캐스트 청취"]},
+  {"n": "나영석", "a": 19, "g": "남", "r": "경기 용인시 기흥구", "job": false, "goal": "명확한 기준과 절차가 정해져 있어 자신의 꼼꼼함이 성과로 이어질 수 있는 전산 세무나 행정 관련 자격증을 취득하여, 조직 내에서 실수 없이 제 몫을 다하는 안정적인 직장인이 되고자 합니다.", "likes": ["기흥구 인근 볼링장 내기 경기", "지역별 유명 길거리 음식 탐방", "마라탕 및 떡볶이 배달 음식 즐기기"]},
+  {"n": "이정화", "a": 24, "g": "여", "r": "충청남 천안시 동남구", "job": false, "goal": "거창한 성공보다는 정시 퇴근이 가능하고 개인 시간이 보장되는 안정적인 일자리를 찾고 있으며, 여행이나 음식 관련 서비스직에서 실무 경력을 쌓으려 합니다.", "likes": ["국내 역사 유적지 나홀로 답사", "웹툰 정주행", "에어프라이어 간편식 만들기"]},
+  {"n": "최도윤", "a": 19, "g": "남", "r": "충청북 청주시 서원구", "job": false, "goal": "사람들과 직접 부딪히는 일보다는 모니터 뒤에서 창의적인 결과물을 만드는 게임 기획이나 디지털 콘텐츠 제작 분야에 막연한 관심을 두고 있습니다.", "likes": ["K리그 경기 시청", "맘스터치 및 동네 피자집 투어", "네이버 웹툰 정주행"]},
+  {"n": "김준희", "a": 19, "g": "여", "r": "경기 군포시", "job": false, "goal": "사람들의 반응을 즉각적으로 확인할 수 있는 SNS 마케팅이나 콘텐츠 기획 분야에서 자신의 감각을 발휘하고 싶어 합니다.", "likes": ["수리산 산책로 사진 찍기", "일식 돈카츠 맛집 탐방", "유튜브 미스터리 영상 시청"]},
+  {"n": "윤수아", "a": 19, "g": "여", "r": "부산 기장군", "job": false, "goal": "정해진 틀에 얽매이기보다", "likes": ["뉴진스 노래 가사 필사하기", "반려동물과 함께 동네 산책하기", "넷플릭스 로맨틱 코미디 정주행"]},
+  {"n": "김현진", "a": 20, "g": "여", "r": "서울 동대문구", "job": false, "goal": "거창한 사회적 성공보다는 자신이 좋아하는 음식과 사람을 연결하는 작은 가게를 운영하며 적당한 수익을 올리는 삶을 바랍니다.", "likes": ["가평 캠핑장 바비큐 파티", "동대문구 골목길 산책", "최신 유행 숏폼 영상 시청"]},
+  {"n": "공민준", "a": 19, "g": "남", "r": "부산 서구", "job": false, "goal": "당장 명확한 직업적 목표는 없지만, 사람들을 만나고 활기를 얻을 수 있는 행사 기획이나 서비스 관련 일을 막연하게 꿈꿉니다.", "likes": ["웹툰 전지적 독자 시점 감상", "뉴진스 음악 감상", "보드게임 카탄"]},
+  {"n": "김민곤", "a": 25, "g": "남", "r": "경기 오산시", "job": false, "goal": "당장의 화려한 성공보다는 자신의 성실함과 꼼꼼함을 인정받을 수 있는 실무 기술직에 취업하여, 부모님께 매달 일정 금액의 생활비를 보탤 수 있는 경제적 자립을 꿈꿉니다.", "likes": ["지역별 돼지구이 노포 탐방", "LCK 경기 직관 및 분석", "전략 보드게임 모임 참여"]},
+  {"n": "최예은", "a": 25, "g": "여", "r": "인천 중구", "job": true, "goal": "자신의 인문학적 소양과 세밀한 분석력을 활용해 대중이 공감할 수 있는 문화 콘텐츠를 기획하는 일을 꿈꾸고 있습니다.", "likes": ["일본식 가이세키 및 정통 라멘 맛집 탐방", "퍼스널 컬러를 활용한 메이크업 스타일링", "웹툰 및 장르 소설 정주행과 분석"]},
+  {"n": "박소영", "a": 26, "g": "여", "r": "서울 관악구", "job": true, "goal": "자신의 유연한 대처 능력을 발휘할 수 있는 기업의 운영 지원 부서에서 안정적인 커리어를 시작해, 조직 내에서 꼭 필요한 실무자로 인정받고 싶어 합니다.", "likes": ["자유형과 배영 수영", "성수동 빵집 투어", "반려견 산책"]},
+  {"n": "김성준", "a": 23, "g": "남", "r": "강원 삼척시", "job": true, "goal": "강원 지역 내의 중견 제조 기업이나 건설 현장 관리직에 취업하여, 실질적인 현장 기술력을 쌓고 안정적인 월급을 받는 직장인이 되고자 합니다.", "likes": ["전통 국악 공연 관람", "넷플릭스 최신 영화 정주행", "삼척 해변 산책 및 풍경 사진 촬영"]},
+  {"n": "정민희", "a": 27, "g": "여", "r": "경기 성남시 분당구", "job": true, "goal": "노인 복지 분야의 전문 사례 관리자가 되어 정년까지 안정적으로 근무하는 것을 목표로 하며, 현재는 관련 자격증 취득을 위해 매일 정해진 분량의 문제집을 풉니다.", "likes": ["카카오웹툰 일상 장르 정주행", "정자동 일식집 투어", "아산 온천 나홀로 여행"]},
+  {"n": "최하영", "a": 23, "g": "여", "r": "경상북 포항시 북구", "job": true, "goal": "단순한 정보 전달을 넘어 사회적 약자의 목소리를 대변하는 영향력 있는 미디어 종사자를 꿈꾸며, 현재는 취업 준비 기간의 불안감을 견디며 자신만의 관점이 담긴 포트폴리오를 정리하고 있습니다.", "likes": ["전국 맛집 탐방", "뷰티 영상 시청", "독립 서점 방문"]},
+  {"n": "최세은", "a": 24, "g": "여", "r": "경기 화성시", "job": true, "goal": "자신이 기획한 문화 예술 프로그램이 지역 사회에 실제로 적용되어 사람들이 이용하는 모습을 보고 싶어 합니다.", "likes": ["KT 위즈 경기 직관", "동탄 지역 맛집 탐방", "인문학 전자책 읽기"]},
+  {"n": "강우람", "a": 25, "g": "남", "r": "경기 안양시 만안구", "job": true, "goal": "거창한 성공보다는 적당한 수준의 급여와 정시 퇴근이 보장되는 공공기관이나 일반 사무직 자리를 원합니다.", "likes": ["안양천 산책 및 조깅", "웹툰 정주행", "리그 오브 레전드 게임"]},
+  {"n": "김주호", "a": 24, "g": "남", "r": "경기 안산시 단원구", "job": true, "goal": "판교 테크노밸리의 IT 기업 네트워크 엔지니어로 취업하여 시스템의 안정성을 책임지는 전문가가 되고 싶어 하며, 기술적 역량과 유연한 소통 능력을 모두 갖춰 팀 내 갈등을 중재하는 믿음직한 중간 관리자를 꿈꿉니다.", "likes": ["안산시립수영장 수영 강습", "리그 오브 레전드 팀 게임", "고잔동 주변 고기집 맛집 탐방"]},
+  {"n": "김유진", "a": 27, "g": "여", "r": "서울 동작구", "job": true, "goal": "아이들의 성장을 돕는 정형화된 교실을 넘어, 개인의 특성을 존중하는 교육 서비스나 상담 분야에서 자신의 가치를 증명하고 싶어 합니다.", "likes": ["전국 유명 빵집 투어 및 디저트 탐방", "지역 배드민턴 동호회 활동", "전통 사찰 및 역사 유적지 답사 여행"]},
+  {"n": "김대근", "a": 27, "g": "남", "r": "인천 연수구", "job": true, "goal": "미디어 업계의 채용 공고를 매일 확인하지만, 면접에서 느낄 압박감과 긴장감 때문에 지원서 제출 버튼 앞에서 자주 망설입니다.", "likes": ["송도 인근 일식 맛집 탐방", "빈티지 LP 수집", "유튜브 분석 영상 시청"]},
+  {"n": "이현서", "a": 24, "g": "여", "r": "부산 부산진구", "job": true, "goal": "공공기관의 행정직이나 법무 법인의 전문 사무원으로서 자신의 꼼꼼함이 조직의 안정성에 기여하는 역할을 수행하고 싶어 합니다.", "likes": ["닌텐도 스위치 게임", "퍼스널 컬러 메이크업 연구", "기장 해안가 풍경 출사"]},
+  {"n": "박수빈", "a": 25, "g": "여", "r": "서울 동대문구", "job": true, "goal": "예측 불가능한 상황에 대한 공포가 커서, 변동성이 적고 체계가 잡힌 공공기관의 사회복지직 공무원이 되어 안정적인 삶을 구축하고자 합니다.", "likes": ["반려묘 그루밍 및 돌보기", "청계천 주변 정기적 산책", "넷플릭스 장르물 정주행"]},
+  {"n": "박현주", "a": 26, "g": "여", "r": "대전 동구", "job": true, "goal": "정해진 틀의 교실보다는 아이들의 개성을 살려줄 수 있는 대안 교육이나 심리 상담 분야에서 자신만의 교육 철학을 실현하고 싶어 합니다.", "likes": ["헬스장 웨이트 트레이닝", "하이볼 맛집 탐방", "뉴진스 음악 감상"]},
+  {"n": "정재훈", "a": 26, "g": "남", "r": "광주 광산구", "job": true, "goal": "전공을 살려 안정적인 급여가 보장되는 공기업이나 중견기업의 제조 관리직으로 입사해 경제적 자립을 이루고자 합니다.", "likes": ["리그 오브 레전드", "수완지구 산책로 걷기", "네이버 웹툰 정주행"]},
+  {"n": "박다은", "a": 23, "g": "여", "r": "대전 동구", "job": true, "goal": "현재는 전공을 살려 안정적인 공공기관이나 행정직 취업을 준비하며, 매일 정해진 루틴에 따라 학습량을 채우는 것에 집중하고 있습니다.", "likes": ["올리브영 신상 화장품 탐색", "유튜브 뷰티 브이로그 시청", "대전 중앙로 소품샵 투어"]}
+];
+const HOLE_X = [170, 318, 466, 614, 762, 910];
+const HOLES = ["마감을 안 놓치게 됨", "캘린더 따로 볼 일이 줄어듦", "관심 분야 공고만 와서 좋음",
+               "알림이 너무 자주 옴", "에타 알림이랑 겹쳐서 끔", "알림 시간을 못 바꿔 불편"];
+// n: 이 이유를 말한 AI 수 (30명 중). hole: 같은 뜻의 사람 이유 번호
+// (null = 실제 대학생은 안 한 말 → ① 거름망에 걸림, gap = 걸려서 멈추는 자리)
+const CHIPS = [
+  {t: "마감 놓치지 않을 것 같음", use: 1, n: 18, hole: 0},
+  {t: "캘린더 안 봐도 됨", use: 1, n: 9, hole: 1},
+  {t: "관심 공고만 골라 줌", use: 1, n: 6, hole: 2},
+  {t: "친구한테 공유하기 좋음", use: 1, n: 2, hole: null, gap: 244},
+  {t: "알림이 너무 잦음", use: 0, n: 14, hole: 3},
+  {t: "에브리타임 알림과 겹침", use: 0, n: 7, hole: 4},
+  {t: "설정 메뉴를 못 찾겠음", use: 0, n: 12, hole: null, gap: 540},
+  {t: "배터리 닳을 것 같음", use: 0, n: 3, hole: null, gap: 836},
+];
+const MANY = 10;   // ② AI 다수결 거름망: 이 수 이상이 말하면 남는다
+const tier = n => n >= MANY ? 3 : n >= 5 ? 2 : 1;
+const size = n => .84 + Math.min(n, 18) / 18 * .24;   // 칩 크기 0.84 ~ 1.08
+// 이유마다 말한 페르소나 n명 (고정 시드로 30명 중에서 고름)
+CHIPS.forEach((c, k) => {
+  let x = 7 + k * 13; const pool = [...Array(30).keys()];
+  for (let i = 29; i > 0; i--) { x = (x * 1103515245 + 12345) % 2147483648; const j = x % (i + 1); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  c.by = pool.slice(0, c.n);
+});
+const ROW_Y = [306, 350], COL_X = [317, 532, 747, 962];
+const AI_Y = 230, SIEVE_Y = 402, HOLE_Y = 442, HU_Y = 614, REST_Y = 382, S2X = 1132;
+const passY = h => h % 2 ? 556 : 520;   // 통과한 칩은 두 줄로 엇갈려 쌓는다
+const GRP_X = [470, 810];   // 재학생 묶음, 취준생 묶음의 가운데
+const aiX = i => GRP_X[i < 15 ? 0 : 1] + (i % 5 - 2) * 34;
+const aiY = i => AI_Y + (Math.floor(i % 15 / 5) - 1) * 32;
+const VERDICT = {trust: "믿고 써도 됨", ref: "참고용", ask: "사람에게 물어볼 것", none: "자료 부족"};
+// 신뢰도 지도 (예시). use/no = [판정, 통과, AI가 한 말 수], cand = AI만 많이 말함 [이유, AI 수], miss = 사람만 말함
+const MAP = [
+  {f: "마감일 알림", now: true, use: ["trust", 3, 4], no: ["ref", 2, 4], cand: [["설정 메뉴 못 찾음", 12]], miss: ["알림 시간 못 바꿈"]},
+  {f: "공고 검색·분야 필터", use: ["ref", 3, 5], no: ["trust", 4, 5], cand: [["검색 결과가 너무 많음", 11], ["필터 저장이 안 됨", 10]], miss: []},
+  {f: "공모전 상금·마감 정렬", use: ["trust", 4, 5], no: ["none", 1, 2], cand: [], miss: ["상금 표기가 제각각"]},
+  {f: "첫 화면 배너", use: ["ask", 1, 4], no: ["ref", 3, 5], cand: [["배너가 광고 같음", 15], ["로딩이 느림", 13], ["색이 너무 많음", 10]], miss: []},
+];
+// 열 폭: 기능, 쓸 이유, 안 쓸 이유, (펼치면) 확인할 것. 접으면 지도 3열이 가운데, 펼치면 왼쪽으로 비켜서고 4열이 나온다
+const MW = [240, 300, 300, 288], MGAP = 12, MAP_Y = 238, ROW_H = 80, ROW_GAP = 92;
+const MAP_W = MW[0] + MW[1] + MW[2] + MGAP * 2;
+let mapOpen = false;
+const colX = (c, open = mapOpen) => (open ? 56 : (W - MAP_W) / 2) + MW.slice(0, c).reduce((a, w) => a + w + MGAP, 0) + (c === 3 ? 4 : 0);
+const cellAt = (r, c, open) => ({x: colX(c, open) + MW[c] / 2, y: MAP_Y + r * ROW_GAP + ROW_H / 2, w: MW[c]});
+
+const stage = document.getElementById("stage");
+function add(cls, html, w, h) {
+  const d = document.createElement("div");
+  d.className = "el " + cls;
+  d.innerHTML = html;
+  d._w = w; d._h = h;
+  stage.appendChild(d);
+  return d;
+}
+// 가운데 기준으로 옮긴다
+function put(el, x, y, {s = 1, o = 1, d = 0} = {}) {
+  el.style.transitionDelay = d + "ms";
+  el.style.transform = `translate(${x - el._w / 2}px,${y - el._h / 2}px) scale(${s})`;
+  el.style.opacity = o;
+}
+
+const zones = {a: add("zone za", "", 1200, 206), h: add("zone zh", "", 940, 318), m: add("zone zm", "", 252, 318)};
+const tabs = {a: add("ztab a", "AI 가상 사용자", 28, 206), h: add("ztab h", "실제 대학생 데이터", 28, 318)};
+[...Object.values(zones), ...Object.values(tabs)].forEach(el => { el.style.width = el._w + "px"; el.style.height = el._h + "px"; });
+const links = add("links", `<svg width="${W}" height="${H}" aria-hidden="true">${HOLE_X.map(x =>
+  `<line x1="${x}" y1="${HOLE_Y + 26}" x2="${x}" y2="${HU_Y - 28}"/>`).join("")}</svg>`, W, H);
+const cap = add("cap", "", 1150, 0); cap.style.transition = "opacity .4s";
+add("ex", "예시 데이터", 0, 0).style.transform = "none";
+const feat = add("feat", "<small>링커리어</small><b>마감일 알림</b><span>이 기능, 대학생들이 쓸까?</span>", 420, 160);
+const sideL = add("side", "<b>실제 대학생 인터뷰</b>모집하고 묻고 정리하는 데<br>몇 주가 걸려요", 340, 110);
+const sideR = add("side", "<b>AI 가상 사용자</b>몇 분이면 답이 나와요<br>그런데 믿어도 될까요?", 340, 110);
+const ais = AI.map((p, i) => {
+  const d = add("ai" + (p.job ? " jo" : ""), "", 26, 26);
+  d.setAttribute("role", "button"); d.setAttribute("aria-label", `${p.n} 프로필 보기`);
+  d.onclick = e => { e.stopPropagation(); showCard(i); };
+  return d;
+});
+const grps = [add("grp l", "재학생 15명<small>대학 재학 중</small>", 120, 40), add("grp", "취준생 15명<small>4년제 졸업 후 준비 중</small>", 120, 40)];
+const rowLabs = ["쓸 이유", "안 쓸 이유"].map(t => add("rowlab", t, 110, 20));
+const sizeLeg = add("size", `<b>말한 AI 수</b>${[[2, "1~4명"], [7, "5~9명"], [14, "10명 이상"]].map(([n, l]) =>
+  `<span><i class="t${tier(n)}" style="width:${36 * size(n)}px;height:${14 * size(n)}px"></i>${l}</span>`).join("")}`, 150, 80);
+const sieve = add("sieve", "", 896, 80);
+const sieve2 = add("sieve sieve2", "", 220, 80);
+const sieveLab = add("sievelab", "▲ <b>① 실제 대학생 거름망</b> · 참가자 6명이 말한 이유", 420, 18);
+const sieve2Lab = add("sievelab", `▲ <b>② AI 다수결 거름망</b><br>AI ${MANY}명 이상이 말한 것만 남아요`, 220, 36);
+const candLab = add("candlab", "사람에게 확인할 후보", 220, 18);
+const holes = HOLES.map(t => add("hole", t, 150, 50));
+const hus = HOLES.map((_, i) => add("hu", `<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" fill="#fff"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" fill="#fff"/></svg><i>참가자 ${i + 1}</i>`, 48, 48));
+const chips = CHIPS.map(c => add(`chip t${tier(c.n)}`, `<em>${c.use ? "+" : "−"}</em>${c.t}<small>${c.n}명</small>`, 200, 34));
+const miss = add("miss", "AI가 놓친 이유<small>사람만 말했어요</small>", 136, 34);
+function measHtml(name, pass, total, v, missed = 0) {
+  return `<div class="t"><b>${name}</b><span>${total}개 중 ${pass}개 통과${missed ? ` · <em>놓친 이유 ${missed}개</em>` : ""}</span><strong>${Math.round(pass / total * 100)}%</strong><span class="verd v-${v}">${VERDICT[v]}</span></div>
+    <div class="bar"><div class="f" data-w="${pass / total * 100}"></div><div class="th" style="left:50%"><small>참고용 50%</small></div><div class="th" style="left:70%"><small>믿고 써도 됨 70%</small></div></div>`;
+}
+const cand = CHIPS.filter(c => c.hole === null && c.n >= MANY);
+const meas = [add("meas", measHtml("쓸 이유", 3, 4, "trust"), 440, 110), add("meas", measHtml("안 쓸 이유", 2, 4, "ref", 1), 440, 110),
+  add("meas cand", `<b>확인할 후보 ${cand.length}개</b>${cand.map(c => `${c.t} (AI ${c.n}명)`).join("<br>")}<small>점수에는 안 넣어요</small>`, 220, 110)];
+function verdCell(v, pass, total) {
+  if (v === "none") return `<div class="vr"><span class="vn">${VERDICT[v]}</span></div><div class="det">AI가 한 말이 ${total}개뿐이라 판정 안 함</div>`;
+  return `<div class="vr"><span class="vn">${VERDICT[v]}</span><span class="vp">${Math.round(pass / total * 100)}%</span></div>
+    <div class="det">AI가 한 말 ${total}개 중 ${pass}개 통과 · 문턱 50% / 70%</div>`;
+}
+const pills = (list, cls, fmt) => list.map(x => `<span class="pc ${cls}">${fmt(x)}</span>`).join("");
+const nCand = MAP.reduce((a, m) => a + m.cand.length, 0), nMiss = MAP.reduce((a, m) => a + m.miss.length, 0);
+const mapHeads = [["기능"], ["쓸 이유"], ["안 쓸 이유"], ["사람에게 확인할 것"]]
+  .map(([t, sub], c) => ({el: add("mh", t + (sub ? `<small>${sub}</small>` : ""), MW[c], 18), c}));
+const cells = [];
+MAP.forEach((m, r) => {
+  const html = [`${m.now ? "<small>방금 본 결과</small>" : ""}${m.f}`, verdCell(...m.use), verdCell(...m.no),
+    pills(m.cand, "c", ([t, n]) => `${t}<small>· ${n}명</small>`) + pills(m.miss, "m", t => t) || `<span class="none">없음</span>`];
+  const cls = ["fc" + (m.now ? " now" : ""), "vc v-" + m.use[0], "vc v-" + m.no[0], "lc"];
+  html.forEach((h, c) => {
+    const el = add("cell " + cls[c], h, MW[c], ROW_H);
+    el.style.width = el._w + "px"; el.style.height = ROW_H + "px";
+    if (c === 1 || c === 2) el.onclick = () => el.classList.toggle("open");
+    cells.push({el, r, c});
+  });
+});
+const mbtn = add("mbtn", "", 250, 32);
+mbtn.setAttribute("role", "button");
+mbtn.onclick = () => { mapOpen = !mapOpen; layoutMap(false); };
+const LEG_V = Object.entries(VERDICT).map(([k, v]) => `<span><i class="v-${k}"></i>${v}</span>`).join("");
+const mapLeg = add("legend", "", 1168, 20);
+
+// 신뢰도 지도 배치. enter = 6단계에 막 들어와서 줄마다 차례로 나타나는 중
+function layoutMap(enter) {
+  const last = step === STEPS.length - 1;
+  // 범례: 접으면 판정 색과 % 뜻, 펼치면 점선 칩 두 종류의 뜻을 더한다
+  mapLeg.innerHTML = LEG_V + (mapOpen
+    ? `<span class="pc c">파란 점선</span>AI만 많이 말함 <span class="pc m">빨간 점선</span>AI가 놓침`
+    : `<span class="mnote">% = AI가 한 말 중 실제 대학생도 한 말의 비율 · 칸을 누르면 근거가 보여요</span>`);
+  mbtn.textContent = mapOpen ? "‹ 접기" : `사람에게 확인할 것 ${nCand + nMiss}개 펼치기 ›`;
+  mapHeads.forEach(({el, c}) => {
+    const on = last && (c < 3 || mapOpen);
+    put(el, colX(c) + el._w / 2 + (c === 3 && !mapOpen ? 40 : 0), MAP_Y - 18, {o: on ? 1 : 0, d: enter ? 100 : 0});
+  });
+  cells.forEach(({el, r, c}) => {
+    const t = cellAt(r, c), on = last && (c < 3 || mapOpen);
+    if (!last) el.classList.remove("open");
+    const d = !enter ? (c === 3 && mapOpen ? r * 70 : 0) : r === 0 ? (c === 0 ? 200 : 800) : 1500 + (r - 1) * 450 + c * 70;
+    put(el, t.x + (c === 3 && !mapOpen ? 40 : 0), t.y, {o: on ? 1 : 0, s: on ? 1 : .94, d: last ? d : 0});
+  });
+  put(mbtn, (mapOpen ? colX(3) + MW[3] : colX(2) + MW[2]) - 125, MAP_Y - 52, {o: last ? 1 : 0, d: enter ? 2900 : 0});
+  put(mapLeg, colX(0) + mapLeg._w / 2, MAP_Y + 4 * ROW_GAP + 14, {o: last ? 1 : 0, d: enter ? 2900 : 0});
+}
+
+// 페르소나 카드 (무대 맨 위에 하나만 두고 내용만 바꾼다)
+const pcard = add("pcard", "", 320, 230);
+pcard.onclick = e => e.stopPropagation();
+let cardOf = -1;
+function hideCard() { pcard.classList.remove("on"); ais[cardOf]?.classList.remove("sel"); cardOf = -1; }
+function showCard(i) {
+  if (cardOf === i) return hideCard();
+  hideCard();
+  const p = AI[i];
+  pcard.innerHTML = `<div class="hd"><div class="av${p.job ? " jo" : ""}">${p.n[0]}</div><div class="nm">${p.n}<span>${p.a}세 · ${p.g}</span></div><button class="x" aria-label="닫기">×</button></div>
+    <div class="tags"><span class="st">${p.job ? "취준생 · 4년제 졸업" : "재학생 · 대학 재학 중"}</span><span>${p.r}</span></div>
+    <dl><dt>진로 목표</dt><dd>${p.goal}</dd><dt>좋아하는 것</dt><dd>${p.likes.join(" · ")}</dd></dl>`;
+  pcard.querySelector(".x").onclick = hideCard;
+  // 원 바로 아래에 띄우되 무대 밖으로 나가지 않게
+  const x = Math.min(Math.max(aiX(i), 176), W - 176);
+  pcard.style.transitionDelay = "0ms";
+  pcard.style.transform = `translate(${x - 160}px,${aiY(i) + 22}px)`;
+  pcard.classList.add("on"); ais[i].classList.add("sel"); cardOf = i;
+}
+document.addEventListener("click", hideCard);
+
+let step = 0, timers = [], autoT = null;
+const HOLD = [6000, 7500, 6000, 9000, 8000, 8000];   // 자동 재생 때 단계별로 머무는 시간 (ms)
+const later = (ms, f) => timers.push(setTimeout(f, ms));
+
+function go(n) {
+  const prev = step;
+  hideCard();
+  step = Math.max(0, Math.min(STEPS.length - 1, n));
+  timers.forEach(clearTimeout); timers = [];
+  const S = STEPS[step];
+  cap.style.opacity = 0;
+  later(200, () => {
+    cap.innerHTML = `<div class="no">${step + 1} / ${STEPS.length}</div><h1>${S.h}</h1><p>${S.p}</p>`;
+    cap.style.opacity = 1;
+  });
+  cap.style.transform = "translate(56px,36px)";
+
+  const intro = step === 0, last = step === STEPS.length - 1;
+  const onA = step >= 1 && !last, onH = step >= 2 && !last, onM = step >= 3 && !last;
+  put(zones.a, 660, 274, {o: onA ? 1 : 0, s: onA ? 1 : .98});
+  put(tabs.a, 34, 274, {o: onA ? 1 : 0});
+  put(zones.h, 526, 549, {o: onH ? 1 : 0, s: onH ? 1 : .98});
+  put(tabs.h, 34, 549, {o: onH ? 1 : 0});
+  put(zones.m, 1132, 549, {o: onM ? 1 : 0, s: onM ? 1 : .98});
+  put(links, W / 2, H / 2, {o: step >= 2 && step <= 3 ? 1 : 0, d: step === 2 ? 1200 : 0});
+  put(feat, intro ? 640 : 1050, intro ? 330 : 76, {s: intro ? 1 : .5, o: last ? 0 : 1});
+  put(sideL, 360, 530, {o: intro ? 1 : 0, d: intro ? 300 : 0});
+  put(sideR, 920, 530, {o: intro ? 1 : 0, d: intro ? 450 : 0});
+
+  // AI 가상 사용자
+  ais.forEach((el, i) => { el.classList.remove("talk"); step >= 1 && !last
+    ? put(el, aiX(i), aiY(i), {d: step === 1 ? i * 25 : 0})
+    : put(el, aiX(i), aiY(i) - 20, {s: .4, o: 0}); });
+  grps.forEach((el, k) => put(el, k ? GRP_X[1] + 160 : GRP_X[0] - 160, AI_Y, {o: step >= 1 && !last ? 1 : 0, d: step === 1 ? 500 : 0}));
+  rowLabs.forEach((el, r) => put(el, 140, ROW_Y[r], {o: step >= 1 && step <= 2 ? 1 : 0, d: step === 1 ? 700 : 0}));
+  put(sizeLeg, 1150, 328, {o: step >= 1 && step <= 2 ? 1 : 0, d: step === 1 ? 900 : 0});
+
+  // 거름망과 구멍 (사람 이유)
+  const showSieve = step >= 2 && !last;
+  const show2 = step >= 3 && !last;
+  put(sieve, 540, SIEVE_Y + 40, {o: showSieve ? 1 : 0, s: showSieve ? 1 : .96});
+  put(sieve2, S2X, SIEVE_Y + 40, {o: show2 ? 1 : 0, s: show2 ? 1 : .9});
+  put(sieveLab, 310, SIEVE_Y + 92, {o: step >= 2 && step <= 3 ? 1 : 0});
+  put(sieve2Lab, S2X, SIEVE_Y + 104, {o: step === 3 ? 1 : 0});
+  put(candLab, S2X, SIEVE_Y + 98, {o: step === 4 ? 1 : 0});
+  holes.forEach((el, i) => {
+    el.classList.remove("hit", "missed");
+    if (!showSieve) return put(el, HOLE_X[i], HU_Y, {s: .3, o: 0});
+    if (step === 2) {   // 참가자 머리 위에서 생겨 거름망으로 올라간다
+      put(el, HOLE_X[i], HU_Y - 40, {s: .4, o: 0});
+      later(500 + i * 150, () => put(el, HOLE_X[i], HOLE_Y));
+    } else put(el, HOLE_X[i], HOLE_Y);
+  });
+  hus.forEach((el, i) => put(el, HOLE_X[i], HU_Y, {o: step >= 2 && step <= 3 ? 1 : 0, s: step >= 2 && step <= 3 ? 1 : .6, d: step === 2 ? i * 80 : 0}));
+  sieve.classList.remove("shake"); sieve2.classList.remove("shake");
+
+  // AI가 한 말
+  // 걸린 말은 작은 것부터 ② 거름망으로 옮긴다 (큰 것이 마지막에 남는다)
+  const stuckOrder = CHIPS.filter(c => c.hole === null).sort((a, b) => a.n - b.n);
+  chips.forEach((el, i) => {
+    const c = CHIPS[i], rx = COL_X[i % 4], ry = ROW_Y[c.use ? 0 : 1], sz = size(c.n), sm = sz * .9;
+    el.classList.remove("pass", "stuck", "cand");
+    const from = c.by[0];
+    if (step === 0 || last) return put(el, aiX(from), aiY(from), {s: .2, o: 0});
+    if (step === 1) {   // 그 이유를 말한 페르소나들이 한꺼번에 반짝이고, 이유가 튀어나온다
+      put(el, aiX(from), aiY(from), {s: .2, o: 0});
+      later(1100 + i * 500, () => { c.by.forEach(k => ais[k].classList.add("talk")); put(el, rx, ry, {s: sz}); });
+      later(1500 + i * 500, () => c.by.forEach(k => ais[k].classList.remove("talk")));
+      return;
+    }
+    if (step === 2) return put(el, rx, ry, {s: sz});
+    const passed = c.hole !== null, many = c.n >= MANY, k = stuckOrder.indexOf(c);
+    const pass = () => { el.classList.add("pass"); holes[c.hole].classList.add("hit"); };
+    if (step === 3) {
+      put(el, rx, ry, {s: sz});
+      if (passed) {   // ① 구멍 위로 → 아래로 빠짐
+        later(300 + i * 120, () => put(el, HOLE_X[c.hole], REST_Y, {s: sm}));
+        later(1500 + i * 120, () => { put(el, HOLE_X[c.hole], passY(c.hole), {s: sm}); pass(); });
+      } else {        // ① 망에 걸림 → ② 거름망으로 → 작은 칩은 빠져서 사라지고 큰 칩만 남음
+        later(2700 + i * 120, () => { put(el, c.gap, REST_Y, {s: sm}); el.classList.add("stuck"); });
+        later(3300, () => sieve.classList.add("shake"));
+        later(4300 + k * 800, () => put(el, S2X, REST_Y, {s: sm}));
+        later(5000 + k * 800, () => many
+          ? (el.classList.replace("stuck", "cand"), sieve2.classList.add("shake"))
+          : put(el, S2X, 570, {s: sm * .8, o: 0}));
+      }
+      return;
+    }
+    if (passed) { put(el, HOLE_X[c.hole], passY(c.hole), {s: sm}); pass(); }
+    else if (many) { put(el, S2X, REST_Y, {s: sm}); el.classList.add("cand"); }
+    else put(el, S2X, 570, {s: sm * .8, o: 0});
+  });
+  // 아무 칩도 통과하지 않은 구멍 = AI가 놓친 이유. 통과가 끝난 뒤 빨갛게 깜빡인다
+  const missed = HOLES.map((_, h) => !CHIPS.some(c => c.hole === h)), mi = missed.indexOf(true);
+  const markMissed = () => { holes.forEach((el, h) => missed[h] && el.classList.add("missed")); put(miss, HOLE_X[mi], passY(0) + 6); };
+  put(miss, HOLE_X[mi], passY(0) + 6, {o: 0});
+  if (step === 3) later(2600, markMissed);
+  if (step === 4) markMissed();
+
+  // 측정판
+  meas.forEach((el, k) => {
+    const f = el.querySelector(".f");
+    if (last && prev === 4) {   // 판정 카드가 줄어들며 지도 첫 줄 칸으로 날아 들어간다
+      // 확인할 후보 카드는 펼치기 버튼으로 들어간다
+      const t = k < 2 ? cellAt(0, k + 1, false) : {x: colX(2, false) + MW[2] - 125, y: MAP_Y - 52, w: 250}, sc = t.w / el._w;
+      put(el, t.x, t.y, {s: sc});
+      later(750, () => put(el, t.x, t.y, {s: sc, o: 0}));
+      return;
+    }
+    put(el, [298, 762, S2X][k], 648, {o: step === 4 ? 1 : 0, s: step === 4 ? 1 : .96, d: step === 4 ? 200 + k * 200 : 0});
+    if (f) f.style.width = step === 4 ? f.dataset.w + "%" : 0;
+  });
+
+  // 신뢰도 지도: 첫 줄(방금 본 기능)이 먼저, 나머지 줄은 하나씩 채워진다. 확인할 것은 접힌 채로 시작
+  mapOpen = false;
+  layoutMap(last);
+
+  document.querySelectorAll(".dots button").forEach((b, i) => b.classList.toggle("on", i === step));
+  document.getElementById("prev").disabled = step === 0;
+  document.getElementById("next").textContent = last ? "처음으로" : "다음";
+}
+
+const dots = document.getElementById("dots");
+STEPS.forEach((s, i) => {
+  const b = document.createElement("button");
+  b.textContent = `${i + 1} ${s.dot}`;
+  b.onclick = () => go(i);
+  dots.appendChild(b);
+});
+const next = () => go(step === STEPS.length - 1 ? 0 : step + 1);
+document.getElementById("prev").onclick = () => go(step - 1);
+document.getElementById("next").onclick = next;
+document.getElementById("auto").onclick = e => {
+  if (autoT) { clearTimeout(autoT); autoT = null; e.target.textContent = "자동 재생"; return; }
+  const tick = () => { next(); autoT = setTimeout(tick, HOLD[step]); };
+  autoT = setTimeout(tick, HOLD[step]); e.target.textContent = "멈춤";
+};
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowRight" || e.key === " ") { e.preventDefault(); next(); }
+  if (e.key === "ArrowLeft") go(step - 1);
+  if (e.key === "Escape") hideCard();
+});
+function fit() { stage.style.transform = `scale(${document.getElementById("frame").clientWidth / W})`; }
+addEventListener("resize", fit); fit();
+// ?step=3 처럼 주소로 바로 연다
+go(Number(new URLSearchParams(location.search).get("step") || 1) - 1);
+</script>
+</body></html>
