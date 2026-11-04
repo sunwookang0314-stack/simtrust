@@ -246,6 +246,26 @@ class TestRunSimulation(unittest.TestCase):
             self.assertEqual(a["feature_id"], "")
         self.assertEqual((line["platform"], line["question_order"]), ("app", "b"))
 
+    def test_raw_output_feeds_extractor(self):
+        # 실행기가 남긴 원시 응답을 추출기가 그대로 읽는지 (형식이 어긋나면 여기서 걸린다)
+        import extract_reasons as er
+
+        cfg = write_cfg("toextract")
+        code, log = run(*args(cfg))
+        self.assertEqual(code, 0, log)
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = er.main(["--raw", "out_toextract/raw.jsonl", "--options", "protocol/options_4-6.txt",
+                            "--out", "out_toextract/extracted"], root=TMP)
+        self.assertEqual(code, 0)
+        records = [json.loads(x) for x in
+                   next((TMP / "out_toextract/extracted").glob("extracted_*.jsonl")).read_text(encoding="utf-8")
+                   .splitlines()]
+        by = {r["feature_id"]: r for r in records}
+        self.assertEqual({k: v["use_choice"] for k, v in by.items()},
+                         {"F1": "use", "F2": "nouse", "F3": "use", "F4": "nouse"})
+        self.assertEqual(by["F2"]["nouse_options"], ["나한테 필요 없을 것 같아서"])
+        self.assertEqual(by["F1"]["reason_counts"]["why_use"], 1)
+
     def test_meta_has_trd_fields_and_no_key(self):
         cfg = write_cfg("meta")
         code, log = run(*args(cfg))
