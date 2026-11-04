@@ -85,5 +85,18 @@ OPENAI_API_KEY=<https://platform.openai.com/api-keys>
 
 ## 무료 프로필에서 응답이 비어 있을 때
 
-`gemini-2.5-flash`는 내부 사고 토큰이 출력 한도에 같이 잡힌다. 한도가 낮으면 사고에 다 쓰고
-빈 내용이 돌아온다. 그래서 무료 프로필의 상한을 8,192로 잡아뒀다. 그래도 비면 더 올려라.
+Gemini flash 계열은 내부 사고 토큰이 출력 한도에 같이 잡힐 수 있다(`gemini-2.5-flash`는 확인,
+`gemini-3.8-flash`는 아직 확인 안 함). 한도가 낮으면 사고에 다 쓰고 빈 내용이 돌아온다.
+그래서 무료 프로필의 상한을 8,192로 잡아뒀다. 그래도 비면 더 올려라.
+
+## 무료 프로필에서 404가 날 때
+
+2026-11-01에 새로 발급한 키로 `gemini-2.5-flash`를 부르니 "no longer available to new users"
+404가 났다. 그래서 무료 프로필 모델을 `gemini-3.8-flash`로 바꿨다(#2).
+
+저장소를 받은 뒤 `.\.venv\Scripts\python.exe scripts\use_provider.py gemini`를 다시 실행해야
+로컬 `config.ini`에 새 모델이 들어간다. `config.ini`는 각자 로컬 파일이라 저장소만 바뀌어서는
+안 바뀐다.
+
+`gemini-3.8-flash`는 가끔 503 "high demand"를 돌려준다. 재시도로 넘어가는데, 자주 나면
+시간대를 바꿔서 돌린다.
