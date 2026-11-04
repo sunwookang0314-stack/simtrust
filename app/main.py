@@ -2,6 +2,7 @@
 
 실행 (레포 루트에서): streamlit run app/main.py --server.address localhost
 """
+
 import streamlit as st
 
 import demo_data as D
