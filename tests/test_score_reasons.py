@@ -146,6 +146,19 @@ class TestNumbers(unittest.TestCase):
         with self.assertRaises(sr.InputError):
             sr.check_common([{**rows[0], "code": "N01, N02"}], "x")
 
+    def test_quit_reasons_are_a_separate_reference(self):
+        # 폼 B v2 210행: 그만둔 사람(4-5)과 안 써본 사람(4-6)의 안 쓸 이유는 따로 센다
+        h = BASIC_H + human_rows("F1", {"Q1": ["X"], "Q2": ["B"]}, kind="nouse_quit")
+        res = sr.score(h, BASIC_A, rules())
+        quit_cell = find(res["cells"], feature_id="F1", kind="nouse_quit", condition=2)
+        never = find(res["cells"], feature_id="F1", kind="nouse", condition=2)
+        self.assertEqual(quit_cell["ai_codes"], never["ai_codes"])  # 같은 AI 안 쓸 이유를 대 본다
+        self.assertEqual((quit_cell["n_humans"], never["n_humans"]), (2, 5))
+        self.assertEqual(sum(res["summary"]["verdicts"][2].values()), 1)  # 요약 판정 수에는 본 비교만
+        self.assertIn(2, res["summary"]["quit_reference"])
+        with self.assertRaises(sr.InputError):
+            sr.check_common([{**BASIC_A[0], "kind": "nouse_quit"}], "ai")  # AI 쪽에는 없는 kind
+
     def test_pooled_cell_keys(self):
         h = human_rows("F1", {"P1": ["A"]}, service="s1") + human_rows("F1", {"P2": ["B"]}, service="s2")
         a = ai_rows("F1", {"e1": ["A"]}, service="s1") + ai_rows("F1", {"e2": ["B"]}, service="s2")

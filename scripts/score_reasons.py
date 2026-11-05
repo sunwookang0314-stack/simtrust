@@ -6,7 +6,8 @@
 
 입력
 - 사람 코드 CSV (--human): 정리 담당이 사람 응답을 코드북으로 정리한 것. 응답 원문은 넣지 않는다
-    respondent_id, service, platform, feature_id, kind(use|nouse), code, order(선택. 응답 순서)
+    respondent_id, service, platform, feature_id, kind(use|nouse|nouse_quit), code, order(선택. 응답 순서)
+    nouse는 안 써본 사람(4-6, 4-7), nouse_quit은 써봤다가 그만둔 사람(4-5, 4-7). AI 안 쓸 이유는 nouse와 비교한다
     code가 빈 줄은 "그 칸에 답했지만 붙일 코드가 없음"이다. 사람 수에는 들어가고 이유에는 안 들어간다
 - AI 코드 CSV (--ai): scripts/reason_sheet.py import가 만든 것
     item_id, run_id, service, platform, condition, persona_id, repeat, feature_id, kind, code
@@ -40,7 +41,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EXIT_OK, EXIT_USAGE, EXIT_INPUT = 0, 1, 4
 
-KINDS = ("use", "nouse")
+KINDS = ("use", "nouse")  # AI 쪽
+# 사람 쪽은 안 쓸 이유를 둘로 나눈다 (폼 B v2 210행). nouse: 안 써본 사람(4-6, 4-7), nouse_quit: 써봤다가 그만둔 사람(4-5, 4-7)
+# AI 안 쓸 이유는 첫인상이라 nouse와 바로 비교하고, nouse_quit과는 참고로만 비교한다
+HUMAN_KINDS = ("use", "nouse", "nouse_quit")
 PLATFORMS = ("app", "web")
 CONDITIONS = (0, 1, 2, 3)
 METRICS = ("precision", "recall")
@@ -87,10 +91,10 @@ def norm_code(code: str) -> str:
     return unicodedata.normalize("NFKC", code).translate(DASHES).strip().upper()
 
 
-def check_common(rows: list, name: str) -> None:
+def check_common(rows: list, name: str, kinds: tuple = KINDS) -> None:
     for i, r in enumerate(rows, 2):
-        if r["kind"] not in KINDS:
-            raise InputError(f"{name} {i}행: kind는 use 또는 nouse")
+        if r["kind"] not in kinds:
+            raise InputError(f"{name} {i}행: kind는 {' / '.join(kinds)} 중 하나")
         if r["platform"] not in PLATFORMS:
             raise InputError(f"{name} {i}행: platform은 app 또는 web")
         if not r["service"] or not r["feature_id"]:
@@ -102,7 +106,7 @@ def check_common(rows: list, name: str) -> None:
 
 def load_human(path: Path) -> list:
     rows = read_csv(path, HUMAN_FIELDS)
-    check_common(rows, path.name)
+    check_common(rows, path.name, HUMAN_KINDS)
     for i, r in enumerate(rows, 2):
         if not r["respondent_id"]:
             raise InputError(f"{path.name} {i}행: respondent_id가 비었음")
@@ -418,7 +422,13 @@ def judge(cell: dict, rule: dict) -> str:
 
 def score(human: list, ai: list, rules: dict) -> dict:
     keys = rules["cell_keys"]
-    humans, ai_cells, dropped = build_cells(human, ai, rules)
+    copies = []
+    if any(r["kind"] == "nouse_quit" for r in human):
+        # 그만둔 사람 칸에도 같은 AI 안 쓸 이유를 대 본다 (참고 비교)
+        copies = [{**r, "kind": "nouse_quit"} for r in ai if r["kind"] == "nouse"]
+    humans, ai_cells, dropped = build_cells(human, ai + copies, rules)
+    drop = {norm_code(c) for c in rules["ai_drop_codes"]}
+    dropped -= sum(r["code"] in drop for r in copies)  # 복사한 줄은 두 번 세지 않는다
     main_rule = merge_rule(rules, {})
     alts = [(a["name"], merge_rule(rules, a)) for a in rules["sensitivity"]]
     conditions = sorted({c for c, _ in ai_cells})
@@ -457,7 +467,7 @@ def score(human: list, ai: list, rules: dict) -> dict:
 def summarize(cells: list, conditions: list, alts: list, keys: list) -> dict:
     out = {"verdicts": {}, "mean": {}, "above_condition0": {}, "sensitivity_changed": {}}
     for cond in conditions:
-        mine = [c for c in cells if c["condition"] == cond]
+        mine = [c for c in cells if c["condition"] == cond and c.get("kind") != "nouse_quit"]  # 본 비교만
         out["verdicts"][cond] = {v: sum(c["verdict"] == v for c in mine) for v in VERDICTS}
         out["mean"][cond] = {m: mean([c["full"][m] for c in mine if c["verdict"] != LOW]) for m in METRICS}
     if 0 in conditions:
@@ -468,7 +478,7 @@ def summarize(cells: list, conditions: list, alts: list, keys: list) -> dict:
             higher = same = lower = 0
             for c in cells:
                 b = base.get(tuple(c[k] for k in keys))
-                if c["condition"] != cond or b is None or c["verdict"] == LOW:
+                if c["condition"] != cond or b is None or c["verdict"] == LOW or c.get("kind") == "nouse_quit":
                     continue
                 x, y = c["full"]["precision"], b["full"]["precision"]
                 if x is None or y is None:
@@ -478,7 +488,11 @@ def summarize(cells: list, conditions: list, alts: list, keys: list) -> dict:
                 lower += x < y
             out["above_condition0"][cond] = {"higher": higher, "same": same, "lower": lower}
     for name, _ in alts:
-        out["sensitivity_changed"][name] = sum(c["sensitivity"][name] != c["verdict"] for c in cells)
+        out["sensitivity_changed"][name] = sum(c["sensitivity"][name] != c["verdict"] for c in cells
+                                               if c.get("kind") != "nouse_quit")
+    quit_cells = [c for c in cells if c.get("kind") == "nouse_quit"]
+    out["quit_reference"] = {cond: {v: sum(c["verdict"] == v for c in quit_cells if c["condition"] == cond)
+                                    for v in VERDICTS} for cond in conditions} if quit_cells else {}
     out["cells"] = len(cells)
     return out
 
@@ -557,6 +571,8 @@ def print_summary(result: dict, rules: dict, run_id: str) -> None:
               + f" / 평균 통과율 {mean['precision']}, 평균 재현율 {mean['recall']}")
     for cond, x in s["above_condition0"].items():
         print(f"  조건 {cond} vs 0: 통과율 높음 {x['higher']}, 같음 {x['same']}, 낮음 {x['lower']}")
+    for cond, v in s.get("quit_reference", {}).items():
+        print(f"  조건 {cond} 그만둔 사람 칸(참고): " + ", ".join(f"{k} {v[k]}" for k in VERDICTS))
     for name, n in s["sensitivity_changed"].items():
         print(f"  민감도 {name}: 판정이 바뀐 칸 {n}개")
     for g in result["saturation"]:
