@@ -113,7 +113,7 @@ class TestMake(unittest.TestCase):
         self.assertEqual(len(sheet), 10)
         # 쓸 것 같다고 한 공고 검색·필터의 4-7 줄은 넣지 않는다
         self.assertNotIn("검색은 늘 씁니다", [r["text"] for r in sheet])
-        self.assertIn("4-7 줄 1개", log)
+        self.assertIn("안 맞는 줄 1개", log)
         both = [r for r in sheet if r["text"].startswith("나한테 필요 없을 것 같아서, 다른")][0]
         self.assertEqual(both["options_found"], "나한테 필요 없을 것 같아서 / 다른 앱이나 방법으로 해결해서")
         self.assertEqual({r["kind"] for r in sheet if r["source"] == "q47"}, {"nouse"})
@@ -144,7 +144,7 @@ class TestImport(unittest.TestCase):
         self.assertEqual(list(rows[0]), rsh.AI_CODE_FIELDS)
         # 4-6 보기 두 개가 든 줄은 코드 두 줄이 된다
         c2_f2 = sorted(r["code"] for r in rows if r["condition"] == "2" and r["feature_id"] == "F2")
-        self.assertEqual(c2_f2, ["N-noneed", "N-other", "N-other"])
+        self.assertEqual(c2_f2, ["N-NONEED", "N-OTHER", "N-OTHER"])
         report = json.loads(next((TMP / "coded_imp").glob("agreement_*.json")).read_text(encoding="utf-8"))
         self.assertEqual((report["items"], report["disagreements"]), (10, 2))
         self.assertEqual(report["agreement"], 0.8)
@@ -168,7 +168,57 @@ class TestImport(unittest.TestCase):
     def test_kappa(self):
         self.assertEqual(rsh.kappa(["A", "A", "B", "B"], ["A", "B", "B", "B"]), 0.5)
         self.assertIsNone(rsh.kappa(["A", "A"], ["A", "A"]))  # 우연 일치가 1이면 계산 불가
-        self.assertEqual(rsh.norm_codes(" B; A ;A;"), ["A", "B"])
+        self.assertEqual(rsh.norm_codes(" b; A ;A;"), ["A", "B"])
+        self.assertEqual(rsh.norm_codes("\u2013"), ["-"])  # 엑셀이 바꾼 대시도 '이유 아님'
+        self.assertEqual(rsh.norm_codes("N01\uff1bN02"), ["N01", "N02"])  # 전각 세미콜론
+
+    def test_low_kappa_and_comma_stop(self):
+        sheet, _, _ = make("lowk")
+        key = str(next((TMP / "sheet_lowk").glob("key_*.csv")).relative_to(TMP))
+        # 판정자 2가 전부 다르게 붙이면 kappa가 0.6(NFR-07)에 못 미쳐 멈춘다
+        filled = fill([dict(r) for r in sheet], TMP / "filled_lowk.csv", disagree=len(sheet))
+        code, log = run(rsh, "import", "--sheet", filled, "--key", key, "--out", "coded_lowk")
+        self.assertEqual(code, 4, log)
+        self.assertIn("NFR-07", log)
+        self.assertFalse((TMP / "coded_lowk").exists())
+        code, log = run(rsh, "import", "--sheet", filled, "--key", key, "--out", "coded_lowk",
+                        "--accept-low-kappa", "시범 판정")
+        self.assertEqual(code, 0, log)
+        report = json.loads(next((TMP / "coded_lowk").glob("agreement_*.json")).read_text(encoding="utf-8"))
+        self.assertEqual(report["low_kappa_reason"], "시범 판정")
+        # 코드를 쉼표로 나누면 멈춘다
+        rows = [dict(r) for r in sheet]
+        fill(rows, TMP / "comma.csv")
+        rows[0]["code_final"] = "N-other, N-noneed"
+        with (TMP / "comma.csv").open("w", encoding="utf-8-sig", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=rsh.SHEET_FIELDS)
+            w.writeheader()
+            w.writerows(rows)
+        code, log = run(rsh, "import", "--sheet", "comma.csv", "--key", key, "--out", "coded_comma")
+        self.assertEqual(code, 4, log)
+        self.assertIn("쉼표", log)
+
+    def test_lines_must_match_use_choice(self):
+        r = {"asked": True, "run_id": "x", "service": "s", "platform": "app", "condition": 2, "persona_id": "S01",
+             "repeat": 1, "feature_id": "F4", "use_choice": "nouse", "use_reasons": ["쓸 이유"],
+             "nouse_lines": ["안 쓸 이유"], "q47_details": ["지금은 검색으로 찾습니다"], "nouse_options": []}
+        items, skipped = rsh.items_from_record(r)
+        self.assertEqual([(i["kind"], i["source"]) for i in items], [("nouse", "nouse"), ("nouse", "q47")])
+        self.assertEqual(skipped, 1)
+        items, skipped = rsh.items_from_record({**r, "use_choice": "unknown"})  # 못 가린 기능은 다 넣는다
+        self.assertEqual((len(items), skipped), (3, 0))
+
+    def test_same_episode_twice_stops(self):
+        # 실패 뒤 다시 돌려서 같은 페르소나·회차가 실행 ID만 바뀌어 두 번 들어간 경우
+        twice = [EPISODES[0], {**EPISODES[0], "run_id": "c2_retry_S01"}]
+        raw = TMP / "twice.jsonl"
+        raw.write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in twice), encoding="utf-8")
+        code, log = run(er, "--raw", raw.name, "--options", "protocol/options_4-6.txt", "--out", "ext_twice")
+        self.assertEqual(code, 0, log)
+        ext = str(next((TMP / "ext_twice").glob("extracted_*.jsonl")).relative_to(TMP))
+        code, log = run(rsh, "make", "--extracted", ext, "--out", "sheet_twice")
+        self.assertEqual(code, 4, log)
+        self.assertIn("두 번", log)
 
 
 class TestPipeline(unittest.TestCase):
@@ -193,15 +243,15 @@ class TestPipeline(unittest.TestCase):
         rules["resamples"] = 100
         (TMP / "rules_pipe.json").write_text(json.dumps(rules), encoding="utf-8")
         code, log = run(sr, "--human", "human_pipe.csv", "--ai", ai, "--rules", "rules_pipe.json",
-                        "--out", "score_pipe")
+                        "--out", "score_pipe", "--allow-draft")
         self.assertEqual(code, 0, log)
         record = json.loads(next((TMP / "score_pipe").glob("metrics_all_*.json")).read_text(encoding="utf-8"))
         cells = {(c["condition"], c["feature_id"], c["kind"]): c for c in record["cells"]}
         c2 = cells[(2, "F2", "nouse")]
         self.assertEqual((c2["n_humans"], c2["ai_episodes"]), (5, 1))
-        self.assertEqual(c2["ai_codes"], ["N-noneed", "N-other"])
+        self.assertEqual(c2["ai_codes"], ["N-NONEED", "N-OTHER"])  # 코드는 대문자로 맞춘다
         self.assertEqual((c2["precision"], c2["recall"]), (1.0, 0.6667))  # 사람 이유 3개 중 2개
-        self.assertEqual(cells[(0, "F2", "nouse")]["ai_codes"], ["N-noneed"])
+        self.assertEqual(cells[(0, "F2", "nouse")]["ai_codes"], ["N-NONEED"])
         self.assertEqual(cells[(2, "F1", "use")]["verdict"], sr.LOW)  # 사람 응답이 없는 칸
         self.assertEqual(record["dropped_ai_rows"], 2)
 

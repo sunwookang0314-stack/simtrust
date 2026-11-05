@@ -27,6 +27,7 @@ import json
 import random
 import re
 import sys
+import unicodedata
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
@@ -37,11 +38,15 @@ EXIT_OK, EXIT_USAGE, EXIT_INPUT = 0, 1, 4
 SHEET_FIELDS = ["item_id", "service", "platform", "feature_name", "kind", "source", "text", "options_found",
                 "code_1", "code_2", "code_final", "note"]
 KEY_FIELDS = ["item_id", "run_id", "service", "platform", "condition", "persona_id", "repeat", "feature_id",
-              "kind", "source"]
+              "kind", "source", "input_mode", "model"]
 AI_CODE_FIELDS = ["item_id", "run_id", "service", "platform", "condition", "persona_id", "repeat", "feature_id",
-                  "kind", "code"]
+                  "kind", "input_mode", "model", "code"]
 REQUIRED = ["run_id", "service", "platform", "condition", "persona_id", "repeat", "feature_id", "asked"]
 JUDGE_COLS = ("code_1", "code_2", "code_final")
+KAPPA_MIN = 0.6  # TRD NFR-07. 못 미치면 판정 기준을 다듬고 다시 판정한다
+# 같은 페르소나·회차가 두 번 들어가면(실패 뒤 다시 돌린 경우 등) 한 칸에서 두 번 센다
+EPISODE_KEY = ("service", "platform", "condition", "persona_id", "repeat", "input_mode", "model")
+DASHES = dict.fromkeys(map(ord, "\u2010\u2011\u2012\u2013\u2014\u2015\u2212\u30fc"), "-")
 
 
 class InputError(Exception):
@@ -56,18 +61,20 @@ def items_from_record(r: dict) -> tuple:
     """추출 레코드 하나(에피소드 x 기능)에서 판정할 이유 줄을 꺼낸다.
 
     쓸 이유: Q-AI-WHY-USE 줄. 안 쓸 이유: Q-AI-NOUSE 줄(4-6 보기 포함)과 Q-4-7 줄.
-    4-7은 안 써 본 기능에 대한 질문이라, 쓸 것 같다고 한 기능의 4-7 줄은 시트에 넣지 않고 개수만 센다.
+    사람 쪽에서 4-3과 안 맞는 칸을 빼듯이, AI도 쓸/안 쓸 판별과 안 맞는 줄은 넣지 않고 개수만 센다.
+    (쓸 것 같다고 한 기능의 안 쓸 이유·4-7 줄, 안 쓸 것 같다고 한 기능의 쓸 이유 줄. 못 가린 기능은 다 넣는다)
     """
     if not r.get("asked"):
         return [], 0
     base = {k: r[k] for k in ("run_id", "service", "platform", "condition", "persona_id", "repeat", "feature_id")}
-    out, skipped_q47 = [], 0
-    lines = [("use", "why_use", t) for t in r.get("use_reasons", [])]
-    lines += [("nouse", "nouse", t) for t in r.get("nouse_lines", [])]
-    if r.get("use_choice") == "use":
-        skipped_q47 = len(r.get("q47_details", []))
-    else:
-        lines += [("nouse", "q47", t) for t in r.get("q47_details", [])]
+    base.update({k: r.get(k) or "" for k in ("input_mode", "model")})
+    choice = r.get("use_choice")
+    groups = [("use", "why_use", r.get("use_reasons", []), choice != "nouse"),
+              ("nouse", "nouse", r.get("nouse_lines", []), choice != "use"),
+              ("nouse", "q47", r.get("q47_details", []), choice != "use")]
+    lines = [(kind, source, t) for kind, source, texts, keep in groups if keep for t in texts]
+    skipped = sum(len(texts) for _, _, texts, keep in groups if not keep)
+    out = []
     squash = re.compile(r"\s+")
     for i, (kind, source, text) in enumerate(lines):
         opts = [o for o in r.get("nouse_options", []) if squash.sub("", o) in squash.sub("", text)] \
@@ -75,7 +82,7 @@ def items_from_record(r: dict) -> tuple:
         out.append({**base, "item_id": item_id(base["run_id"], base["feature_id"], source, i, text),
                     "feature_name": r.get("feature_name", ""), "kind": kind, "source": source, "text": text,
                     "options_found": " / ".join(opts)})
-    return out, skipped_q47
+    return out, skipped
 
 
 def read_jsonl(path: Path) -> list:
@@ -107,8 +114,10 @@ def write_csv(path: Path, fields: list, rows: list) -> None:
 
 
 def norm_codes(cell: str) -> list:
-    """'B; A ;A' -> ['A', 'B']. 순서와 중복은 판정에 상관없다."""
-    return sorted({c.strip() for c in cell.split(";") if c.strip()})
+    """'b; A ;A' -> ['A', 'B']. 순서와 중복은 판정에 상관없다.
+    전각 글자와 엑셀이 바꾼 긴 대시를 되돌리고 대문자로 맞춘다 (score_reasons.norm_code와 같은 규칙)."""
+    cell = unicodedata.normalize("NFKC", cell).translate(DASHES)
+    return sorted({c.strip().upper() for c in cell.split(";") if c.strip()})
 
 
 def kappa(a: list, b: list):
@@ -136,13 +145,21 @@ def cmd_make(args, root: Path) -> int:
     except (InputError, UnicodeDecodeError) as e:
         print(f"[입력 오류] {e}", file=sys.stderr)
         return EXIT_INPUT
-    items, skipped_q47 = [], 0
+    items, skipped = [], 0
     for r in records:
         got, sk = items_from_record(r)
         items += got
-        skipped_q47 += sk
+        skipped += sk
     if not items:
         print("[입력 오류] 판정할 이유 줄이 없음", file=sys.stderr)
+        return EXIT_INPUT
+    runs = {}
+    for i in items:
+        runs.setdefault(tuple(str(i.get(k, "")) for k in EPISODE_KEY), set()).add(i["run_id"])
+    twice = sum(1 for v in runs.values() if len(v) > 1)
+    if twice:
+        print(f"[입력 오류] 같은 페르소나·회차가 실행 ID만 바뀌어 두 번 들어 있음 {twice}건 "
+              "(실패 뒤 다시 돌린 기록이 섞였나?). 하나만 남기고 다시 추출한다", file=sys.stderr)
         return EXIT_INPUT
     ids = [i["item_id"] for i in items]
     if len(set(ids)) != len(ids):
@@ -158,8 +175,10 @@ def cmd_make(args, root: Path) -> int:
     kinds = Counter(i["kind"] for i in items)
     print(f"[시트] 이유 줄 {len(items)}개 (쓸 이유 {kinds['use']}, 안 쓸 이유 {kinds['nouse']}), "
           f"에피소드 {len({i['run_id'] for i in items})}개")
-    if skipped_q47:
-        print(f"  쓸 것 같다고 한 기능의 4-7 줄 {skipped_q47}개는 넣지 않음")
+    if skipped:
+        print(f"  쓸/안 쓸 판별과 안 맞는 줄 {skipped}개는 넣지 않음 (쓴다고 한 기능의 4-7 줄 등)")
+    if len({i["condition"] for i in items}) < 2:
+        print("  주의: 시트에 조건이 하나뿐이다. 판정자가 조건을 짐작할 수 있으니 본 판정은 조건을 섞어서 만든다")
     print(f"  판정자에게 줄 것: {args.out}/sheet_{stamp}.csv")
     print(f"  판정자에게 주지 않을 것: {args.out}/key_{stamp}.csv (조건이 들어 있음)")
     return EXIT_OK
@@ -189,6 +208,9 @@ def cmd_import(args, root: Path) -> int:
         blank = sum(not norm_codes(r[col]) for r in sheet)
         if blank:
             problems.append(f"{col} 빈칸 {blank}개")
+        comma = sum("," in unicodedata.normalize("NFKC", r[col]) for r in sheet)
+        if comma:
+            problems.append(f"{col}에 쉼표 {comma}개 (코드가 여럿이면 ;로 나눈다)")
     if problems:
         print("[입력 오류] 시트를 다 채우지 않았음: " + ", ".join(problems), file=sys.stderr)
         return EXIT_INPUT
@@ -196,6 +218,12 @@ def cmd_import(args, root: Path) -> int:
     a = [";".join(norm_codes(r["code_1"])) for r in sheet]
     b = [";".join(norm_codes(r["code_2"])) for r in sheet]
     agree = sum(x == y for x, y in zip(a, b))
+    k_value = kappa(a, b)
+    low_kappa = k_value is None or k_value < KAPPA_MIN
+    if low_kappa and not args.accept_low_kappa:
+        print(f"[입력 오류] 두 판정자 kappa {k_value}가 {KAPPA_MIN}에 못 미친다 (TRD NFR-07). "
+              "판정 기준을 다듬고 다시 판정한다. 그대로 쓰려면 --accept-low-kappa \"사유\"를 붙인다", file=sys.stderr)
+        return EXIT_INPUT
     rows = []
     for r in sorted(sheet, key=lambda x: x["item_id"]):
         k = key[r["item_id"]]
@@ -207,7 +235,8 @@ def cmd_import(args, root: Path) -> int:
     write_csv(out / f"ai_codes_{stamp}.csv", AI_CODE_FIELDS, rows)
     report = {"created_at": datetime.now().isoformat(timespec="seconds"),
               "sheet": str(Path(args.sheet)).replace("\\", "/"), "key": str(Path(args.key)).replace("\\", "/"),
-              "items": len(sheet), "agreement": round(agree / len(sheet), 4), "kappa": kappa(a, b),
+              "items": len(sheet), "agreement": round(agree / len(sheet), 4), "kappa": k_value,
+              "kappa_min": KAPPA_MIN, "low_kappa_reason": args.accept_low_kappa if low_kappa else None,
               "disagreements": len(sheet) - agree,
               "final_differs_from_both": sum(";".join(norm_codes(r["code_final"])) not in (x, y)
                                              for r, x, y in zip(sheet, a, b)),
@@ -230,6 +259,8 @@ def main(argv=None, root: Path = ROOT) -> int:
     im.add_argument("--sheet", required=True)
     im.add_argument("--key", required=True)
     im.add_argument("--out", default="runs/dev/coded")
+    im.add_argument("--accept-low-kappa", metavar="사유", default="",
+                    help="kappa가 0.6에 못 미쳐도 가져온다. 사유를 agreement JSON에 남긴다")
     try:
         args = ap.parse_args(argv)
     except SystemExit as e:

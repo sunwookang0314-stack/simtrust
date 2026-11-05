@@ -10,7 +10,9 @@
     code가 빈 줄은 "그 칸에 답했지만 붙일 코드가 없음"이다. 사람 수에는 들어가고 이유에는 안 들어간다
 - AI 코드 CSV (--ai): scripts/reason_sheet.py import가 만든 것
     item_id, run_id, service, platform, condition, persona_id, repeat, feature_id, kind, code
-- 판정 규칙 JSON (--rules): 기준값을 코드에 박지 않는다 (FR-08-01)
+    (input_mode, model 칸이 있으면 한 조건 안에 다른 값이 섞였을 때 멈춘다)
+- 판정 규칙 JSON (--rules): 기준값을 코드에 박지 않는다 (FR-08-01). 동결 전 규칙은 --allow-draft를 붙여야 돈다
+- 코드는 양쪽 다 같은 표기로 맞춘다 (전각 글자, 엑셀이 바꾼 대시, 대소문자)
 
 출력 (--out 폴더)
 - metrics_{범위}_{시각}.json: 실행 기록, 규칙, 칸별 숫자와 판정, 요약
@@ -30,6 +32,7 @@ import os
 import platform as _platform
 import random
 import sys
+import unicodedata
 from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -45,6 +48,8 @@ CELL_KEYS = ("service", "platform", "feature_id", "kind")
 HUMAN_FIELDS = ["respondent_id", "service", "platform", "feature_id", "kind", "code"]
 AI_FIELDS = ["item_id", "run_id", "service", "platform", "condition", "persona_id", "repeat", "feature_id", "kind",
              "code"]
+RUN_FIELDS = ("input_mode", "model")  # 있으면 조건마다 하나여야 한다
+DASHES = dict.fromkeys(map(ord, "\u2010\u2011\u2012\u2013\u2014\u2015\u2212\u30fc"), "-")
 
 LOW, NA, ASK, TRUST, REF = "자료 부족", "계산 불가", "사람에게 물어볼 것", "믿고 써도 됨", "참고용"
 VERDICTS = (TRUST, REF, ASK, LOW, NA)
@@ -77,6 +82,11 @@ def read_csv(path: Path, required: list) -> list:
         return [{k: (v or "").strip() for k, v in row.items() if k} for row in reader]
 
 
+def norm_code(code: str) -> str:
+    """'n01', 전각 'N01', 'N01'을 같은 코드로 본다. 엑셀이 '-'를 긴 대시로 바꾼 것도 되돌린다."""
+    return unicodedata.normalize("NFKC", code).translate(DASHES).strip().upper()
+
+
 def check_common(rows: list, name: str) -> None:
     for i, r in enumerate(rows, 2):
         if r["kind"] not in KINDS:
@@ -85,6 +95,9 @@ def check_common(rows: list, name: str) -> None:
             raise InputError(f"{name} {i}행: platform은 app 또는 web")
         if not r["service"] or not r["feature_id"]:
             raise InputError(f"{name} {i}행: service와 feature_id는 비울 수 없음")
+        r["code"] = norm_code(r["code"])
+        if any(sep in r["code"] for sep in ",;"):
+            raise InputError(f"{name} {i}행: 한 줄에 코드 하나만 넣는다 (코드가 여럿이면 줄을 나눈다)")
 
 
 def load_human(path: Path) -> list:
@@ -113,6 +126,13 @@ def load_ai(path: Path) -> list:
             raise InputError(f"{path.name} {i}행: condition은 0~3")
         if not r["run_id"] or not r["code"]:
             raise InputError(f"{path.name} {i}행: run_id와 code는 비울 수 없음 (이유가 아니면 코드 '-')")
+    runs = defaultdict(set)
+    for r in rows:
+        runs[r["condition"]].add(tuple(r.get(f, "") for f in RUN_FIELDS))
+    mixed = sorted(c for c, v in runs.items() if len(v) > 1)
+    if mixed:
+        raise InputError(f"{path.name}: 조건 {mixed} 안에 입력 방식이나 모델이 다른 실행이 섞여 있음. "
+                         "나눠서 계산한다")
     return rows
 
 
@@ -143,6 +163,14 @@ def load_rules(path: Path) -> dict:
     if not isinstance(rules["resamples"], int) or rules["resamples"] < 1:
         raise InputError(f"{path.name}: resamples는 1 이상 정수")
     st, sa = rules["stability"], rules["saturation"]
+    for name, part, need_keys in (("stability", st, ("start", "step", "draws", "tolerance")),
+                                  ("saturation", sa, ("group_keys", "min_respondents", "run", "max_new"))):
+        lacking = [k for k in need_keys if not isinstance(part, dict) or k not in part]
+        if lacking:
+            raise InputError(f"{path.name}: {name}에 항목이 없음 {lacking}")
+    nums = [st["start"], st["step"], st["draws"], st["tolerance"], sa["min_respondents"], sa["run"], sa["max_new"]]
+    if not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in nums):
+        raise InputError(f"{path.name}: stability, saturation 값은 숫자")
     if st["start"] < 1 or st["step"] < 1 or st["draws"] < 1 or not 0 <= st["tolerance"] < 1:
         raise InputError(f"{path.name}: stability 값이 이상함")
     if not set(sa["group_keys"]) <= {"service", "platform"} or sa["run"] < 1 or sa["max_new"] < 0:
@@ -212,49 +240,70 @@ def union(groups: dict, ids) -> set:
 
 def build_cells(human: list, ai: list, rules: dict) -> tuple:
     keys = rules["cell_keys"]
-    drop = set(rules["ai_drop_codes"])
+    drop = {norm_code(c) for c in rules["ai_drop_codes"]}
     humans = defaultdict(dict)  # 칸 -> {응답자: 코드 집합}
     for r in human:
         codes = humans[tuple(r[k] for k in keys)].setdefault(r["respondent_id"], set())
         if r["code"]:
             codes.add(r["code"])
-    ai_cells = defaultdict(lambda: {"episodes": set(), "code_eps": defaultdict(set)})
+    ai_cells = defaultdict(lambda: {"episodes": set(), "code_eps": defaultdict(set), "ep_codes": defaultdict(set),
+                                    "persona_eps": defaultdict(set)})
     dropped = 0
     for r in ai:
         cell = ai_cells[(r["condition"], tuple(r[k] for k in keys))]
         cell["episodes"].add(r["run_id"])
+        cell["persona_eps"][r["persona_id"]].add(r["run_id"])
+        cell["ep_codes"].setdefault(r["run_id"], set())
         if r["code"] in drop:
             dropped += 1
             continue
         cell["code_eps"][r["code"]].add(r["run_id"])
+        cell["ep_codes"][r["run_id"]].add(r["code"])
     return humans, ai_cells, dropped
 
 
 def floor_partners(key: tuple, cond: int, ai_cells: dict, keys: list) -> list:
-    """같은 조건·같은 칸에서 기능만 다른 칸의 AI 코드 집합들 (아무 기능에나 할 말)."""
+    """같은 조건·같은 칸에서 기능만 다른 AI 칸들 (아무 기능에나 할 말)."""
     fi = keys.index("feature_id")
     out = []
     for (c, k), cell in sorted(ai_cells.items(), key=lambda x: (x[0][0], x[0][1])):
         if c != cond or k[fi] == key[fi] or not cell["code_eps"]:
             continue
         if all(k[i] == key[i] for i in range(len(keys)) if i != fi):
-            out.append(set(cell["code_eps"]))
+            out.append(cell)
     return out
 
 
-def split_draws(cond: int, key: tuple, groups: dict, ai_codes: set, partners: list, rules: dict) -> dict:
-    """사람을 무작위로 반씩 나눠 B를 기준으로 사람 A, AI, 다른 기능 AI를 잰다. 같은 B에 대고 재야 크기가 맞는다."""
+def sample_ai(cell: dict, k: int, rng: random.Random) -> set:
+    """페르소나 k명을 뽑고 페르소나마다 회차 하나의 코드만 합친다. 사람 A(k명)와 같은 크기로 잰다.
+    페르소나가 k명보다 적으면 있는 만큼 쓴다. 같은 페르소나의 반복은 서로 다른 사람으로 치지 않는다."""
+    personas = sorted(cell["persona_eps"])
+    out = set()
+    for p in rng.sample(personas, min(k, len(personas))):
+        out |= cell["ep_codes"][rng.choice(sorted(cell["persona_eps"][p]))]
+    return out
+
+
+def split_draws(cond: int, key: tuple, groups: dict, aic: dict, partners: list, rules: dict) -> dict:
+    """사람을 무작위로 반씩 나눠 B를 기준으로 사람 A, AI, 다른 기능 AI를 잰다.
+    같은 B에 대고, AI 쪽도 A와 같은 인원(페르소나 수)으로 뽑아서 재야 크기가 맞는다.
+    나누기, AI 뽑기, 다른 기능 뽑기는 난수를 따로 써서 다른 칸 자료가 이 칸 나누기를 바꾸지 않게 한다."""
     ids = sorted(groups)
     draws = {f"{who}_{m}": [] for who in ("human", "ai", "floor") for m in METRICS}
     if len(ids) < 2:
         return draws
-    rng = random.Random(f"{rules['seed']}|split|{cond}|{'|'.join(key)}")
+    tag = f"{cond}|{'|'.join(key)}"
+    rng = random.Random(f"{rules['seed']}|split|{tag}")
+    rng_ai = random.Random(f"{rules['seed']}|ai|{tag}")
+    rng_floor = random.Random(f"{rules['seed']}|floor|{tag}")
     half = len(ids) // 2
     for _ in range(rules["resamples"]):
         s = ids[:]
         rng.shuffle(s)
         a, b = union(groups, s[:half]), union(groups, s[half:])
-        for who, pred in (("human", a), ("ai", ai_codes), ("floor", rng.choice(partners) if partners else None)):
+        ai_pred = sample_ai(aic, half, rng_ai) if aic["persona_eps"] else None
+        floor_pred = sample_ai(rng_floor.choice(partners), half, rng_floor) if partners else None
+        for who, pred in (("human", a), ("ai", ai_pred), ("floor", floor_pred)):
             p, r = pr(pred, b) if pred is not None else (None, None)
             draws[f"{who}_precision"].append(p)
             draws[f"{who}_recall"].append(r)
@@ -353,9 +402,15 @@ def judge(cell: dict, rule: dict) -> str:
     view = anchor_view(cell["draws"], rule["level"], metrics)
     if any(view[m]["ai"] is None or view[m]["human"] is None for m in metrics):
         return NA
+    # AI가 사람 이유를 거의 못 맞히면(중앙값 0) 사람끼리 구간 아래쪽이 0이어도 믿지 않는다
+    if any(view[m]["ai"] == 0 for m in metrics):
+        return ASK
     # 아무 기능에나 할 말과 구별이 안 되면 사람 범위에 들어도 믿지 않는다 (두 기준점이 겹칠 때 보수적으로)
     if any(view[m]["floor"] is not None and view[m]["ai"] <= view[m]["floor"][1] for m in metrics):
         return ASK
+    # 비교할 다른 기능이 없으면 아무 기능에나 할 말인지 가릴 수 없어서 믿음 판정은 내지 않는다
+    if any(view[m]["floor"] is None for m in metrics):
+        return REF
     if all(view[m]["ai"] >= view[m]["human"][0] for m in metrics):
         return TRUST
     return REF
@@ -372,7 +427,7 @@ def score(human: list, ai: list, rules: dict) -> dict:
     for cond in conditions:
         for key in all_keys:
             groups = humans.get(key, {})
-            aic = ai_cells.get((cond, key), {"episodes": set(), "code_eps": {}})
+            aic = ai_cells.get((cond, key), {"episodes": set(), "code_eps": {}, "ep_codes": {}, "persona_eps": {}})
             ai_codes = set(aic["code_eps"])
             human_count = Counter(c for codes in groups.values() for c in codes)
             p, r = pr(ai_codes, set(human_count))
@@ -381,7 +436,7 @@ def score(human: list, ai: list, rules: dict) -> dict:
                     "ai_episodes": len(aic["episodes"]), "ai_codes": sorted(ai_codes),
                     "human_codes": len(human_count), "matched": len(ai_codes & set(human_count)),
                     "full": {"precision": p, "recall": r}, "floor_partners": len(partners),
-                    "draws": split_draws(cond, key, groups, ai_codes, partners, rules)}
+                    "draws": split_draws(cond, key, groups, aic, partners, rules)}
             cell["verdict"] = judge(cell, main_rule)
             cell["sensitivity"] = {name: judge(cell, rule) for name, rule in alts}
             cell["stability"] = stability(cond, key, groups, ai_codes, rules)
@@ -392,7 +447,10 @@ def score(human: list, ai: list, rules: dict) -> dict:
             cell["missed"] = [{"code": c, "human_count": n} for c, n in sorted(human_count.items())
                               if c not in ai_codes]
             cells.append(cell)
-    return {"cells": cells, "conditions": conditions, "dropped_ai_rows": dropped,
+    human_keys, ai_keys = set(humans), {k for _, k in ai_cells}
+    coverage = {"both": len(human_keys & ai_keys), "human_only": len(human_keys - ai_keys),
+                "ai_only": len(ai_keys - human_keys)}
+    return {"cells": cells, "conditions": conditions, "dropped_ai_rows": dropped, "coverage": coverage,
             "saturation": saturation(human, rules), "summary": summarize(cells, conditions, alts, keys)}
 
 
@@ -505,6 +563,8 @@ def print_summary(result: dict, rules: dict, run_id: str) -> None:
         label = "/".join(str(g[k]) for k in rules["saturation"]["group_keys"])
         print(f"  포화 {label}: 응답자 {g['respondents']}명, 이유 {g['reasons']}개, "
               f"다 모음 {g['saturated_at'] if g['saturated_at'] else '아직'}")
+    cov = result["coverage"]
+    print(f"  칸 겹침    : 사람과 AI 둘 다 {cov['both']}칸, 사람만 {cov['human_only']}칸, AI만 {cov['ai_only']}칸")
     if result["dropped_ai_rows"]:
         print(f"  이유 아님으로 뺀 AI 줄: {result['dropped_ai_rows']}개")
     print("=" * 60)
@@ -517,6 +577,8 @@ def main(argv=None, root: Path = ROOT) -> int:
     ap.add_argument("--rules", default="configs/rules.draft.json", help="판정 규칙 JSON")
     ap.add_argument("--out", default="runs/dev/scoring", help="출력 폴더")
     ap.add_argument("--service", help="이 서비스만 계산. 안 주면 전부")
+    ap.add_argument("--allow-draft", action="store_true",
+                    help="동결 전 규칙으로 시험 삼아 돌린다. 실제 응답에는 쓰지 않는다 (측정 원칙: 기준은 응답을 보기 전에 고정)")
     try:
         args = ap.parse_args(argv)
     except SystemExit as e:
@@ -533,6 +595,9 @@ def main(argv=None, root: Path = ROOT) -> int:
     except (InputError, UnicodeDecodeError) as e:
         print(f"[입력 오류] {e}", file=sys.stderr)
         return EXIT_INPUT
+    if not rules.get("frozen") and not args.allow_draft:
+        print("[입력 오류] 판정 규칙이 동결 전이다. 시험으로 돌릴 때만 --allow-draft를 붙인다", file=sys.stderr)
+        return EXIT_INPUT
     if args.service:
         human = [r for r in human if r["service"] == args.service]
         ai = [r for r in ai if r["service"] == args.service]
@@ -541,6 +606,10 @@ def main(argv=None, root: Path = ROOT) -> int:
         return EXIT_INPUT
 
     result = score(human, ai, rules)
+    if human and not result["coverage"]["both"]:
+        print("[입력 오류] 사람 칸과 AI 칸이 하나도 안 겹친다. service, platform, feature_id 글자를 확인한다 "
+              "(service는 snapshot.json의 service 값)", file=sys.stderr)
+        return EXIT_INPUT
     stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
     scope = args.service or "all"
     run_id = f"score_{scope}_{stamp}_{os.getpid() % 10000}"
@@ -556,6 +625,7 @@ def main(argv=None, root: Path = ROOT) -> int:
         "rules_frozen": bool(rules.get("frozen")),
         "conditions": result["conditions"],
         "dropped_ai_rows": result["dropped_ai_rows"],
+        "coverage": result["coverage"],
         "summary": result["summary"],
         "saturation": result["saturation"],
         "cells": cells,

@@ -9,6 +9,7 @@ import copy
 import csv
 import io
 import json
+import random
 import shutil
 import sys
 import tempfile
@@ -118,6 +119,33 @@ class TestNumbers(unittest.TestCase):
         # F2의 AI 코드 {E}는 F1 사람 코드와 하나도 안 겹친다
         self.assertEqual(set(c["draws"]["floor_precision"]), {0.0})
 
+    def test_ai_sample_matches_human_half(self):
+        # 뽑을 때마다 AI도 사람 A와 같은 인원(페르소나 수)만 쓴다. 같은 페르소나의 반복은 하나만 쓴다
+        many = {"persona_eps": {f"p{i}": {f"e{i}"} for i in range(10)},
+                "ep_codes": {f"e{i}": {f"C{i}"} for i in range(10)}}
+        rng = random.Random(1)
+        self.assertEqual({len(sr.sample_ai(many, 3, rng)) for _ in range(50)}, {3})
+        rep = {"persona_eps": {"p0": {"r1", "r2"}}, "ep_codes": {"r1": {"A"}, "r2": {"B"}}}
+        self.assertEqual({frozenset(sr.sample_ai(rep, 3, rng)) for _ in range(50)}, {frozenset("A"), frozenset("B")})
+
+    def test_other_cells_do_not_move_this_split(self):
+        # 다른 기능에 AI 코드가 늘어도 이 칸의 사람 나누기는 그대로다 (난수를 따로 쓴다)
+        h = BASIC_H + human_rows("F2", {"P1": ["A"], "P2": ["E"]})
+        a = BASIC_A + ai_rows("F2", {"e1": ["E"]})
+        before = find(sr.score(h, a, rules())["cells"], feature_id="F1", condition=2)
+        after = find(sr.score(h, a + ai_rows("F3", {"e9": ["Q"]}), rules())["cells"], feature_id="F1", condition=2)
+        self.assertEqual(before["draws"]["human_precision"], after["draws"]["human_precision"])
+        self.assertEqual(before["draws"]["ai_precision"], after["draws"]["ai_precision"])
+
+    def test_codes_are_normalized(self):
+        self.assertEqual([sr.norm_code(x) for x in ("n01", "\uff2e\uff10\uff11", " N01 ", "\u2013")],
+                         ["N01", "N01", "N01", "-"])
+        rows = [{"kind": "nouse", "platform": "app", "service": "svc", "feature_id": "F1", "code": "u-find"}]
+        sr.check_common(rows, "x")
+        self.assertEqual(rows[0]["code"], "U-FIND")
+        with self.assertRaises(sr.InputError):
+            sr.check_common([{**rows[0], "code": "N01, N02"}], "x")
+
     def test_pooled_cell_keys(self):
         h = human_rows("F1", {"P1": ["A"]}, service="s1") + human_rows("F1", {"P2": ["B"]}, service="s2")
         a = ai_rows("F1", {"e1": ["A"]}, service="s1") + ai_rows("F1", {"e2": ["B"]}, service="s2")
@@ -157,6 +185,21 @@ class TestJudge(unittest.TestCase):
 
     def test_no_floor_partner(self):
         self.assertEqual(sr.judge(cell(0.5, self.HUMAN, [None, None]), self.rule), sr.REF)
+        # 아무 기능에나 할 말과 비교할 수 없으면 사람 범위 안이어도 믿음 판정은 안 낸다
+        self.assertEqual(sr.judge(cell(0.75, self.HUMAN, [None, None]), self.rule), sr.REF)
+
+    def test_zero_ai_is_not_trusted(self):
+        # 사람끼리 구간 아래쪽이 0이어도 AI가 하나도 못 맞히면(중앙값 0) 믿지 않는다
+        self.assertEqual(sr.judge(cell(0.0, [0.0, 0.2, 0.5], [None, None]), self.rule), sr.ASK)
+        self.assertEqual(sr.judge(cell(0.0, [0.0, 0.2, 0.5], self.FLOOR), self.rule), sr.ASK)
+
+    def test_zero_match_scenario(self):
+        # 점검에서 나온 예: 사람 6명이 다 다른 이유, AI는 사람과 안 겹치는 이유, 비교할 다른 기능 없음
+        h = human_rows("F4", {f"P{i}": [f"N{i}"] for i in range(6)})
+        res = sr.score(h, ai_rows("F4", {"e1": ["Z1"], "e2": ["Z2"]}), rules())
+        c = find(res["cells"], feature_id="F4", condition=2)
+        self.assertEqual((c["full"]["precision"], c["verdict"]), (0.0, sr.ASK))
+        self.assertEqual(c["sensitivity"]["anchors_90"], sr.ASK)
 
     def test_recall_also_counts(self):
         low_recall = {"ai": [0.3] * 3, "human": self.HUMAN, "floor": self.FLOOR}
@@ -205,7 +248,7 @@ class TestCLI(unittest.TestCase):
                        + ai_rows("F2", {"e1": ["E"]}))
 
     def test_outputs(self):
-        code, log = run("--human", self.h, "--ai", self.a, "--rules", "rules.json", "--out", "out_ok")
+        code, log = run("--human", self.h, "--ai", self.a, "--rules", "rules.json", "--out", "out_ok", "--allow-draft")
         self.assertEqual(code, 0, log)
         out = TMP / "out_ok"
         record = json.loads(next(out.glob("metrics_all_*.json")).read_text(encoding="utf-8"))
@@ -226,11 +269,11 @@ class TestCLI(unittest.TestCase):
 
     def test_service_filter(self):
         code, log = run("--human", self.h, "--ai", self.a, "--rules", "rules.json", "--out", "out_f",
-                        "--service", "svc")
+                        "--service", "svc", "--allow-draft")
         self.assertEqual(code, 0, log)
         self.assertTrue(next((TMP / "out_f").glob("metrics_svc_*.json")))
         code, log = run("--human", self.h, "--ai", self.a, "--rules", "rules.json", "--out", "out_none",
-                        "--service", "nothing")
+                        "--service", "nothing", "--allow-draft")
         self.assertEqual(code, 4, log)
 
     def test_input_errors(self):
@@ -257,9 +300,34 @@ class TestCLI(unittest.TestCase):
         ]
         for argv, expected in cases:
             with self.subTest(argv=argv):
-                code, log = run(*argv, "--out", "out_err")
+                code, log = run(*argv, "--out", "out_err", "--allow-draft")
                 self.assertEqual(code, expected, log)
         self.assertFalse((TMP / "out_err").exists())
+
+    def test_guards(self):
+        # 동결 전 규칙은 --allow-draft 없이 안 돈다
+        code, log = run("--human", self.h, "--ai", self.a, "--rules", "rules.json", "--out", "out_g1")
+        self.assertEqual(code, 4, log)
+        self.assertIn("--allow-draft", log)
+        # 사람 칸과 AI 칸이 하나도 안 겹치면 멈춘다 (service 글자가 다른 경우)
+        other = write("human_other.csv", HUMAN_HEAD, human_rows("F1", {"P1": ["A"]}, service="가짜공고"))
+        code, log = run("--human", other, "--ai", self.a, "--rules", "rules.json", "--out", "out_g2", "--allow-draft")
+        self.assertEqual(code, 4, log)
+        self.assertIn("안 겹친다", log)
+        # 한 조건 안에 입력 방식이 섞이면 멈춘다
+        head = sr.AI_FIELDS + ["input_mode"]
+        mixed = write("ai_mixed.csv", head, [{**BASIC_A[0], "input_mode": "text"}, {**BASIC_A[1], "input_mode": "image"}])
+        code, log = run("--human", self.h, "--ai", mixed, "--rules", "rules.json", "--out", "out_g3", "--allow-draft")
+        self.assertEqual(code, 4, log)
+        # 규칙 파일의 하위 항목이 빠지면 traceback이 아니라 입력 오류다
+        r = rules()
+        del r["stability"]["tolerance"]
+        (TMP / "no_tol.json").write_text(json.dumps(r), encoding="utf-8")
+        code, log = run("--human", self.h, "--ai", self.a, "--rules", "no_tol.json", "--out", "out_g4", "--allow-draft")
+        self.assertEqual(code, 4, log)
+        self.assertIn("tolerance", log)
+        for d in ("out_g1", "out_g2", "out_g3", "out_g4"):
+            self.assertFalse((TMP / d).exists())
 
     def test_draft_rules_file_loads(self):
         r = sr.load_rules(REPO / "configs/rules.draft.json")
