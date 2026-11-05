@@ -273,7 +273,7 @@ class TestRunSimulation(unittest.TestCase):
         metas = read_metas("meta")
         self.assertEqual(len(metas), 1)
         meta = metas[0]
-        for key in ["run_id", "timestamp", "provider", "base_url", "model", "tinytroupe_commit", "service",
+        for key in ["run_id", "timestamp", "provider", "base_url", "model", "tinytroupe_commit", "simtrust_commit", "service",
                     "platform", "condition", "persona_id", "repeat", "seed", "input_mode", "cache_file",
                     "max_completion_tokens", "tokens_in", "tokens_out", "elapsed_sec", "status",
                     "protocol_version", "snapshot_version", "action_truncations"]:

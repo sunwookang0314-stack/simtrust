@@ -431,6 +431,18 @@ def check_tinytroupe_settings(config_manager, provider: str):
     return model, int(mct)
 
 
+def simtrust_commit(root: Path = ROOT) -> str:
+    """실행 기록용. 이 리포의 커밋. 추적 중인 파일이 커밋과 다르면 뒤에 +dirty를 붙인다 (FR-10 재현)."""
+    try:
+        head = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True,
+                              timeout=15).stdout.strip()
+        dirty = subprocess.run(["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"],
+                               capture_output=True, text=True, timeout=15).stdout.strip()
+        return (head + ("+dirty" if dirty else "")) if head else "unknown"
+    except Exception:
+        return "unknown"
+
+
 def tinytroupe_commit() -> str:
     """실행 기록용. 이 PC는 TinyTroupe/, 팀 README는 external/TinyTroupe 라서 import 위치에서 찾는다."""
     import tinytroupe
@@ -717,7 +729,8 @@ def fill(template: str, **values) -> str:
 
 
 # 실행 중에 다음 질문을 건너뛸지 정할 때만 쓴다. 원문은 그대로 남기고, 정식 정리는 추출 단계(IF-06)가 한다
-_NOUSE = re.compile(r"안\s*쓸|쓰지\s*않|안\s*쓰|사용하지\s*않|안\s*사용")
+# "쓸 것 같지 않다", "별로 쓸 것 같진 않아요"처럼 _USE 꼴을 품은 부정형은 앞에 둬서 먼저 지운다
+_NOUSE = re.compile(r"(쓸|사용할)\s*것\s*같(지|진)\s*(는\s*)?않|않을\s*것\s*같|안\s*쓸|쓰지\s*않|안\s*쓰|사용하지\s*않|안\s*사용")
 _USE = re.compile(r"쓸\s*것\s*같|쓸\s*거\s*같|사용할\s*것\s*같")
 
 
@@ -852,6 +865,7 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
         "base_url": ctx["base_url"] or None,
         "model": ctx["model"],
         "tinytroupe_commit": ctx["tinytroupe_commit"],
+        "simtrust_commit": ctx["simtrust_commit"],
         "service": ctx["service"],
         "platform": ctx["platform"],
         "condition": ctx["condition"],
@@ -909,6 +923,9 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
             "protocol_version": ctx["cfg"]["protocol_version"],
             "snapshot_version": ctx["snapshot_version"],
             "input_mode": ctx["input_mode"],
+            # 모델이 다른 실행이 한 칸에 섞이지 않게 원시 응답에도 남긴다 (#35 여러 모델 비교)
+            "provider": ctx["provider"],
+            "model": ctx["model"],
             "question_order": ctx["cfg"]["question_order"],
             "status": "성공",
             "features": [{"feature_id": fid, "name": name} for fid, name in ctx["all_features"]],
@@ -1099,6 +1116,7 @@ def run(args, root: Path) -> int:
         "model_tag": re.sub(r"[^A-Za-z0-9.-]+", "_", model),
         "max_completion_tokens": max_completion_tokens,
         "tinytroupe_commit": tinytroupe_commit(),
+        "simtrust_commit": simtrust_commit(root),
         "input_mode": cfg["input_mode"],
         "images_dir": images_dir,
         "snapshot_version": snap["snapshot_version"],
