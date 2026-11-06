@@ -113,11 +113,14 @@ class TestNumbers(unittest.TestCase):
         h = BASIC_H + human_rows("F2", {"P1": ["A"], "P2": ["E"]}) + human_rows("F1", {"Q1": ["A"]}, kind="use")
         a = BASIC_A + ai_rows("F2", {"e1": ["E"]}) + ai_rows("F1", {"e1": ["A"]}, kind="use") \
             + ai_rows("F3", {"e1": ["A"]}, platform="web")
-        res = sr.score(h, a, rules())
+        res = sr.score(h, a, rules(cell_keys=["service", "platform", "feature_id", "kind"]))
         c = find(res["cells"], feature_id="F1", kind="nouse", platform="app", condition=2)
         self.assertEqual(c["floor_partners"], 1)  # F2 nouse만. 같은 기능 use, 다른 플랫폼은 안 쓴다
         # F2의 AI 코드 {E}는 F1 사람 코드와 하나도 안 겹친다
         self.assertEqual(set(c["draws"]["floor_precision"]), {0.0})
+        # 앱·웹을 합친 칸(11/6 D4)에서는 웹 F3도 같은 서비스의 다른 기능이라 짝이 된다
+        merged = find(sr.score(h, a, rules())["cells"], feature_id="F1", kind="nouse", condition=2)
+        self.assertEqual(merged["floor_partners"], 2)
 
     def test_ai_sample_matches_human_half(self):
         # 뽑을 때마다 AI도 사람 A와 같은 인원(페르소나 수)만 쓴다. 같은 페르소나의 반복은 하나만 쓴다
@@ -158,6 +161,59 @@ class TestNumbers(unittest.TestCase):
         self.assertIn(2, res["summary"]["quit_reference"])
         with self.assertRaises(sr.InputError):
             sr.check_common([{**BASIC_A[0], "kind": "nouse_quit"}], "ai")  # AI 쪽에는 없는 kind
+
+    def test_service_cells_pool_platforms(self):
+        # 11/6 D4: 판정 칸은 서비스 x 기능 x 쓸/안 쓸. 플랫폼별 칸은 사람이 하한 이상일 때만 참고로 낸다
+        h = (human_rows("F1", {f"A{i}": ["A"] for i in range(3)})
+             + human_rows("F1", {f"W{i}": ["A"] for i in range(3)}, platform="web"))
+        a = ai_rows("F1", {"e1": ["A"]}) + ai_rows("F1", {"e2": ["A"]}, platform="web")
+        res = sr.score(h, a, rules())
+        c = find(res["cells"], feature_id="F1", condition=2)
+        self.assertEqual((c["n_humans"], c["n_humans_app"], c["n_humans_web"]), (6, 3, 3))
+        self.assertNotIn("platform", c)
+        self.assertEqual(res["platform_ref"], [])  # 플랫폼마다 3명이라 하한 5명 미만
+        res3 = sr.score(h, a, rules(min_humans=3))
+        self.assertEqual(sorted(x["platform"] for x in res3["platform_ref"]), ["app", "web"])
+        self.assertEqual({x["scope"] for x in res3["platform_ref"]}, {"platform_ref"})
+        self.assertEqual(sum(res3["summary"]["verdicts"][2].values()), 1)  # 요약 판정 수에는 본 칸만
+        self.assertIn(2, res3["summary"]["platform_reference"])
+
+    def test_ai_sampled_by_human_platform_ratio(self):
+        # 사람은 전부 앱이다. AI는 앱 페르소나가 A, 웹 페르소나가 W를 말한다.
+        # 사람 비율대로 뽑으면 웹 페르소나는 안 뽑혀서 AI 통과율이 늘 1이다
+        h = human_rows("F1", {f"P{i}": ["A"] for i in range(6)})
+        a = (ai_rows("F1", {f"a{i}": ["A"] for i in range(4)})
+             + ai_rows("F1", {f"w{i}": ["W"] for i in range(4)}, platform="web"))
+        c = find(sr.score(h, a, rules())["cells"], feature_id="F1", condition=2)
+        self.assertEqual(set(c["draws"]["ai_precision"]), {1.0})
+        self.assertEqual(c["ai_platform_short"], 0)
+        cell_ = {"persona_eps": {("app", "p1"): {"e1"}, ("web", "p2"): {"e2"}},
+                 "ep_codes": {"e1": {"A"}, "e2": {"W"}}}
+        rng = random.Random(3)
+        self.assertEqual({frozenset(sr.sample_ai(cell_, {"web": 1}, rng)) for _ in range(20)}, {frozenset("W")})
+
+    def test_ai_platform_short_is_counted(self):
+        # 사람 A 3명이 다 앱인데 AI 앱 페르소나가 1명뿐이면 모자란 뽑기로 센다
+        h = human_rows("F1", {f"P{i}": ["A"] for i in range(6)})
+        a = ai_rows("F1", {"a1": ["A"]}) + ai_rows("F1", {f"w{i}": ["W"] for i in range(5)}, platform="web")
+        res = sr.score(h, a, rules())
+        c = find(res["cells"], feature_id="F1", condition=2)
+        self.assertEqual(c["ai_platform_short"], rules()["resamples"])
+        self.assertEqual(res["summary"]["ai_platform_short_cells"], 1)
+
+    def test_nocommon_metrics(self):
+        # 공통 코드(C1)를 빼고도 잰다. 판정에는 안 쓴다
+        h = human_rows("F1", {"P1": ["C1", "F1A"], "P2": ["C1"], "P3": ["F1B"]})
+        a = ai_rows("F1", {"e1": ["C1", "F1A"], "e2": ["X"]})
+        book = {"C1": "common", "F1A": "feature", "F1B": "feature"}
+        c = find(sr.score(h, a, rules(), book)["cells"], feature_id="F1", condition=2)
+        self.assertAlmostEqual(c["full"]["precision"], 2 / 3)
+        self.assertAlmostEqual(c["full"]["recall"], 2 / 3)
+        self.assertEqual((c["nocommon"]["precision"], c["nocommon"]["recall"]), (0.5, 0.5))
+        self.assertEqual((c["nocommon"]["ai_codes"], c["nocommon"]["human_codes"]), (2, 2))
+        self.assertEqual({r["code"]: r["common"] for r in c["reasons"]}, {"C1": True, "F1A": False, "X": False})
+        plain = find(sr.score(h, a, rules())["cells"], feature_id="F1", condition=2)
+        self.assertIsNone(plain["nocommon"])
 
     def test_pooled_cell_keys(self):
         h = human_rows("F1", {"P1": ["A"]}, service="s1") + human_rows("F1", {"P2": ["B"]}, service="s2")
@@ -270,7 +326,12 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(len(record["inputs"]["human"]["sha256"]), 64)
         with next(out.glob("cells_all_*.csv")).open(encoding="utf-8-sig") as f:
             rows = list(csv.DictReader(f))
-        self.assertEqual(len(rows), 4)  # 조건 2개 x 칸 2개
+        self.assertEqual(len([r for r in rows if r["scope"] == "main"]), 4)  # 조건 2개 x 칸 2개
+        # 플랫폼별 참고 칸: F1은 앱 5명이라 하한(5명)을 넘고, F2는 2명이라 빠진다
+        ref = [r for r in rows if r["scope"] == "platform_ref"]
+        self.assertEqual(sorted((r["condition"], r["feature_id"], r["platform"]) for r in ref),
+                         [("0", "F1", "app"), ("2", "F1", "app")])
+        self.assertEqual({r["platform"] for r in rows if r["scope"] == "main"}, {"*"})
         with next(out.glob("reasons_all_*.csv")).open(encoding="utf-8-sig") as f:
             reasons = list(csv.DictReader(f))
         x = [r for r in reasons if r["condition"] == "2" and r["feature_id"] == "F1" and r["code"] == "X"][0]
@@ -341,6 +402,46 @@ class TestCLI(unittest.TestCase):
         self.assertIn("tolerance", log)
         for d in ("out_g1", "out_g2", "out_g3", "out_g4"):
             self.assertFalse((TMP / d).exists())
+
+    def test_codebook_cli(self):
+        (TMP / "book.csv").write_text("code,scope\nA,공통\nB,feature\nC,기능\nD,feature\nE,feature\n",
+                                      encoding="utf-8")
+        code, log = run("--human", self.h, "--ai", self.a, "--rules", "rules.json", "--out", "out_book",
+                        "--codebook", "book.csv", "--allow-draft")
+        self.assertEqual(code, 0, log)
+        self.assertIn("공통 코드 뺀", log)
+        self.assertIn("코드북에 없는 AI 코드 1개", log)  # X
+        out = TMP / "out_book"
+        record = json.loads(next(out.glob("metrics_all_*.json")).read_text(encoding="utf-8"))
+        self.assertEqual(record["codebook"], {"codes": 5, "common": 1, "ai_codes_not_in_codebook": 1})
+        self.assertIn("codebook", record["inputs"])
+        with next(out.glob("cells_all_*.csv")).open(encoding="utf-8-sig") as f:
+            f1 = [r for r in csv.DictReader(f) if r["scope"] == "main" and r["condition"] == "2"
+                  and r["feature_id"] == "F1"][0]
+        # AI {A,B,X}에서 공통 A를 빼면 {B,X}, 사람 {A,B,C,D}에서 빼면 {B,C,D}
+        self.assertEqual((f1["precision_nocommon"], f1["recall_nocommon"]), ("0.5", "0.3333"))
+        with next(out.glob("reasons_all_*.csv")).open(encoding="utf-8-sig") as f:
+            flags = {r["code"]: r["common"] for r in csv.DictReader(f)
+                     if r["scope"] == "main" and r["condition"] == "2" and r["feature_id"] == "F1"}
+        self.assertEqual(flags["A"], "Y")
+        self.assertEqual(flags["B"], "N")
+        # 사람 코드가 코드북에 없거나, scope가 이상하거나, 코드가 두 번 나오면 멈춘다
+        (TMP / "book_missing.csv").write_text("code,scope\nA,common\n", encoding="utf-8")
+        (TMP / "book_scope.csv").write_text("code,scope\nA,maybe\n", encoding="utf-8")
+        (TMP / "book_dup.csv").write_text("code,scope\nA,common\na,feature\n", encoding="utf-8")
+        for name in ("book_missing.csv", "book_scope.csv", "book_dup.csv", "nothing.csv"):
+            with self.subTest(book=name):
+                code, log = run("--human", self.h, "--ai", self.a, "--rules", "rules.json", "--out", "out_bad_book",
+                                "--codebook", name, "--allow-draft")
+                self.assertEqual(code, 1 if name == "nothing.csv" else 4, log)
+        self.assertFalse((TMP / "out_bad_book").exists())
+
+    def test_respondent_with_two_platforms_stops(self):
+        rows = human_rows("F1", {"P1": ["A"]}) + human_rows("F2", {"P1": ["B"]}, platform="web")
+        bad = write("human_two_plat.csv", HUMAN_HEAD, rows)
+        code, log = run("--human", bad, "--ai", self.a, "--rules", "rules.json", "--out", "out_tp", "--allow-draft")
+        self.assertEqual(code, 4, log)
+        self.assertIn("platform", log)
 
     def test_draft_rules_file_loads(self):
         r = sr.load_rules(REPO / "configs/rules.draft.json")
