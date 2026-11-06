@@ -431,6 +431,18 @@ def check_tinytroupe_settings(config_manager, provider: str):
     return model, int(mct)
 
 
+def simtrust_commit(root: Path = ROOT) -> str:
+    """실행 기록용. 이 리포의 커밋. 추적 중인 파일이 커밋과 다르면 뒤에 +dirty를 붙인다 (FR-10 재현)."""
+    try:
+        head = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True,
+                              timeout=15).stdout.strip()
+        dirty = subprocess.run(["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"],
+                               capture_output=True, text=True, timeout=15).stdout.strip()
+        return (head + ("+dirty" if dirty else "")) if head else "unknown"
+    except Exception:
+        return "unknown"
+
+
 def tinytroupe_commit() -> str:
     """실행 기록용. 이 PC는 TinyTroupe/, 팀 README는 external/TinyTroupe 라서 import 위치에서 찾는다."""
     import tinytroupe
@@ -672,6 +684,40 @@ def build_agent(condition: int, unit: dict, neutral_name: str):
     return TinyPerson.load_specification(json.loads(json.dumps(unit["spec"])))
 
 
+# TinyTroupe는 페르소나와 메시지를 json.dumps 기본값(ensure_ascii=True)으로 글로 바꿔 모델에 보낸다
+# (agent/tiny_person.py:319·322, agent/action_generator.py:125·498). 그러면 한글 한 글자가 \uXXXX 여섯 글자로 가고,
+# 페르소나는 두 번 감싸져 일곱 글자가 된다. gpt-5 계열 토크나이저로 입력이 거의 두 배였다 (runner_dev README).
+# 11/6 팀 결정으로 고친다. TinyTroupe 파일은 그대로 두고 그 모듈들이 쓰는 json 이름만 바꿔 끼운다.
+# TinyTroupe를 직접 고치면 팀원마다 따로 깐 TinyTroupe에는 반영되지 않기 때문이다.
+JSON_PATCH_MODULES = ("tinytroupe.agent.tiny_person", "tinytroupe.agent.action_generator", "tinytroupe.utils.llm")
+_JSON_PATCHED = False
+
+
+def _dumps_keep_unicode(obj, *args, **kwargs):
+    kwargs.setdefault("ensure_ascii", False)
+    return json.dumps(obj, *args, **kwargs)
+
+
+def patch_tinytroupe_json():
+    """한 프로세스에서 한 번만 바꿔 끼운다. 표준 json 모듈 자체는 건드리지 않는다."""
+    global _JSON_PATCHED
+    if _JSON_PATCHED:
+        return
+    import importlib
+    import types
+
+    shim = types.ModuleType("json_keep_unicode")
+    shim.__dict__.update({k: v for k, v in vars(json).items() if not k.startswith("__")})
+    shim.dumps = _dumps_keep_unicode
+    for name in JSON_PATCH_MODULES:
+        module = importlib.import_module(name)
+        if getattr(module, "json", None) is not json:
+            # TinyTroupe 버전이 바뀌어 json을 다르게 부르면 조용히 넘어가지 않고 멈춘다
+            raise Stop(EXIT_SETTINGS, f"{name} 에서 json 모듈을 찾지 못했다. TinyTroupe 버전을 확인해라")
+        module.json = shim
+    _JSON_PATCHED = True
+
+
 def _no_image_description(self, image_refs, user_context=None):
     # TinyPerson._describe_images 대신 쓴다. 영어 요약 호출을 하지 않는다 (프로토콜 3번)
     return ""
@@ -717,7 +763,8 @@ def fill(template: str, **values) -> str:
 
 
 # 실행 중에 다음 질문을 건너뛸지 정할 때만 쓴다. 원문은 그대로 남기고, 정식 정리는 추출 단계(IF-06)가 한다
-_NOUSE = re.compile(r"안\s*쓸|쓰지\s*않|안\s*쓰|사용하지\s*않|안\s*사용")
+# "쓸 것 같지 않다", "별로 쓸 것 같진 않아요"처럼 _USE 꼴을 품은 부정형은 앞에 둬서 먼저 지운다
+_NOUSE = re.compile(r"(쓸|사용할)\s*것\s*같(지|진)\s*(는\s*)?않|않을\s*것\s*같|안\s*쓸|쓰지\s*않|안\s*쓰|사용하지\s*않|안\s*사용")
 _USE = re.compile(r"쓸\s*것\s*같|쓸\s*거\s*같|사용할\s*것\s*같")
 
 
@@ -852,6 +899,7 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
         "base_url": ctx["base_url"] or None,
         "model": ctx["model"],
         "tinytroupe_commit": ctx["tinytroupe_commit"],
+        "simtrust_commit": ctx["simtrust_commit"],
         "service": ctx["service"],
         "platform": ctx["platform"],
         "condition": ctx["condition"],
@@ -881,6 +929,8 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
         "max_actions_before_done": ctx["cfg"]["max_actions_before_done"],
         "max_image_stimuli_to_recall": ctx["cfg"]["max_image_stimuli_to_recall"],
         "auto_image_description": ctx["cfg"]["auto_image_description"],
+        # 한글을 그대로 보냈는지 (patch_tinytroupe_json). 11/6 전 기록에는 이 칸이 없다
+        "json_ensure_ascii": False,
         "neutral_agent_name": ctx["cfg"]["neutral_agent_name"] if ctx["condition"] in (0, 1) else None,
         "config_file": ctx["config_file"],
         "snapshot_file": ctx["snapshot_file"],
@@ -909,6 +959,9 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
             "protocol_version": ctx["cfg"]["protocol_version"],
             "snapshot_version": ctx["snapshot_version"],
             "input_mode": ctx["input_mode"],
+            # 모델이 다른 실행이 한 칸에 섞이지 않게 원시 응답에도 남긴다 (#35 여러 모델 비교)
+            "provider": ctx["provider"],
+            "model": ctx["model"],
             "question_order": ctx["cfg"]["question_order"],
             "status": "성공",
             "features": [{"feature_id": fid, "name": name} for fid, name in ctx["all_features"]],
@@ -1068,6 +1121,7 @@ def run(args, root: Path) -> int:
         relocate_tinytroupe_log(root / cfg["tinytroupe_log_dir"], f"tinytroupe.{batch_id}.log")
 
     install_guards()
+    patch_tinytroupe_json()
     # 기본값 15를 그대로 쓴다. 3으로 낮추면 [THINK, THINK, TALK, DONE]이 [THINK, THINK, DONE]이 돼서 답이 사라진다.
     # (TRD FR-03-07의 "호출 3회"는 TRD v0.3에서 고친다)
     TinyPerson.MAX_ACTIONS_BEFORE_DONE = cfg["max_actions_before_done"]
@@ -1099,6 +1153,7 @@ def run(args, root: Path) -> int:
         "model_tag": re.sub(r"[^A-Za-z0-9.-]+", "_", model),
         "max_completion_tokens": max_completion_tokens,
         "tinytroupe_commit": tinytroupe_commit(),
+        "simtrust_commit": simtrust_commit(root),
         "input_mode": cfg["input_mode"],
         "images_dir": images_dir,
         "snapshot_version": snap["snapshot_version"],

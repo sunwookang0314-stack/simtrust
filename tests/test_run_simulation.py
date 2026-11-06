@@ -22,7 +22,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
-PROTOCOL = REPO / "experiments/runner_dev/protocol"
+PROTOCOL = REPO / "docs/ai-protocol"
 
 # 임시 폴더에 리포 모양을 만든다: config.ini, 가짜 스냅샷(앱·웹), 가짜 화면, 프로토콜 파일, 임시 페르소나 2명
 TMP = Path(tempfile.mkdtemp(prefix="simtrust_runner_test_"))
@@ -55,8 +55,8 @@ FEATURES = [line.split("|", 1)[1] for line in (PROTOCOL / "features.txt").read_t
 
 
 def decode(text):
-    # TinyTroupe는 페르소나와 메시지를 json.dumps 기본값으로 넣어서 한글이 \uXXXX로 나간다
-    # (agent/tiny_person.py:319, agent/action_generator.py:125). 비교하려고 되돌린다.
+    # TinyTroupe 기본 동작은 한글을 이스케이프해서 보낸다 (agent/tiny_person.py:319, agent/action_generator.py:125).
+    # 11/6부터 실행기가 고쳐서 그대로 가지만, 이스케이프가 남아도 문구 비교가 되게 되돌린다.
     text = re.sub(r"\\+u([0-9a-fA-F]{4})", lambda m: chr(int(m.group(1), 16)), text)
     return text.replace("\\n", "\n").replace('\\"', '"')
 
@@ -273,7 +273,7 @@ class TestRunSimulation(unittest.TestCase):
         metas = read_metas("meta")
         self.assertEqual(len(metas), 1)
         meta = metas[0]
-        for key in ["run_id", "timestamp", "provider", "base_url", "model", "tinytroupe_commit", "service",
+        for key in ["run_id", "timestamp", "provider", "base_url", "model", "tinytroupe_commit", "simtrust_commit", "service",
                     "platform", "condition", "persona_id", "repeat", "seed", "input_mode", "cache_file",
                     "max_completion_tokens", "tokens_in", "tokens_out", "elapsed_sec", "status",
                     "protocol_version", "snapshot_version", "action_truncations"]:
@@ -283,6 +283,24 @@ class TestRunSimulation(unittest.TestCase):
         self.assertEqual(meta["images_per_request"], [0, 0, 0, 0])  # 텍스트 모드
         self.assertEqual(meta["max_actions_before_done"], 15)
         self.assertNotIn("test-not-a-real-key", json.dumps(meta, ensure_ascii=False))
+
+    def test_korean_is_sent_without_escapes(self):
+        # 11/6 결정: 한글을 \\uXXXX로 바꾸지 않고 그대로 보낸다 (patch_tinytroupe_json)
+        cfg = write_cfg("unicode")
+        code, log = run(*args(cfg))
+        self.assertEqual(code, 0, log)
+        hangul_escape = re.compile(r"\\+u(?:a[c-f]|b[0-9a-f]|c[0-9a-f]|d[0-7])[0-9a-f]{2}", re.I)
+        for i, prompt in enumerate(FAKE.prompts):
+            self.assertIsNone(hangul_escape.search(prompt), f"요청 {i + 1}에 한글 이스케이프가 남았다")
+        persona = json.loads(PERSONA_SRC[0].read_text(encoding="utf-8"))
+        occupation = persona.get("persona", persona).get("occupation")
+        if isinstance(occupation, dict):
+            occupation = occupation.get("title")
+        self.assertTrue(occupation)
+        self.assertIn(occupation, FAKE.prompts[0])
+        self.assertIs(read_metas("unicode")[0]["json_ensure_ascii"], False)
+        # 표준 json 모듈은 그대로다 (다른 코드가 쓰는 동작은 안 바뀐다)
+        self.assertEqual(json.dumps("한"), '"\\ud55c"')
 
     def test_question_texts_are_sent_as_written(self):
         cfg = write_cfg("texts")

@@ -127,6 +127,7 @@ def run(args, root: Path) -> int:
 
     model, _ = rs.check_tinytroupe_settings(config_manager, provider)
     rs.install_guards()
+    rs.patch_tinytroupe_json()
     rs._STATE = rs.RunState(args.token_cap, 2)
 
     # 프로토콜 3번 설정
@@ -205,7 +206,7 @@ def run(args, root: Path) -> int:
         "model": model,
         "tinytroupe_commit": rs.tinytroupe_commit(),
         "settings": {"auto_description": "off", "max_image_stimuli_to_recall": args.recall,
-                     "see_bundled": True, "question": QUESTION},
+                     "see_bundled": True, "json_ensure_ascii": False, "question": QUESTION},
         "snapshot_file": rs._rel(snap_path, root),
         "snapshot_version": snap["snapshot_version"],
         "images": [rs._rel(Path(p), root) for p in image_paths],

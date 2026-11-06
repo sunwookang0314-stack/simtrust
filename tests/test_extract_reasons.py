@@ -20,7 +20,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 import extract_reasons as er  # noqa: E402
 
 TMP = Path(tempfile.mkdtemp(prefix="simtrust_extract_test_"))
-shutil.copytree(REPO / "experiments/runner_dev/protocol", TMP / "protocol")
+shutil.copytree(REPO / "docs/ai-protocol", TMP / "protocol")
 FEATURES = [{"feature_id": f"F{i}", "name": n} for i, n in
             enumerate(["공고 검색·필터", "공고 저장 (스크랩, 찜, 북마크)", "마감 알림", "추천 공고 목록 (인기 공고, 맞춤 추천)"], 1)]
 
@@ -124,10 +124,138 @@ class TestExtractReasons(unittest.TestCase):
         self.assertEqual(by["F1"]["use_choice"], "use")  # TALK이 비어도 think_talk이면 THINK에서 읽는다
         self.assertEqual(summary["skipped_features"], 1)
 
+        # talk만 봐도 쓸/안 쓸 판별은 실행기처럼 TALK이 비면 THINK을 쓴다. 안 그러면 실행기와 판별이 갈린다
         code, log = run("--raw", write_raw("miss", [line]), "--options", "protocol/options_4-6.txt",
                         "--out", "out_miss_talk")
         records, _, _ = outputs("miss_talk")
-        self.assertEqual({r["feature_id"]: r.get("use_choice") for r in records}["F1"], "unknown")
+        self.assertEqual({r["feature_id"]: r.get("use_choice") for r in records}["F1"], "use")
+
+    def test_intro_lines_and_q47_status(self):
+        # 11/5 gemini-3.6-flash 실제 답 모양: 머리말 줄 + "- 기능: ..." 목록, 4-7 앞에 "한 번도 안 써봤습니다."
+        line = episode(run_id="real", answers=[
+            answer("Q-AI-USE", "요청해주신 4가지 기능에 대한 의견입니다.\n\n- 공고 검색·필터: 쓸 것 같다\n"
+                               "- 공고 저장 (스크랩, 찜, 북마크): 안 쓸 것 같다\n- 마감 알림: 쓸 것 같다\n"
+                               "- 추천 공고 목록 (인기 공고, 맞춤 추천): 안 쓸 것 같다"),
+            answer("Q-AI-WHY-USE", "'쓸 것 같다'고 선택한 기능별 상세 답변입니다.\n\n"
+                                   "- 공고 검색·필터: 조건으로 좁히려고 쓰며, 시간이 줄어 편할 것 같습니다.\n"
+                                   "- 마감 알림: 마감일을 놓치지 않으려고 쓸 것 같습니다.\n"
+                                   "더 궁금한 점은 없습니다."),
+            answer("Q-AI-NOUSE", "'안 쓸 것 같다'고 선택한 기능의 이유입니다.\n\n"
+                                 "- 공고 저장 (스크랩, 찜, 북마크): 나한테 필요 없을 것 같아서\n"
+                                 "- 추천 공고 목록 (인기 공고, 맞춤 추천): 나한테 필요 없을 것 같아서"),
+            answer("Q-4-7", "공고 저장 (스크랩, 찜, 북마크): 한 번도 안 써봤습니다. 엑셀에 직접 적어 둡니다.\n"
+                            "추천 공고 목록 (인기 공고, 맞춤 추천): 써본 적은 없습니다.\n"
+                            "공고 검색·필터: 안 써봤고 검색창에 직접 칩니다"),
+        ])
+        code, log = run("--raw", write_raw("real", [line]), "--options", "protocol/options_4-6.txt",
+                        "--out", "out_real")
+        self.assertEqual(code, 0, log)
+        records, rows, summary = outputs("real")
+        by = {r["feature_id"]: r for r in records}
+        self.assertEqual({k: v["use_choice"] for k, v in by.items()},
+                         {"F1": "use", "F2": "nouse", "F3": "use", "F4": "nouse"})
+        # 머리말 줄은 검토 목록에 안 가고 intro로만 남는다. 기능 줄 뒤에 온 말은 지금처럼 검토로 간다
+        reviews = [(r["kind"], r["text"]) for r in rows if r["kind"].startswith("review:")]
+        self.assertEqual(reviews, [("review:Q-AI-WHY-USE", "더 궁금한 점은 없습니다.")])
+        intros = [r["kind"] for r in rows if r["kind"].startswith("intro:")]
+        self.assertEqual(intros, ["intro:Q-AI-WHY-USE", "intro:Q-AI-NOUSE"])
+        self.assertEqual(summary["intro_lines"], 2)
+        # 써 봤는지만 말한 문장은 이유에서 빠지고 q47_status로 간다. 이유가 같이 있는 문장은 그대로 둔다
+        self.assertEqual(by["F2"]["q47_details"], ["엑셀에 직접 적어 둡니다."])
+        self.assertEqual(by["F2"]["q47_status"], ["한 번도 안 써봤습니다."])
+        self.assertEqual(by["F2"]["reason_counts"]["q47"], 1)
+        self.assertEqual((by["F4"]["q47_details"], by["F4"]["q47_status"]), ([], ["써본 적은 없습니다."]))
+        self.assertEqual(by["F1"]["q47_details"], ["안 써봤고 검색창에 직접 칩니다"])
+        self.assertEqual(summary["q47_status_lines"], 2)
+        self.assertIn("q47_status", {r["kind"] for r in rows})
+
+    def test_markdown_shapes(self):
+        # 모델마다 목록 모양이 다르다: 굵게, 번호, 기능 이름만 있는 머리 줄 + 하위 목록, 괄호 앞 공백 없음
+        line = episode(run_id="md", answers=[
+            answer("Q-AI-USE", "1. **공고 검색·필터**: 쓸 것 같다\n2. **공고 저장**: 쓸 것 같다\n"
+                               "3. **마감 알림**: 쓸 것 같지 않다\n4. **추천 공고 목록**: 안 쓸 것 같다"),
+            answer("Q-AI-WHY-USE", "1. **공고 검색·필터**: 조건으로 좁히려고 씁니다.\n"
+                                   "2. **공고 저장(스크랩, 찜, 북마크)**: 모아 두려고 쓰고, 마감 알림과 같이 보면 편합니다."),
+            answer("Q-AI-NOUSE", "- **마감 알림**\n  - 나한테 필요 없을 것 같아서\n"
+                                 "- **추천 공고 목록 (인기 공고, 맞춤 추천)**\n  - 광고 같아서\n  - 다른 앱이나 방법으로 해결해서"),
+            answer("Q-4-7", "마감 알림: 캘린더에 직접 적습니다.\n추천 공고 목록: 한 번도 안 써봤습니다."),
+        ])
+        line["use_parsed_at_runtime"] = {"F1": "use", "F2": "use", "F3": "use", "F4": "nouse"}
+        code, log = run("--raw", write_raw("md", [line]), "--options", "protocol/options_4-6.txt", "--out", "out_md")
+        self.assertEqual(code, 0, log)
+        records, rows, _ = outputs("md")
+        by = {r["feature_id"]: r for r in records}
+        self.assertEqual(by["F3"]["use_choice"], "nouse")  # "쓸 것 같지 않다"
+        self.assertEqual(by["F1"]["use_reasons"], ["조건으로 좁히려고 씁니다."])
+        # 뒤에 다른 기능 이름이 나와도 앞 기능 줄이다. 괄호는 이유에 안 남는다
+        self.assertEqual(by["F2"]["use_reasons"], ["모아 두려고 쓰고, 마감 알림과 같이 보면 편합니다."])
+        # 기능 이름만 있는 머리 줄 아래 하위 목록은 그 기능의 이유다. 머리 줄은 이유가 아니다
+        self.assertEqual(by["F3"]["nouse_lines"], ["나한테 필요 없을 것 같아서"])
+        self.assertEqual(by["F4"]["nouse_lines"], ["광고 같아서", "다른 앱이나 방법으로 해결해서"])
+        reviews = [(r["kind"], r["needs_review"]) for r in rows if r["kind"].startswith("review:")]
+        # 실행 중 판별(F3 use)과 다르면 검토로 보낸다. 그때는 꼬리 질문을 잘못 골랐을 수 있다
+        self.assertEqual(reviews, [("review:Q-AI-USE", "실행 중 쓸/안 쓸 판별과 다름")])
+
+    def test_sole_target_attach(self):
+        # 안 쓸 기능이 하나뿐이면 기능 이름 없는 문단도 그 기능의 이유로 붙인다 (11/5 이미지 실행에서 빠졌던 줄)
+        line = episode(run_id="sole", answers=[
+            answer("Q-AI-USE", "공고 검색·필터: 쓸 것 같다\n공고 저장: 쓸 것 같다\n마감 알림: 쓸 것 같다\n"
+                               "추천 공고 목록: 안 쓸 것 같다"),
+            answer("Q-AI-NOUSE", "- 추천 공고 목록: 나한테 필요 없을 것 같아서\n\n"
+                                 "저는 자동 추천보다 직접 찾는 편이라 필요하지 않을 것 같습니다."),
+            answer("Q-4-7", "없음"),
+        ])
+        code, log = run("--raw", write_raw("sole", [line]), "--options", "protocol/options_4-6.txt",
+                        "--out", "out_sole")
+        self.assertEqual(code, 0, log)
+        records, rows, summary = outputs("sole")
+        f4 = {r["feature_id"]: r for r in records}["F4"]
+        self.assertEqual(f4["nouse_lines"], ["나한테 필요 없을 것 같아서",
+                                             "저는 자동 추천보다 직접 찾는 편이라 필요하지 않을 것 같습니다."])
+        self.assertEqual(summary["attached_lines"], 1)
+        self.assertIn("attached:Q-AI-NOUSE", {r["kind"] for r in rows})
+        self.assertFalse([r for r in rows if r["kind"].startswith("review:")])
+
+    def test_intro_ending_deurimnida(self):
+        # 11/6 gemini-3.6-flash 실제 답 모양: "말씀드립니다."로 끝나는 머리말이 안 쓸 기능 하나에 붙어 버렸다
+        line = episode(run_id="deurim", answers=[
+            answer("Q-AI-USE", "공고 검색·필터: 쓸 것 같다\n공고 저장: 쓸 것 같다\n마감 알림: 쓸 것 같다\n"
+                               "추천 공고 목록: 안 쓸 것 같다"),
+            answer("Q-AI-NOUSE", "'안 쓸 것 같다'고 선택한 기능과 그 이유를 말씀드립니다.\n\n"
+                                 "- 추천 공고 목록 (인기 공고, 맞춤 추천)\n"
+                                 "  - 이유: 나한테 필요 없을 것 같아서\n"
+                                 "  - 구체적 설명: 직접 검색 필터로 찾기 때문입니다."),
+            answer("Q-4-7", "없음"),
+        ])
+        code, log = run("--raw", write_raw("deurim", [line]), "--options", "protocol/options_4-6.txt",
+                        "--out", "out_deurim")
+        self.assertEqual(code, 0, log)
+        records, rows, summary = outputs("deurim")
+        f4 = {r["feature_id"]: r for r in records}["F4"]
+        self.assertEqual(f4["nouse_lines"], ["이유: 나한테 필요 없을 것 같아서", "구체적 설명: 직접 검색 필터로 찾기 때문입니다."])
+        self.assertEqual(f4["nouse_options"], ["나한테 필요 없을 것 같아서"])
+        self.assertEqual(summary["attached_lines"], 0)
+        self.assertIn("intro:Q-AI-NOUSE", {r["kind"] for r in rows})
+
+    def test_use_negation(self):
+        feats = [("F1", "공고 검색·필터"), ("F4", "추천 공고 목록 (인기 공고, 맞춤 추천)")]
+        cases = {"공고 검색·필터: 쓸 것 같다\n추천 공고 목록: 쓸 것 같지 않다": {"F1": "use", "F4": "nouse"},
+                 "공고 검색·필터: 별로 쓸 것 같진 않아요\n추천 공고 목록: 안 쓸 것 같다": {"F1": "nouse", "F4": "nouse"},
+                 "공고 검색·필터: 사용할 것 같지 않습니다\n추천 공고 목록: 쓰지 않을 것 같다": {"F1": "nouse", "F4": "nouse"},
+                 "공고 검색·필터: 사용할 것 같다\n추천 공고 목록: 쓸 것 같습니다": {"F1": "use", "F4": "use"}}
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(er.rs.parse_use_answers(text, feats), expected)
+
+    def test_status_pattern(self):
+        status = ["한 번도 안 써봤습니다.", "써본 적은 없습니다.", "써 본 적 없음", "아직 한 번도 써본 적이 없어요",
+                  "사용해 본 적이 없습니다.", "써보지 않았습니다"]
+        reasons = ["안 써봤고 검색으로 찾습니다", "써본 적은 없지만 광고 같아서 손이 안 갑니다.",
+                   "한 번 써봤는데 알림이 너무 많았습니다.", "엑셀에 직접 적어 둡니다."]
+        for s in status:
+            self.assertTrue(er.STATUS.match(s), s)
+        for s in reasons:
+            self.assertFalse(er.STATUS.match(s), s)
 
     def test_input_errors(self):
         stage1 = {"run_id": "old", "service": "fake", "steps": []}
