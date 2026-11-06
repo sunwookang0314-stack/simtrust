@@ -260,7 +260,7 @@ def csv_rows(records: list, reviews: list, notes: list = ()) -> list:
 def main(argv=None, root: Path = ROOT) -> int:
     ap = argparse.ArgumentParser(description="AI 응답 추출기 뼈대 (TRD IF-06)")
     ap.add_argument("--raw", required=True, help="원시 응답 JSONL")
-    ap.add_argument("--options", default="experiments/runner_dev/protocol/options_4-6.txt",
+    ap.add_argument("--options", default="docs/ai-protocol/options_4-6.txt",
                     help="4-6 보기 파일 (실행에 쓴 프로토콜과 같은 파일)")
     ap.add_argument("--out", required=True, help="출력 폴더")
     ap.add_argument("--source", default=DEFAULT_SOURCE, choices=SOURCES)
