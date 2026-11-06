@@ -24,7 +24,7 @@ import score_reasons as sr  # noqa: E402
 from test_extract_reasons import FEATURES, answer, episode  # noqa: E402
 
 TMP = Path(tempfile.mkdtemp(prefix="simtrust_sheet_test_"))
-shutil.copytree(REPO / "experiments/runner_dev/protocol", TMP / "protocol")
+shutil.copytree(REPO / "docs/ai-protocol", TMP / "protocol")
 
 
 def ep(run_id, condition, use, why, nouse, q47):
