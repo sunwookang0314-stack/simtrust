@@ -20,7 +20,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 import extract_reasons as er  # noqa: E402
 
 TMP = Path(tempfile.mkdtemp(prefix="simtrust_extract_test_"))
-shutil.copytree(REPO / "experiments/runner_dev/protocol", TMP / "protocol")
+shutil.copytree(REPO / "docs/ai-protocol", TMP / "protocol")
 FEATURES = [{"feature_id": f"F{i}", "name": n} for i, n in
             enumerate(["공고 검색·필터", "공고 저장 (스크랩, 찜, 북마크)", "마감 알림", "추천 공고 목록 (인기 공고, 맞춤 추천)"], 1)]
 
