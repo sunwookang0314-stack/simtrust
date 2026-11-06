@@ -1,0 +1,293 @@
+﻿scope,condition,service,platform,feature_id,kind,type,code,name,common,ai_episodes_with_code,ai_episodes,human_count,n_humans,passed,basis
+main,0,campuspick,*,F1,nouse,ai_reason,C1,필요 없을 것 같음,Y,12,20,5,18,Y,응답자 18명 중 5명이 같은 이유를 말함
+main,0,campuspick,*,F1,nouse,ai_reason,C2,다른 앱이나 방법으로 해결,Y,10,20,5,18,Y,응답자 18명 중 5명이 같은 이유를 말함
+main,0,campuspick,*,F1,nouse,ai_reason,C3,쓰기 번거로워 보임,Y,2,20,2,18,Y,응답자 18명 중 2명이 같은 이유를 말함
+main,0,campuspick,*,F1,nouse,ai_reason,C4,써볼 생각을 안 해봄,Y,3,20,0,18,N,응답자 중 이 이유를 말한 사람 없음
+main,0,campuspick,*,F1,nouse,missed,F1-1,공고 검색·필터 고유 이유 1 (가짜),N,0,20,5,18,,응답자 18명 중 5명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F1,nouse,missed,F1-2,공고 검색·필터 고유 이유 2 (가짜),N,0,20,3,18,,응답자 18명 중 3명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F1,nouse,missed,F1-3,공고 검색·필터 고유 이유 3 (가짜),N,0,20,2,18,,응답자 18명 중 2명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F1,nouse,missed,F1-4,공고 검색·필터 고유 이유 4 (가짜),N,0,20,1,18,,응답자 18명 중 1명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F1,nouse_quit,ai_reason,C1,필요 없을 것 같음,Y,12,20,3,4,Y,응답자 4명 중 3명이 같은 이유를 말함
+main,0,campuspick,*,F1,nouse_quit,ai_reason,C2,다른 앱이나 방법으로 해결,Y,10,20,1,4,Y,응답자 4명 중 1명이 같은 이유를 말함
+main,0,campuspick,*,F1,nouse_quit,ai_reason,C3,쓰기 번거로워 보임,Y,2,20,0,4,N,응답자 중 이 이유를 말한 사람 없음
+main,0,campuspick,*,F1,nouse_quit,ai_reason,C4,써볼 생각을 안 해봄,Y,3,20,0,4,N,응답자 중 이 이유를 말한 사람 없음
+main,0,campuspick,*,F1,nouse_quit,missed,F1-2,공고 검색·필터 고유 이유 2 (가짜),N,0,20,1,4,,응답자 4명 중 1명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F1,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,14,20,6,15,Y,응답자 15명 중 6명이 같은 이유를 말함
+main,0,campuspick,*,F1,use,ai_reason,UC2,마감을 안 놓침,Y,14,20,4,15,Y,응답자 15명 중 4명이 같은 이유를 말함
+main,0,campuspick,*,F1,use,missed,F1-U1,공고 검색·필터 쓰는 이유 1 (가짜),N,0,20,9,15,,응답자 15명 중 9명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F1,use,missed,F1-U2,공고 검색·필터 쓰는 이유 2 (가짜),N,0,20,4,15,,응답자 15명 중 4명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F2,nouse,ai_reason,C1,필요 없을 것 같음,Y,7,20,3,11,Y,응답자 11명 중 3명이 같은 이유를 말함
+main,0,campuspick,*,F2,nouse,ai_reason,C2,다른 앱이나 방법으로 해결,Y,3,20,4,11,Y,응답자 11명 중 4명이 같은 이유를 말함
+main,0,campuspick,*,F2,nouse,ai_reason,C3,쓰기 번거로워 보임,Y,2,20,1,11,Y,응답자 11명 중 1명이 같은 이유를 말함
+main,0,campuspick,*,F2,nouse,ai_reason,C4,써볼 생각을 안 해봄,Y,15,20,3,11,Y,응답자 11명 중 3명이 같은 이유를 말함
+main,0,campuspick,*,F2,nouse,missed,F2-1,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 1 (가짜)",N,0,20,1,11,,응답자 11명 중 1명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F2,nouse,missed,F2-2,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 2 (가짜)",N,0,20,2,11,,응답자 11명 중 2명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F2,nouse,missed,F2-4,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 4 (가짜)",N,0,20,1,11,,응답자 11명 중 1명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F2,nouse_quit,ai_reason,C1,필요 없을 것 같음,Y,7,20,0,7,N,응답자 중 이 이유를 말한 사람 없음
+main,0,campuspick,*,F2,nouse_quit,ai_reason,C2,다른 앱이나 방법으로 해결,Y,3,20,3,7,Y,응답자 7명 중 3명이 같은 이유를 말함
+main,0,campuspick,*,F2,nouse_quit,ai_reason,C3,쓰기 번거로워 보임,Y,2,20,0,7,N,응답자 중 이 이유를 말한 사람 없음
+main,0,campuspick,*,F2,nouse_quit,ai_reason,C4,써볼 생각을 안 해봄,Y,15,20,0,7,N,응답자 중 이 이유를 말한 사람 없음
+main,0,campuspick,*,F2,nouse_quit,missed,F2-1,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 1 (가짜)",N,0,20,1,7,,응답자 7명 중 1명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F2,nouse_quit,missed,F2-2,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 2 (가짜)",N,0,20,2,7,,응답자 7명 중 2명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F2,nouse_quit,missed,F2-3,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 3 (가짜)",N,0,20,1,7,,응답자 7명 중 1명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F2,nouse_quit,missed,F2-4,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 4 (가짜)",N,0,20,1,7,,응답자 7명 중 1명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F2,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,13,20,5,15,Y,응답자 15명 중 5명이 같은 이유를 말함
+main,0,campuspick,*,F2,use,ai_reason,UC2,마감을 안 놓침,Y,16,20,6,15,Y,응답자 15명 중 6명이 같은 이유를 말함
+main,0,campuspick,*,F2,use,missed,F2-U1,"공고 저장 (스크랩, 찜, 북마크) 쓰는 이유 1 (가짜)",N,0,20,5,15,,응답자 15명 중 5명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F2,use,missed,F2-U2,"공고 저장 (스크랩, 찜, 북마크) 쓰는 이유 2 (가짜)",N,0,20,3,15,,응답자 15명 중 3명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F3,nouse,ai_reason,C1,필요 없을 것 같음,Y,6,20,3,16,Y,응답자 16명 중 3명이 같은 이유를 말함
+main,0,campuspick,*,F3,nouse,ai_reason,C2,다른 앱이나 방법으로 해결,Y,3,20,1,16,Y,응답자 16명 중 1명이 같은 이유를 말함
+main,0,campuspick,*,F3,nouse,ai_reason,C3,쓰기 번거로워 보임,Y,10,20,3,16,Y,응답자 16명 중 3명이 같은 이유를 말함
+main,0,campuspick,*,F3,nouse,ai_reason,C4,써볼 생각을 안 해봄,Y,9,20,3,16,Y,응답자 16명 중 3명이 같은 이유를 말함
+main,0,campuspick,*,F3,nouse,missed,F3-1,마감 알림 고유 이유 1 (가짜),N,0,20,1,16,,응답자 16명 중 1명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F3,nouse,missed,F3-2,마감 알림 고유 이유 2 (가짜),N,0,20,3,16,,응답자 16명 중 3명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F3,nouse,missed,F3-3,마감 알림 고유 이유 3 (가짜),N,0,20,4,16,,응답자 16명 중 4명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F3,nouse,missed,F3-4,마감 알림 고유 이유 4 (가짜),N,0,20,2,16,,응답자 16명 중 2명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F3,nouse_quit,ai_reason,C1,필요 없을 것 같음,Y,6,20,1,4,Y,응답자 4명 중 1명이 같은 이유를 말함
+main,0,campuspick,*,F3,nouse_quit,ai_reason,C2,다른 앱이나 방법으로 해결,Y,3,20,0,4,N,응답자 중 이 이유를 말한 사람 없음
+main,0,campuspick,*,F3,nouse_quit,ai_reason,C3,쓰기 번거로워 보임,Y,10,20,1,4,Y,응답자 4명 중 1명이 같은 이유를 말함
+main,0,campuspick,*,F3,nouse_quit,ai_reason,C4,써볼 생각을 안 해봄,Y,9,20,0,4,N,응답자 중 이 이유를 말한 사람 없음
+main,0,campuspick,*,F3,nouse_quit,missed,F3-1,마감 알림 고유 이유 1 (가짜),N,0,20,2,4,,응답자 4명 중 2명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F3,nouse_quit,missed,F3-4,마감 알림 고유 이유 4 (가짜),N,0,20,1,4,,응답자 4명 중 1명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F3,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,17,20,6,17,Y,응답자 17명 중 6명이 같은 이유를 말함
+main,0,campuspick,*,F3,use,ai_reason,UC2,마감을 안 놓침,Y,16,20,4,17,Y,응답자 17명 중 4명이 같은 이유를 말함
+main,0,campuspick,*,F3,use,missed,F3-U1,마감 알림 쓰는 이유 1 (가짜),N,0,20,9,17,,응답자 17명 중 9명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F3,use,missed,F3-U2,마감 알림 쓰는 이유 2 (가짜),N,0,20,5,17,,응답자 17명 중 5명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F4,nouse,ai_reason,C1,필요 없을 것 같음,Y,1,20,2,12,Y,응답자 12명 중 2명이 같은 이유를 말함
+main,0,campuspick,*,F4,nouse,ai_reason,C2,다른 앱이나 방법으로 해결,Y,8,20,2,12,Y,응답자 12명 중 2명이 같은 이유를 말함
+main,0,campuspick,*,F4,nouse,ai_reason,C3,쓰기 번거로워 보임,Y,15,20,2,12,Y,응답자 12명 중 2명이 같은 이유를 말함
+main,0,campuspick,*,F4,nouse,ai_reason,C4,써볼 생각을 안 해봄,Y,8,20,0,12,N,응답자 중 이 이유를 말한 사람 없음
+main,0,campuspick,*,F4,nouse,missed,F4-1,"추천 공고 목록 (인기 공고, 맞춤 추천) 고유 이유 1 (가짜)",N,0,20,3,12,,응답자 12명 중 3명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F4,nouse,missed,F4-2,"추천 공고 목록 (인기 공고, 맞춤 추천) 고유 이유 2 (가짜)",N,0,20,3,12,,응답자 12명 중 3명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F4,nouse,missed,F4-3,"추천 공고 목록 (인기 공고, 맞춤 추천) 고유 이유 3 (가짜)",N,0,20,4,12,,응답자 12명 중 4명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F4,nouse_quit,ai_reason,C1,필요 없을 것 같음,Y,1,20,1,4,Y,응답자 4명 중 1명이 같은 이유를 말함
+main,0,campuspick,*,F4,nouse_quit,ai_reason,C2,다른 앱이나 방법으로 해결,Y,8,20,2,4,Y,응답자 4명 중 2명이 같은 이유를 말함
+main,0,campuspick,*,F4,nouse_quit,ai_reason,C3,쓰기 번거로워 보임,Y,15,20,0,4,N,응답자 중 이 이유를 말한 사람 없음
+main,0,campuspick,*,F4,nouse_quit,ai_reason,C4,써볼 생각을 안 해봄,Y,8,20,0,4,N,응답자 중 이 이유를 말한 사람 없음
+main,0,campuspick,*,F4,nouse_quit,missed,F4-1,"추천 공고 목록 (인기 공고, 맞춤 추천) 고유 이유 1 (가짜)",N,0,20,1,4,,응답자 4명 중 1명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F4,nouse_quit,missed,F4-2,"추천 공고 목록 (인기 공고, 맞춤 추천) 고유 이유 2 (가짜)",N,0,20,1,4,,응답자 4명 중 1명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F4,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,14,20,8,18,Y,응답자 18명 중 8명이 같은 이유를 말함
+main,0,campuspick,*,F4,use,ai_reason,UC2,마감을 안 놓침,Y,11,20,6,18,Y,응답자 18명 중 6명이 같은 이유를 말함
+main,0,campuspick,*,F4,use,missed,F4-U1,"추천 공고 목록 (인기 공고, 맞춤 추천) 쓰는 이유 1 (가짜)",N,0,20,7,18,,응답자 18명 중 7명이 말했는데 AI는 안 말함
+main,0,campuspick,*,F4,use,missed,F4-U2,"추천 공고 목록 (인기 공고, 맞춤 추천) 쓰는 이유 2 (가짜)",N,0,20,3,18,,응답자 18명 중 3명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F1,nouse,ai_reason,C1,필요 없을 것 같음,Y,9,20,3,10,Y,응답자 10명 중 3명이 같은 이유를 말함
+main,0,linkareer,*,F1,nouse,ai_reason,C2,다른 앱이나 방법으로 해결,Y,8,20,3,10,Y,응답자 10명 중 3명이 같은 이유를 말함
+main,0,linkareer,*,F1,nouse,ai_reason,C3,쓰기 번거로워 보임,Y,6,20,0,10,N,응답자 중 이 이유를 말한 사람 없음
+main,0,linkareer,*,F1,nouse,ai_reason,C4,써볼 생각을 안 해봄,Y,4,20,3,10,Y,응답자 10명 중 3명이 같은 이유를 말함
+main,0,linkareer,*,F1,nouse,missed,F1-1,공고 검색·필터 고유 이유 1 (가짜),N,0,20,1,10,,응답자 10명 중 1명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F1,nouse,missed,F1-2,공고 검색·필터 고유 이유 2 (가짜),N,0,20,2,10,,응답자 10명 중 2명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F1,nouse,missed,F1-3,공고 검색·필터 고유 이유 3 (가짜),N,0,20,2,10,,응답자 10명 중 2명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F1,nouse_quit,ai_reason,C1,필요 없을 것 같음,Y,9,20,2,7,Y,응답자 7명 중 2명이 같은 이유를 말함
+main,0,linkareer,*,F1,nouse_quit,ai_reason,C2,다른 앱이나 방법으로 해결,Y,8,20,1,7,Y,응답자 7명 중 1명이 같은 이유를 말함
+main,0,linkareer,*,F1,nouse_quit,ai_reason,C3,쓰기 번거로워 보임,Y,6,20,1,7,Y,응답자 7명 중 1명이 같은 이유를 말함
+main,0,linkareer,*,F1,nouse_quit,ai_reason,C4,써볼 생각을 안 해봄,Y,4,20,0,7,N,응답자 중 이 이유를 말한 사람 없음
+main,0,linkareer,*,F1,nouse_quit,missed,F1-1,공고 검색·필터 고유 이유 1 (가짜),N,0,20,1,7,,응답자 7명 중 1명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F1,nouse_quit,missed,F1-2,공고 검색·필터 고유 이유 2 (가짜),N,0,20,1,7,,응답자 7명 중 1명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F1,nouse_quit,missed,F1-3,공고 검색·필터 고유 이유 3 (가짜),N,0,20,2,7,,응답자 7명 중 2명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F1,nouse_quit,missed,F1-4,공고 검색·필터 고유 이유 4 (가짜),N,0,20,1,7,,응답자 7명 중 1명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F1,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,15,20,6,16,Y,응답자 16명 중 6명이 같은 이유를 말함
+main,0,linkareer,*,F1,use,ai_reason,UC2,마감을 안 놓침,Y,12,20,6,16,Y,응답자 16명 중 6명이 같은 이유를 말함
+main,0,linkareer,*,F1,use,missed,F1-U1,공고 검색·필터 쓰는 이유 1 (가짜),N,0,20,8,16,,응답자 16명 중 8명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F1,use,missed,F1-U2,공고 검색·필터 쓰는 이유 2 (가짜),N,0,20,4,16,,응답자 16명 중 4명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F2,nouse,ai_reason,C1,필요 없을 것 같음,Y,7,20,2,14,Y,응답자 14명 중 2명이 같은 이유를 말함
+main,0,linkareer,*,F2,nouse,ai_reason,C2,다른 앱이나 방법으로 해결,Y,7,20,1,14,Y,응답자 14명 중 1명이 같은 이유를 말함
+main,0,linkareer,*,F2,nouse,ai_reason,C3,쓰기 번거로워 보임,Y,1,20,2,14,Y,응답자 14명 중 2명이 같은 이유를 말함
+main,0,linkareer,*,F2,nouse,ai_reason,C4,써볼 생각을 안 해봄,Y,11,20,6,14,Y,응답자 14명 중 6명이 같은 이유를 말함
+main,0,linkareer,*,F2,nouse,missed,F2-1,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 1 (가짜)",N,0,20,3,14,,응답자 14명 중 3명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F2,nouse,missed,F2-2,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 2 (가짜)",N,0,20,4,14,,응답자 14명 중 4명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F2,nouse,missed,F2-3,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 3 (가짜)",N,0,20,1,14,,응답자 14명 중 1명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F2,nouse,missed,F2-4,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 4 (가짜)",N,0,20,1,14,,응답자 14명 중 1명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F2,nouse_quit,ai_reason,C1,필요 없을 것 같음,Y,7,20,1,5,Y,응답자 5명 중 1명이 같은 이유를 말함
+main,0,linkareer,*,F2,nouse_quit,ai_reason,C2,다른 앱이나 방법으로 해결,Y,7,20,0,5,N,응답자 중 이 이유를 말한 사람 없음
+main,0,linkareer,*,F2,nouse_quit,ai_reason,C3,쓰기 번거로워 보임,Y,1,20,0,5,N,응답자 중 이 이유를 말한 사람 없음
+main,0,linkareer,*,F2,nouse_quit,ai_reason,C4,써볼 생각을 안 해봄,Y,11,20,0,5,N,응답자 중 이 이유를 말한 사람 없음
+main,0,linkareer,*,F2,nouse_quit,missed,F2-1,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 1 (가짜)",N,0,20,2,5,,응답자 5명 중 2명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F2,nouse_quit,missed,F2-2,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 2 (가짜)",N,0,20,1,5,,응답자 5명 중 1명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F2,nouse_quit,missed,F2-3,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 3 (가짜)",N,0,20,2,5,,응답자 5명 중 2명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F2,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,12,20,9,19,Y,응답자 19명 중 9명이 같은 이유를 말함
+main,0,linkareer,*,F2,use,ai_reason,UC2,마감을 안 놓침,Y,15,20,6,19,Y,응답자 19명 중 6명이 같은 이유를 말함
+main,0,linkareer,*,F2,use,missed,F2-U1,"공고 저장 (스크랩, 찜, 북마크) 쓰는 이유 1 (가짜)",N,0,20,7,19,,응답자 19명 중 7명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F2,use,missed,F2-U2,"공고 저장 (스크랩, 찜, 북마크) 쓰는 이유 2 (가짜)",N,0,20,8,19,,응답자 19명 중 8명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F3,nouse,ai_reason,C1,필요 없을 것 같음,Y,1,20,2,13,Y,응답자 13명 중 2명이 같은 이유를 말함
+main,0,linkareer,*,F3,nouse,ai_reason,C2,다른 앱이나 방법으로 해결,Y,5,20,0,13,N,응답자 중 이 이유를 말한 사람 없음
+main,0,linkareer,*,F3,nouse,ai_reason,C3,쓰기 번거로워 보임,Y,13,20,4,13,Y,응답자 13명 중 4명이 같은 이유를 말함
+main,0,linkareer,*,F3,nouse,ai_reason,C4,써볼 생각을 안 해봄,Y,6,20,2,13,Y,응답자 13명 중 2명이 같은 이유를 말함
+main,0,linkareer,*,F3,nouse,missed,F3-1,마감 알림 고유 이유 1 (가짜),N,0,20,4,13,,응답자 13명 중 4명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F3,nouse,missed,F3-2,마감 알림 고유 이유 2 (가짜),N,0,20,1,13,,응답자 13명 중 1명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F3,nouse,missed,F3-3,마감 알림 고유 이유 3 (가짜),N,0,20,2,13,,응답자 13명 중 2명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F3,nouse,missed,F3-4,마감 알림 고유 이유 4 (가짜),N,0,20,1,13,,응답자 13명 중 1명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F3,nouse_quit,ai_reason,C1,필요 없을 것 같음,Y,1,20,1,5,Y,응답자 5명 중 1명이 같은 이유를 말함
+main,0,linkareer,*,F3,nouse_quit,ai_reason,C2,다른 앱이나 방법으로 해결,Y,5,20,0,5,N,응답자 중 이 이유를 말한 사람 없음
+main,0,linkareer,*,F3,nouse_quit,ai_reason,C3,쓰기 번거로워 보임,Y,13,20,1,5,Y,응답자 5명 중 1명이 같은 이유를 말함
+main,0,linkareer,*,F3,nouse_quit,ai_reason,C4,써볼 생각을 안 해봄,Y,6,20,0,5,N,응답자 중 이 이유를 말한 사람 없음
+main,0,linkareer,*,F3,nouse_quit,missed,F3-2,마감 알림 고유 이유 2 (가짜),N,0,20,2,5,,응답자 5명 중 2명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F3,nouse_quit,missed,F3-3,마감 알림 고유 이유 3 (가짜),N,0,20,1,5,,응답자 5명 중 1명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F3,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,17,20,2,16,Y,응답자 16명 중 2명이 같은 이유를 말함
+main,0,linkareer,*,F3,use,ai_reason,UC2,마감을 안 놓침,Y,14,20,10,16,Y,응답자 16명 중 10명이 같은 이유를 말함
+main,0,linkareer,*,F3,use,missed,F3-U1,마감 알림 쓰는 이유 1 (가짜),N,0,20,6,16,,응답자 16명 중 6명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F3,use,missed,F3-U2,마감 알림 쓰는 이유 2 (가짜),N,0,20,5,16,,응답자 16명 중 5명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F4,nouse,ai_reason,C1,필요 없을 것 같음,Y,1,20,0,16,N,응답자 중 이 이유를 말한 사람 없음
+main,0,linkareer,*,F4,nouse,ai_reason,C2,다른 앱이나 방법으로 해결,Y,10,20,7,16,Y,응답자 16명 중 7명이 같은 이유를 말함
+main,0,linkareer,*,F4,nouse,ai_reason,C3,쓰기 번거로워 보임,Y,8,20,3,16,Y,응답자 16명 중 3명이 같은 이유를 말함
+main,0,linkareer,*,F4,nouse,ai_reason,C4,써볼 생각을 안 해봄,Y,7,20,1,16,Y,응답자 16명 중 1명이 같은 이유를 말함
+main,0,linkareer,*,F4,nouse,missed,F4-1,"추천 공고 목록 (인기 공고, 맞춤 추천) 고유 이유 1 (가짜)",N,0,20,6,16,,응답자 16명 중 6명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F4,nouse,missed,F4-2,"추천 공고 목록 (인기 공고, 맞춤 추천) 고유 이유 2 (가짜)",N,0,20,1,16,,응답자 16명 중 1명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F4,nouse,missed,F4-3,"추천 공고 목록 (인기 공고, 맞춤 추천) 고유 이유 3 (가짜)",N,0,20,1,16,,응답자 16명 중 1명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F4,nouse_quit,ai_reason,C1,필요 없을 것 같음,Y,1,20,0,5,N,응답자 중 이 이유를 말한 사람 없음
+main,0,linkareer,*,F4,nouse_quit,ai_reason,C2,다른 앱이나 방법으로 해결,Y,10,20,1,5,Y,응답자 5명 중 1명이 같은 이유를 말함
+main,0,linkareer,*,F4,nouse_quit,ai_reason,C3,쓰기 번거로워 보임,Y,8,20,0,5,N,응답자 중 이 이유를 말한 사람 없음
+main,0,linkareer,*,F4,nouse_quit,ai_reason,C4,써볼 생각을 안 해봄,Y,7,20,0,5,N,응답자 중 이 이유를 말한 사람 없음
+main,0,linkareer,*,F4,nouse_quit,missed,F4-1,"추천 공고 목록 (인기 공고, 맞춤 추천) 고유 이유 1 (가짜)",N,0,20,3,5,,응답자 5명 중 3명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F4,nouse_quit,missed,F4-2,"추천 공고 목록 (인기 공고, 맞춤 추천) 고유 이유 2 (가짜)",N,0,20,1,5,,응답자 5명 중 1명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F4,nouse_quit,missed,F4-3,"추천 공고 목록 (인기 공고, 맞춤 추천) 고유 이유 3 (가짜)",N,0,20,1,5,,응답자 5명 중 1명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F4,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,16,20,1,17,Y,응답자 17명 중 1명이 같은 이유를 말함
+main,0,linkareer,*,F4,use,ai_reason,UC2,마감을 안 놓침,Y,11,20,7,17,Y,응답자 17명 중 7명이 같은 이유를 말함
+main,0,linkareer,*,F4,use,missed,F4-U1,"추천 공고 목록 (인기 공고, 맞춤 추천) 쓰는 이유 1 (가짜)",N,0,20,8,17,,응답자 17명 중 8명이 말했는데 AI는 안 말함
+main,0,linkareer,*,F4,use,missed,F4-U2,"추천 공고 목록 (인기 공고, 맞춤 추천) 쓰는 이유 2 (가짜)",N,0,20,6,17,,응답자 17명 중 6명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F1,nouse,ai_reason,C1,필요 없을 것 같음,Y,4,10,3,13,Y,응답자 13명 중 3명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F1,nouse,ai_reason,C2,다른 앱이나 방법으로 해결,Y,6,10,3,13,Y,응답자 13명 중 3명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F1,nouse,ai_reason,C3,쓰기 번거로워 보임,Y,1,10,2,13,Y,응답자 13명 중 2명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F1,nouse,ai_reason,C4,써볼 생각을 안 해봄,Y,1,10,0,13,N,응답자 중 이 이유를 말한 사람 없음
+platform_ref,0,campuspick,app,F1,nouse,missed,F1-1,공고 검색·필터 고유 이유 1 (가짜),N,0,10,4,13,,응답자 13명 중 4명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F1,nouse,missed,F1-2,공고 검색·필터 고유 이유 2 (가짜),N,0,10,2,13,,응답자 13명 중 2명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F1,nouse,missed,F1-3,공고 검색·필터 고유 이유 3 (가짜),N,0,10,2,13,,응답자 13명 중 2명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F1,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,6,10,3,10,Y,응답자 10명 중 3명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F1,use,ai_reason,UC2,마감을 안 놓침,Y,7,10,3,10,Y,응답자 10명 중 3명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F1,use,missed,F1-U1,공고 검색·필터 쓰는 이유 1 (가짜),N,0,10,7,10,,응답자 10명 중 7명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F1,use,missed,F1-U2,공고 검색·필터 쓰는 이유 2 (가짜),N,0,10,2,10,,응답자 10명 중 2명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F2,nouse,ai_reason,C1,필요 없을 것 같음,Y,4,10,2,7,Y,응답자 7명 중 2명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F2,nouse,ai_reason,C2,다른 앱이나 방법으로 해결,Y,1,10,2,7,Y,응답자 7명 중 2명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F2,nouse,ai_reason,C3,쓰기 번거로워 보임,Y,2,10,1,7,Y,응답자 7명 중 1명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F2,nouse,ai_reason,C4,써볼 생각을 안 해봄,Y,7,10,3,7,Y,응답자 7명 중 3명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F2,nouse,missed,F2-2,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 2 (가짜)",N,0,10,2,7,,응답자 7명 중 2명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F2,nouse_quit,ai_reason,C1,필요 없을 것 같음,Y,4,10,0,5,N,응답자 중 이 이유를 말한 사람 없음
+platform_ref,0,campuspick,app,F2,nouse_quit,ai_reason,C2,다른 앱이나 방법으로 해결,Y,1,10,2,5,Y,응답자 5명 중 2명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F2,nouse_quit,ai_reason,C3,쓰기 번거로워 보임,Y,2,10,0,5,N,응답자 중 이 이유를 말한 사람 없음
+platform_ref,0,campuspick,app,F2,nouse_quit,ai_reason,C4,써볼 생각을 안 해봄,Y,7,10,0,5,N,응답자 중 이 이유를 말한 사람 없음
+platform_ref,0,campuspick,app,F2,nouse_quit,missed,F2-1,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 1 (가짜)",N,0,10,1,5,,응답자 5명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F2,nouse_quit,missed,F2-2,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 2 (가짜)",N,0,10,1,5,,응답자 5명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F2,nouse_quit,missed,F2-3,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 3 (가짜)",N,0,10,1,5,,응답자 5명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F2,nouse_quit,missed,F2-4,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 4 (가짜)",N,0,10,1,5,,응답자 5명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F2,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,6,10,3,10,Y,응답자 10명 중 3명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F2,use,ai_reason,UC2,마감을 안 놓침,Y,7,10,4,10,Y,응답자 10명 중 4명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F2,use,missed,F2-U1,"공고 저장 (스크랩, 찜, 북마크) 쓰는 이유 1 (가짜)",N,0,10,4,10,,응답자 10명 중 4명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F2,use,missed,F2-U2,"공고 저장 (스크랩, 찜, 북마크) 쓰는 이유 2 (가짜)",N,0,10,1,10,,응답자 10명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F3,nouse,ai_reason,C1,필요 없을 것 같음,Y,3,10,2,10,Y,응답자 10명 중 2명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F3,nouse,ai_reason,C2,다른 앱이나 방법으로 해결,Y,2,10,0,10,N,응답자 중 이 이유를 말한 사람 없음
+platform_ref,0,campuspick,app,F3,nouse,ai_reason,C3,쓰기 번거로워 보임,Y,5,10,1,10,Y,응답자 10명 중 1명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F3,nouse,ai_reason,C4,써볼 생각을 안 해봄,Y,4,10,1,10,Y,응답자 10명 중 1명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F3,nouse,missed,F3-1,마감 알림 고유 이유 1 (가짜),N,0,10,1,10,,응답자 10명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F3,nouse,missed,F3-2,마감 알림 고유 이유 2 (가짜),N,0,10,3,10,,응답자 10명 중 3명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F3,nouse,missed,F3-3,마감 알림 고유 이유 3 (가짜),N,0,10,2,10,,응답자 10명 중 2명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F3,nouse,missed,F3-4,마감 알림 고유 이유 4 (가짜),N,0,10,1,10,,응답자 10명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F3,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,8,10,4,14,Y,응답자 14명 중 4명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F3,use,ai_reason,UC2,마감을 안 놓침,Y,10,10,4,14,Y,응답자 14명 중 4명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F3,use,missed,F3-U1,마감 알림 쓰는 이유 1 (가짜),N,0,10,7,14,,응답자 14명 중 7명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F3,use,missed,F3-U2,마감 알림 쓰는 이유 2 (가짜),N,0,10,4,14,,응답자 14명 중 4명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F4,nouse,ai_reason,C2,다른 앱이나 방법으로 해결,Y,3,10,2,7,Y,응답자 7명 중 2명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F4,nouse,ai_reason,C3,쓰기 번거로워 보임,Y,7,10,1,7,Y,응답자 7명 중 1명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F4,nouse,ai_reason,C4,써볼 생각을 안 해봄,Y,4,10,0,7,N,응답자 중 이 이유를 말한 사람 없음
+platform_ref,0,campuspick,app,F4,nouse,missed,C1,필요 없을 것 같음,Y,0,10,1,7,,응답자 7명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F4,nouse,missed,F4-1,"추천 공고 목록 (인기 공고, 맞춤 추천) 고유 이유 1 (가짜)",N,0,10,2,7,,응답자 7명 중 2명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F4,nouse,missed,F4-3,"추천 공고 목록 (인기 공고, 맞춤 추천) 고유 이유 3 (가짜)",N,0,10,2,7,,응답자 7명 중 2명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F4,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,9,10,7,15,Y,응답자 15명 중 7명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F4,use,ai_reason,UC2,마감을 안 놓침,Y,3,10,5,15,Y,응답자 15명 중 5명이 같은 이유를 말함
+platform_ref,0,campuspick,app,F4,use,missed,F4-U1,"추천 공고 목록 (인기 공고, 맞춤 추천) 쓰는 이유 1 (가짜)",N,0,10,6,15,,응답자 15명 중 6명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,app,F4,use,missed,F4-U2,"추천 공고 목록 (인기 공고, 맞춤 추천) 쓰는 이유 2 (가짜)",N,0,10,3,15,,응답자 15명 중 3명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,web,F1,nouse,ai_reason,C1,필요 없을 것 같음,Y,8,10,2,5,Y,응답자 5명 중 2명이 같은 이유를 말함
+platform_ref,0,campuspick,web,F1,nouse,ai_reason,C2,다른 앱이나 방법으로 해결,Y,4,10,2,5,Y,응답자 5명 중 2명이 같은 이유를 말함
+platform_ref,0,campuspick,web,F1,nouse,ai_reason,C3,쓰기 번거로워 보임,Y,1,10,0,5,N,응답자 중 이 이유를 말한 사람 없음
+platform_ref,0,campuspick,web,F1,nouse,ai_reason,C4,써볼 생각을 안 해봄,Y,2,10,0,5,N,응답자 중 이 이유를 말한 사람 없음
+platform_ref,0,campuspick,web,F1,nouse,missed,F1-1,공고 검색·필터 고유 이유 1 (가짜),N,0,10,1,5,,응답자 5명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,web,F1,nouse,missed,F1-2,공고 검색·필터 고유 이유 2 (가짜),N,0,10,1,5,,응답자 5명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,web,F1,nouse,missed,F1-4,공고 검색·필터 고유 이유 4 (가짜),N,0,10,1,5,,응답자 5명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,web,F1,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,8,10,3,5,Y,응답자 5명 중 3명이 같은 이유를 말함
+platform_ref,0,campuspick,web,F1,use,ai_reason,UC2,마감을 안 놓침,Y,7,10,1,5,Y,응답자 5명 중 1명이 같은 이유를 말함
+platform_ref,0,campuspick,web,F1,use,missed,F1-U1,공고 검색·필터 쓰는 이유 1 (가짜),N,0,10,2,5,,응답자 5명 중 2명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,web,F1,use,missed,F1-U2,공고 검색·필터 쓰는 이유 2 (가짜),N,0,10,2,5,,응답자 5명 중 2명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,web,F2,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,7,10,2,5,Y,응답자 5명 중 2명이 같은 이유를 말함
+platform_ref,0,campuspick,web,F2,use,ai_reason,UC2,마감을 안 놓침,Y,9,10,2,5,Y,응답자 5명 중 2명이 같은 이유를 말함
+platform_ref,0,campuspick,web,F2,use,missed,F2-U1,"공고 저장 (스크랩, 찜, 북마크) 쓰는 이유 1 (가짜)",N,0,10,1,5,,응답자 5명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,web,F2,use,missed,F2-U2,"공고 저장 (스크랩, 찜, 북마크) 쓰는 이유 2 (가짜)",N,0,10,2,5,,응답자 5명 중 2명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,web,F3,nouse,ai_reason,C1,필요 없을 것 같음,Y,3,10,1,6,Y,응답자 6명 중 1명이 같은 이유를 말함
+platform_ref,0,campuspick,web,F3,nouse,ai_reason,C2,다른 앱이나 방법으로 해결,Y,1,10,1,6,Y,응답자 6명 중 1명이 같은 이유를 말함
+platform_ref,0,campuspick,web,F3,nouse,ai_reason,C3,쓰기 번거로워 보임,Y,5,10,2,6,Y,응답자 6명 중 2명이 같은 이유를 말함
+platform_ref,0,campuspick,web,F3,nouse,ai_reason,C4,써볼 생각을 안 해봄,Y,5,10,2,6,Y,응답자 6명 중 2명이 같은 이유를 말함
+platform_ref,0,campuspick,web,F3,nouse,missed,F3-3,마감 알림 고유 이유 3 (가짜),N,0,10,2,6,,응답자 6명 중 2명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,web,F3,nouse,missed,F3-4,마감 알림 고유 이유 4 (가짜),N,0,10,1,6,,응답자 6명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,web,F4,nouse,ai_reason,C1,필요 없을 것 같음,Y,1,10,1,5,Y,응답자 5명 중 1명이 같은 이유를 말함
+platform_ref,0,campuspick,web,F4,nouse,ai_reason,C2,다른 앱이나 방법으로 해결,Y,5,10,0,5,N,응답자 중 이 이유를 말한 사람 없음
+platform_ref,0,campuspick,web,F4,nouse,ai_reason,C3,쓰기 번거로워 보임,Y,8,10,1,5,Y,응답자 5명 중 1명이 같은 이유를 말함
+platform_ref,0,campuspick,web,F4,nouse,ai_reason,C4,써볼 생각을 안 해봄,Y,4,10,0,5,N,응답자 중 이 이유를 말한 사람 없음
+platform_ref,0,campuspick,web,F4,nouse,missed,F4-1,"추천 공고 목록 (인기 공고, 맞춤 추천) 고유 이유 1 (가짜)",N,0,10,1,5,,응답자 5명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,web,F4,nouse,missed,F4-2,"추천 공고 목록 (인기 공고, 맞춤 추천) 고유 이유 2 (가짜)",N,0,10,3,5,,응답자 5명 중 3명이 말했는데 AI는 안 말함
+platform_ref,0,campuspick,web,F4,nouse,missed,F4-3,"추천 공고 목록 (인기 공고, 맞춤 추천) 고유 이유 3 (가짜)",N,0,10,2,5,,응답자 5명 중 2명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F1,nouse,ai_reason,C1,필요 없을 것 같음,Y,3,10,3,10,Y,응답자 10명 중 3명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F1,nouse,ai_reason,C2,다른 앱이나 방법으로 해결,Y,4,10,3,10,Y,응답자 10명 중 3명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F1,nouse,ai_reason,C3,쓰기 번거로워 보임,Y,3,10,0,10,N,응답자 중 이 이유를 말한 사람 없음
+platform_ref,0,linkareer,app,F1,nouse,ai_reason,C4,써볼 생각을 안 해봄,Y,3,10,3,10,Y,응답자 10명 중 3명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F1,nouse,missed,F1-1,공고 검색·필터 고유 이유 1 (가짜),N,0,10,1,10,,응답자 10명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F1,nouse,missed,F1-2,공고 검색·필터 고유 이유 2 (가짜),N,0,10,2,10,,응답자 10명 중 2명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F1,nouse,missed,F1-3,공고 검색·필터 고유 이유 3 (가짜),N,0,10,2,10,,응답자 10명 중 2명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F1,nouse_quit,ai_reason,C1,필요 없을 것 같음,Y,3,10,2,6,Y,응답자 6명 중 2명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F1,nouse_quit,ai_reason,C2,다른 앱이나 방법으로 해결,Y,4,10,1,6,Y,응답자 6명 중 1명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F1,nouse_quit,ai_reason,C3,쓰기 번거로워 보임,Y,3,10,1,6,Y,응답자 6명 중 1명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F1,nouse_quit,ai_reason,C4,써볼 생각을 안 해봄,Y,3,10,0,6,N,응답자 중 이 이유를 말한 사람 없음
+platform_ref,0,linkareer,app,F1,nouse_quit,missed,F1-1,공고 검색·필터 고유 이유 1 (가짜),N,0,10,1,6,,응답자 6명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F1,nouse_quit,missed,F1-2,공고 검색·필터 고유 이유 2 (가짜),N,0,10,1,6,,응답자 6명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F1,nouse_quit,missed,F1-3,공고 검색·필터 고유 이유 3 (가짜),N,0,10,1,6,,응답자 6명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F1,nouse_quit,missed,F1-4,공고 검색·필터 고유 이유 4 (가짜),N,0,10,1,6,,응답자 6명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F1,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,6,10,5,9,Y,응답자 9명 중 5명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F1,use,ai_reason,UC2,마감을 안 놓침,Y,8,10,2,9,Y,응답자 9명 중 2명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F1,use,missed,F1-U1,공고 검색·필터 쓰는 이유 1 (가짜),N,0,10,5,9,,응답자 9명 중 5명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F1,use,missed,F1-U2,공고 검색·필터 쓰는 이유 2 (가짜),N,0,10,2,9,,응답자 9명 중 2명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F2,nouse,ai_reason,C1,필요 없을 것 같음,Y,4,10,1,12,Y,응답자 12명 중 1명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F2,nouse,ai_reason,C2,다른 앱이나 방법으로 해결,Y,3,10,1,12,Y,응답자 12명 중 1명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F2,nouse,ai_reason,C3,쓰기 번거로워 보임,Y,1,10,2,12,Y,응답자 12명 중 2명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F2,nouse,ai_reason,C4,써볼 생각을 안 해봄,Y,7,10,6,12,Y,응답자 12명 중 6명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F2,nouse,missed,F2-1,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 1 (가짜)",N,0,10,3,12,,응답자 12명 중 3명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F2,nouse,missed,F2-2,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 2 (가짜)",N,0,10,4,12,,응답자 12명 중 4명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F2,nouse,missed,F2-4,"공고 저장 (스크랩, 찜, 북마크) 고유 이유 4 (가짜)",N,0,10,1,12,,응답자 12명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F2,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,6,10,6,12,Y,응답자 12명 중 6명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F2,use,ai_reason,UC2,마감을 안 놓침,Y,7,10,3,12,Y,응답자 12명 중 3명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F2,use,missed,F2-U1,"공고 저장 (스크랩, 찜, 북마크) 쓰는 이유 1 (가짜)",N,0,10,4,12,,응답자 12명 중 4명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F2,use,missed,F2-U2,"공고 저장 (스크랩, 찜, 북마크) 쓰는 이유 2 (가짜)",N,0,10,5,12,,응답자 12명 중 5명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F3,nouse,ai_reason,C1,필요 없을 것 같음,Y,1,10,2,11,Y,응답자 11명 중 2명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F3,nouse,ai_reason,C2,다른 앱이나 방법으로 해결,Y,1,10,0,11,N,응답자 중 이 이유를 말한 사람 없음
+platform_ref,0,linkareer,app,F3,nouse,ai_reason,C3,쓰기 번거로워 보임,Y,6,10,3,11,Y,응답자 11명 중 3명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F3,nouse,ai_reason,C4,써볼 생각을 안 해봄,Y,4,10,2,11,Y,응답자 11명 중 2명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F3,nouse,missed,F3-1,마감 알림 고유 이유 1 (가짜),N,0,10,2,11,,응답자 11명 중 2명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F3,nouse,missed,F3-2,마감 알림 고유 이유 2 (가짜),N,0,10,1,11,,응답자 11명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F3,nouse,missed,F3-3,마감 알림 고유 이유 3 (가짜),N,0,10,2,11,,응답자 11명 중 2명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F3,nouse,missed,F3-4,마감 알림 고유 이유 4 (가짜),N,0,10,1,11,,응답자 11명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F3,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,9,10,2,15,Y,응답자 15명 중 2명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F3,use,ai_reason,UC2,마감을 안 놓침,Y,8,10,10,15,Y,응답자 15명 중 10명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F3,use,missed,F3-U1,마감 알림 쓰는 이유 1 (가짜),N,0,10,5,15,,응답자 15명 중 5명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F3,use,missed,F3-U2,마감 알림 쓰는 이유 2 (가짜),N,0,10,5,15,,응답자 15명 중 5명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F4,nouse,ai_reason,C1,필요 없을 것 같음,Y,1,10,0,11,N,응답자 중 이 이유를 말한 사람 없음
+platform_ref,0,linkareer,app,F4,nouse,ai_reason,C2,다른 앱이나 방법으로 해결,Y,3,10,4,11,Y,응답자 11명 중 4명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F4,nouse,ai_reason,C3,쓰기 번거로워 보임,Y,4,10,2,11,Y,응답자 11명 중 2명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F4,nouse,ai_reason,C4,써볼 생각을 안 해봄,Y,3,10,1,11,Y,응답자 11명 중 1명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F4,nouse,missed,F4-1,"추천 공고 목록 (인기 공고, 맞춤 추천) 고유 이유 1 (가짜)",N,0,10,4,11,,응답자 11명 중 4명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F4,nouse,missed,F4-2,"추천 공고 목록 (인기 공고, 맞춤 추천) 고유 이유 2 (가짜)",N,0,10,1,11,,응답자 11명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F4,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,7,10,1,12,Y,응답자 12명 중 1명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F4,use,ai_reason,UC2,마감을 안 놓침,Y,7,10,4,12,Y,응답자 12명 중 4명이 같은 이유를 말함
+platform_ref,0,linkareer,app,F4,use,missed,F4-U1,"추천 공고 목록 (인기 공고, 맞춤 추천) 쓰는 이유 1 (가짜)",N,0,10,5,12,,응답자 12명 중 5명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,app,F4,use,missed,F4-U2,"추천 공고 목록 (인기 공고, 맞춤 추천) 쓰는 이유 2 (가짜)",N,0,10,4,12,,응답자 12명 중 4명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,web,F1,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,9,10,1,7,Y,응답자 7명 중 1명이 같은 이유를 말함
+platform_ref,0,linkareer,web,F1,use,ai_reason,UC2,마감을 안 놓침,Y,4,10,4,7,Y,응답자 7명 중 4명이 같은 이유를 말함
+platform_ref,0,linkareer,web,F1,use,missed,F1-U1,공고 검색·필터 쓰는 이유 1 (가짜),N,0,10,3,7,,응답자 7명 중 3명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,web,F1,use,missed,F1-U2,공고 검색·필터 쓰는 이유 2 (가짜),N,0,10,2,7,,응답자 7명 중 2명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,web,F2,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,6,10,3,7,Y,응답자 7명 중 3명이 같은 이유를 말함
+platform_ref,0,linkareer,web,F2,use,ai_reason,UC2,마감을 안 놓침,Y,8,10,3,7,Y,응답자 7명 중 3명이 같은 이유를 말함
+platform_ref,0,linkareer,web,F2,use,missed,F2-U1,"공고 저장 (스크랩, 찜, 북마크) 쓰는 이유 1 (가짜)",N,0,10,3,7,,응답자 7명 중 3명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,web,F2,use,missed,F2-U2,"공고 저장 (스크랩, 찜, 북마크) 쓰는 이유 2 (가짜)",N,0,10,3,7,,응답자 7명 중 3명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,web,F4,nouse,ai_reason,C2,다른 앱이나 방법으로 해결,Y,7,10,3,5,Y,응답자 5명 중 3명이 같은 이유를 말함
+platform_ref,0,linkareer,web,F4,nouse,ai_reason,C3,쓰기 번거로워 보임,Y,4,10,1,5,Y,응답자 5명 중 1명이 같은 이유를 말함
+platform_ref,0,linkareer,web,F4,nouse,ai_reason,C4,써볼 생각을 안 해봄,Y,4,10,0,5,N,응답자 중 이 이유를 말한 사람 없음
+platform_ref,0,linkareer,web,F4,nouse,missed,F4-1,"추천 공고 목록 (인기 공고, 맞춤 추천) 고유 이유 1 (가짜)",N,0,10,2,5,,응답자 5명 중 2명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,web,F4,nouse,missed,F4-3,"추천 공고 목록 (인기 공고, 맞춤 추천) 고유 이유 3 (가짜)",N,0,10,1,5,,응답자 5명 중 1명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,web,F4,use,ai_reason,UC1,찾는 시간이 줄어듦,Y,9,10,0,5,N,응답자 중 이 이유를 말한 사람 없음
+platform_ref,0,linkareer,web,F4,use,ai_reason,UC2,마감을 안 놓침,Y,4,10,3,5,Y,응답자 5명 중 3명이 같은 이유를 말함
+platform_ref,0,linkareer,web,F4,use,missed,F4-U1,"추천 공고 목록 (인기 공고, 맞춤 추천) 쓰는 이유 1 (가짜)",N,0,10,3,5,,응답자 5명 중 3명이 말했는데 AI는 안 말함
+platform_ref,0,linkareer,web,F4,use,missed,F4-U2,"추천 공고 목록 (인기 공고, 맞춤 추천) 쓰는 이유 2 (가짜)",N,0,10,2,5,,응답자 5명 중 2명이 말했는데 AI는 안 말함

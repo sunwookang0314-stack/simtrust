@@ -71,7 +71,7 @@ CELL_CSV = ["scope", "condition", "service", "platform", "feature_id", "kind", "
             "human_precision_low", "human_precision_high", "human_recall_low", "human_recall_high",
             "floor_precision_low", "floor_precision_high", "floor_recall_low", "floor_recall_high",
             "verdict", "stable_at", "ai_platform_short"]
-REASON_CSV = ["scope", "condition", "service", "platform", "feature_id", "kind", "type", "code", "common",
+REASON_CSV = ["scope", "condition", "service", "platform", "feature_id", "kind", "type", "code", "name", "common",
               "ai_episodes_with_code", "ai_episodes", "human_count", "n_humans", "passed", "basis"]
 CODEBOOK_FIELDS = ["code", "scope"]
 SCOPE_WORDS = {"common": "common", "공통": "common", "feature": "feature", "기능": "feature"}
@@ -150,6 +150,15 @@ def load_codebook(path: Path) -> dict:
     if not book:
         raise InputError(f"{path.name}: 코드가 하나도 없음")
     return book
+
+
+def codebook_names(path: Path) -> dict:
+    """코드북에 name 칸이 있으면 코드 -> 이름. 이유 표(reasons_*.csv)에 사람이 읽을 이름을 붙인다 (기말 데모)."""
+    with path.open(encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        if "name" not in (reader.fieldnames or []):
+            return {}
+        return {norm_code(r.get("code") or ""): (r.get("name") or "").strip() for r in reader}
 
 
 def load_ai(path: Path) -> list:
@@ -637,18 +646,21 @@ def yn(flag) -> str:
     return "" if flag is None else ("Y" if flag else "N")
 
 
-def reason_rows(c: dict) -> list:
+def reason_rows(c: dict, names: dict = None) -> list:
+    names = names or {}
     common = {"scope": c["scope"], "condition": c["condition"], **{k: c.get(k, "*") for k in CELL_KEYS},
               "ai_episodes": c["ai_episodes"], "n_humans": c["n_humans"]}
     rows = []
     for r in c["reasons"]:
         basis = (f"응답자 {c['n_humans']}명 중 {r['human_count']}명이 같은 이유를 말함" if r["human_count"]
                  else "응답자 중 이 이유를 말한 사람 없음")
-        rows.append({**common, "type": "ai_reason", "code": r["code"], "common": yn(r["common"]),
+        rows.append({**common, "type": "ai_reason", "code": r["code"], "name": names.get(r["code"], ""),
+                     "common": yn(r["common"]),
                      "ai_episodes_with_code": r["ai_episodes_with_code"], "human_count": r["human_count"],
                      "passed": "Y" if r["passed"] else "N", "basis": basis})
     for r in c["missed"]:
-        rows.append({**common, "type": "missed", "code": r["code"], "common": yn(r["common"]),
+        rows.append({**common, "type": "missed", "code": r["code"], "name": names.get(r["code"], ""),
+                     "common": yn(r["common"]),
                      "ai_episodes_with_code": 0, "human_count": r["human_count"], "passed": "",
                      "basis": f"응답자 {c['n_humans']}명 중 {r['human_count']}명이 말했는데 AI는 안 말함"})
     return rows
@@ -782,7 +794,9 @@ def main(argv=None, root: Path = ROOT) -> int:
     tag = f"{scope}_{stamp}"
     (out / f"metrics_{tag}.json").write_text(json.dumps(record, ensure_ascii=False, indent=1), encoding="utf-8")
     write_csv(out / f"cells_{tag}.csv", CELL_CSV, [cell_row(c) for c in cells + ref_cells])
-    write_csv(out / f"reasons_{tag}.csv", REASON_CSV, [r for c in cells + ref_cells for r in reason_rows(c)])
+    names = codebook_names(paths["codebook"]) if codebook is not None else {}
+    write_csv(out / f"reasons_{tag}.csv", REASON_CSV,
+              [r for c in cells + ref_cells for r in reason_rows(c, names)])
     print_summary(result, rules, run_id)
     if ai_not_in_book:
         print(f"  코드북에 없는 AI 코드 {ai_not_in_book}개는 기능별 코드로 셌다")

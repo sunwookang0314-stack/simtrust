@@ -404,7 +404,7 @@ class TestCLI(unittest.TestCase):
             self.assertFalse((TMP / d).exists())
 
     def test_codebook_cli(self):
-        (TMP / "book.csv").write_text("code,scope\nA,공통\nB,feature\nC,기능\nD,feature\nE,feature\n",
+        (TMP / "book.csv").write_text("code,scope,name\nA,공통,필요 없음\nB,feature,\nC,기능,\nD,feature,\nE,feature,\n",
                                       encoding="utf-8")
         code, log = run("--human", self.h, "--ai", self.a, "--rules", "rules.json", "--out", "out_book",
                         "--codebook", "book.csv", "--allow-draft")
@@ -425,6 +425,9 @@ class TestCLI(unittest.TestCase):
                      if r["scope"] == "main" and r["condition"] == "2" and r["feature_id"] == "F1"}
         self.assertEqual(flags["A"], "Y")
         self.assertEqual(flags["B"], "N")
+        with next(out.glob("reasons_all_*.csv")).open(encoding="utf-8-sig") as f:
+            names = {r["code"]: r["name"] for r in csv.DictReader(f) if r["scope"] == "main"}
+        self.assertEqual((names["A"], names["B"]), ("필요 없음", ""))  # 코드북 name 칸을 이유 표에 붙인다
         # 사람 코드가 코드북에 없거나, scope가 이상하거나, 코드가 두 번 나오면 멈춘다
         (TMP / "book_missing.csv").write_text("code,scope\nA,common\n", encoding="utf-8")
         (TMP / "book_scope.csv").write_text("code,scope\nA,maybe\n", encoding="utf-8")

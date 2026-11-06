@@ -1,0 +1,26 @@
+{
+ "seed": "demo-20261106",
+ "respondents_per_service": 40,
+ "models": {
+  "model_a": {
+   "label": "사람 같은 모델",
+   "nouse_verdicts": {
+    "믿고 써도 됨": 3,
+    "사람에게 물어볼 것": 5
+   }
+  },
+  "model_b": {
+   "label": "반만 맞는 모델",
+   "nouse_verdicts": {
+    "참고용": 1,
+    "사람에게 물어볼 것": 7
+   }
+  },
+  "model_c": {
+   "label": "공통 이유만 말하는 모델",
+   "nouse_verdicts": {
+    "사람에게 물어볼 것": 8
+   }
+  }
+ }
+}
