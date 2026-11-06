@@ -1,0 +1,27 @@
+{
+ "rules_version": "draft-0.1",
+ "frozen": false,
+ "frozen_at": null,
+ "note": "Draft for testing scripts/score_reasons.py. Values follow docs/measurement (PR #36) proposals and are NOT agreed by the team. Freeze before looking at human answers (FR-08-01).",
+ "cell_keys": ["service", "feature_id", "kind"],
+ "_cell_keys": "11/6 D4 decision (Kang Sunwoo): judge per service, pooling app and web. AI is sampled per platform to match the human app:web ratio.",
+ "platform_reference": true,
+ "_platform_reference": "Also report per-platform cells as reference only, for platforms with at least min_humans respondents. Not counted in the verdict summary.",
+ "min_humans": 5,
+ "method": "anchors",
+ "metrics": ["precision", "recall"],
+ "level": 0.95,
+ "resamples": 1000,
+ "seed": 20261105,
+ "fixed": {"trust": 0.7, "reference": 0.5},
+ "reason_min_humans": 1,
+ "ai_drop_codes": ["-"],
+ "sensitivity": [
+  {"name": "anchors_90", "method": "anchors", "level": 0.90},
+  {"name": "fixed_60", "method": "fixed", "trust": 0.6, "reference": 0.4},
+  {"name": "fixed_70", "method": "fixed", "trust": 0.7, "reference": 0.5},
+  {"name": "fixed_80", "method": "fixed", "trust": 0.8, "reference": 0.6}
+ ],
+ "stability": {"start": 3, "step": 2, "draws": 200, "tolerance": 0.05},
+ "saturation": {"group_keys": ["service"], "min_respondents": 15, "run": 3, "max_new": 1}
+}
