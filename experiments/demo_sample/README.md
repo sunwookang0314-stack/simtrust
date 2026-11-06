@@ -59,7 +59,7 @@ python experiments/demo_sample/make_demo_sample.py
 | human_precision_low, human_precision_high | 사람끼리 범위 |
 | floor_precision_low, floor_precision_high | 아무 기능에나 할 말 범위 |
 
-## #35 화면으로 옮기는 법 [AI 제안]
+## #35 화면으로 옮기는 법 [제안]
 
 1. 이유 목록: reasons에서 `scope=main`, `type=ai_reason`인 줄의 `name`과 `basis`. `passed`가 Y면 "믿을 만함", N이면 "믿기 어려움"
 2. AI가 놓친 이유: `type=missed`인 줄
