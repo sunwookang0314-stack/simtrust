@@ -216,6 +216,27 @@ class TestExtractReasons(unittest.TestCase):
         self.assertIn("attached:Q-AI-NOUSE", {r["kind"] for r in rows})
         self.assertFalse([r for r in rows if r["kind"].startswith("review:")])
 
+    def test_intro_ending_deurimnida(self):
+        # 11/6 gemini-3.6-flash 실제 답 모양: "말씀드립니다."로 끝나는 머리말이 안 쓸 기능 하나에 붙어 버렸다
+        line = episode(run_id="deurim", answers=[
+            answer("Q-AI-USE", "공고 검색·필터: 쓸 것 같다\n공고 저장: 쓸 것 같다\n마감 알림: 쓸 것 같다\n"
+                               "추천 공고 목록: 안 쓸 것 같다"),
+            answer("Q-AI-NOUSE", "'안 쓸 것 같다'고 선택한 기능과 그 이유를 말씀드립니다.\n\n"
+                                 "- 추천 공고 목록 (인기 공고, 맞춤 추천)\n"
+                                 "  - 이유: 나한테 필요 없을 것 같아서\n"
+                                 "  - 구체적 설명: 직접 검색 필터로 찾기 때문입니다."),
+            answer("Q-4-7", "없음"),
+        ])
+        code, log = run("--raw", write_raw("deurim", [line]), "--options", "protocol/options_4-6.txt",
+                        "--out", "out_deurim")
+        self.assertEqual(code, 0, log)
+        records, rows, summary = outputs("deurim")
+        f4 = {r["feature_id"]: r for r in records}["F4"]
+        self.assertEqual(f4["nouse_lines"], ["이유: 나한테 필요 없을 것 같아서", "구체적 설명: 직접 검색 필터로 찾기 때문입니다."])
+        self.assertEqual(f4["nouse_options"], ["나한테 필요 없을 것 같아서"])
+        self.assertEqual(summary["attached_lines"], 0)
+        self.assertIn("intro:Q-AI-NOUSE", {r["kind"] for r in rows})
+
     def test_use_negation(self):
         feats = [("F1", "공고 검색·필터"), ("F4", "추천 공고 목록 (인기 공고, 맞춤 추천)")]
         cases = {"공고 검색·필터: 쓸 것 같다\n추천 공고 목록: 쓸 것 같지 않다": {"F1": "use", "F4": "nouse"},
