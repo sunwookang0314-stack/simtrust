@@ -4,9 +4,10 @@
 폼 문서 246행: 응답 시트는 정리 담당 2인과 폼 소유자만 본다. 이 스크립트도 그 사람들이 자기 PC에서 돌린다.
 출력에 응답 원문이 들어가니 저장소 밖이나 private/(커밋 제외)에 둔다.
 
-    count   서비스·플랫폼별 응답 수만 센다. 서술은 안 보여준다 (폼 소유자가 하한 15명 넘었나 볼 때)
-            --detail을 붙이면 파일럿 숫자(4-3 답 개수, 4-5·4-6 보기 개수, 서술 쓴 비율, 공통 이유 비율 대략값)도
-            센다. 사람 수 시뮬레이션(experiments/sample_size_sim)에 넣을 값이다
+    count   서비스·플랫폼별 응답 수만 센다. 서술은 안 보여준다 (폼 소유자가 마감 인원 셀 때, 사전등록 v1 5장)
+            --detail은 파일럿 사본 폼 CSV에만 쓴다(사전등록 v1 3장): 4-3 답 개수, 안 써본 비율, 4-5·4-6 보기 개수
+    params  파일럿 사본 폼 응답과 코드북 작성자가 코드를 붙인 파일럿 사람 코드로 사전등록 3장 값을 낸다:
+            안 써본 비율, 공통 이유 비율, 이유 2개 비율. 사람 수 시뮬레이션 --pilot에 그대로 넣는다
     make    정리 시트를 만든다. 응답자 x 기능마다 한 줄, 정리 담당 두 사람이 코드를 채운다
     import  다 채운 정리 시트를 판정 계산기가 읽는 사람 코드 CSV로 바꾼다
 
@@ -190,14 +191,6 @@ def text_by_feature(text: str, targets: list) -> dict:
     return {fid: " / ".join(lines) for fid, lines in lines_by_feature(text, targets).items()}
 
 
-def restrict(data: dict, first: int) -> dict:
-    """응답 순서대로 앞의 first명만 남긴다 (본 폼 안에서 앞쪽 응답을 파일럿으로 쓸 때)."""
-    people = data["people"][:first]
-    unknown = Counter(fid for p in people for fid, s in p["states"].items() if STATE_KIND[s] is None)
-    return {**data, "people": people, "by_group": Counter((p["service"], p["platform"]) for p in people),
-            "unknown_feature": dict(unknown)}
-
-
 def detail_counts(people: list, features: list, options_46: list) -> dict:
     """파일럿 숫자. 서술 원문은 안 남기고 개수만 센다.
     공통 이유 비율은 코드북으로 정리하기 전이라 대략값이다: 기타를 뺀 4-5·4-6 체크를 공통 이유로, 기능별로 나뉜
@@ -248,11 +241,9 @@ def print_detail(d: dict, features: list) -> None:
         print(f"  {label} 서술을 쓴 사람: {w}/{total}명 (나머지는 \"없음\")")
     print(f"  안 써본 비율: {d['nouse_rate']} (기능별 "
           + ", ".join(f"{k} {v}" for k, v in d["nouse_rate_by_feature"].items()) + ")")
-    print(f"  공통 이유 비율 (대략값): {d['common_share_rough']} = 기타 뺀 체크 {d['common_checks']}개 / "
+    print(f"  공통 이유 비율 (참고용 대략값): {d['common_share_rough']} = 기타 뺀 체크 {d['common_checks']}개 / "
           f"(체크 {d['common_checks']}개 + 기능별 서술 줄 {d['feature_lines']}개)")
-    if d["nouse_rate"] is not None and d["common_share_rough"] is not None:
-        print("  시뮬레이션에 넣을 값 (주변 값을 같이 넣는다): "
-              f"--p-nouse {d['nouse_rate']:.2f} --common {d['common_share_rough']:.2f}")
+    print("  사전등록 3장의 공통 이유 비율과 이유 2개 비율은 4-7에 코드를 붙인 뒤 params로 잰다")
 
 
 def build_sheet(people: list) -> list:
@@ -302,14 +293,54 @@ def cmd_count(args, root: Path) -> int:
     paths, features, options = common_inputs(args, root)
     service_map = parse_service_map(args.service_map) if args.service_map else None
     data = read_responses(paths["responses"], features, options, service_map)
-    if args.first is not None:
-        if args.first < 1:
-            raise InputError("--first는 1 이상")
-        data = restrict(data, args.first)
-        print(f"[범위] 응답 순서대로 앞의 {len(data['people'])}명만 센다 (뺀 응답 수는 파일 전체 기준)")
     print_counts(data)
     if args.detail:
+        print("  --detail은 파일럿 사본 폼 응답에만 쓴다. 본 응답에는 쓰지 않는다 (사전등록 v1 0·3장)")
         print_detail(detail_counts(data["people"], features, options), features)
+    return EXIT_OK
+
+
+def pilot_code_params(rows: list, codebook: dict) -> dict:
+    """사전등록 3장: 응답자 x 기능 칸마다 4-6 보기와 4-7 코드를 합친 서로 다른 코드 묶음(nouse)으로 잰다.
+    공통 이유 비율 = 칸 묶음 안 코드 중 공통 코드 비율. 이유 2개 비율 = 코드가 있는 칸 중 2개 이상인 칸 비율
+    (3개 이상은 2개로 묶는다. 시뮬레이션이 1개나 2개만 뽑아서다)."""
+    cells = {}
+    for r in rows:
+        if r["kind"] != "nouse":
+            continue
+        codes = cells.setdefault((r["service"], r["respondent_id"], r["feature_id"]), set())
+        if r["code"]:
+            codes.add(r["code"])
+    coded = [c for c in cells.values() if c]
+    total = sum(len(c) for c in coded)
+    common = sum(1 for c in coded for x in c if codebook.get(x) == "common")
+    return {"nouse_cells": len(cells), "coded_cells": len(coded), "codes": total, "common_codes": common,
+            "common": round(common / total, 3) if total else None,
+            "p_two": round(sum(len(c) >= 2 for c in coded) / len(coded), 3) if coded else None,
+            "three_or_more": sum(len(c) >= 3 for c in coded)}
+
+
+def cmd_params(args, root: Path) -> int:
+    paths, features, options = common_inputs(args, root)
+    for name in ("human", "codebook"):
+        if not (root / getattr(args, name)).is_file():
+            raise FileNotFoundError(f"--{name}")
+    service_map = parse_service_map(args.service_map) if args.service_map else None
+    data = read_responses(paths["responses"], features, options, service_map)
+    d = detail_counts(data["people"], features, options)
+    codebook = sr.load_codebook(root / args.codebook)
+    human = sr.load_human(root / args.human)
+    unknown = {r["code"] for r in human if r["code"] and r["code"] not in codebook}
+    if unknown:
+        raise InputError(f"파일럿 사람 코드 중 코드북에 없는 코드가 {len(unknown)}개 있음")
+    c = pilot_code_params(human, codebook)
+    print(f"[파일럿 값] 응답자 {d['respondents']}명, 안 써본 칸 {c['nouse_cells']}개 중 코드가 있는 칸 {c['coded_cells']}개")
+    print(f"  안 써본 비율 (4-3 \"안 써봤다\"만): {d['nouse_rate']}")
+    print(f"  공통 이유 비율: {c['common']} = 공통 코드 {c['common_codes']}개 / 코드 {c['codes']}개")
+    print(f"  이유 2개 비율: {c['p_two']} (3개 이상인 칸 {c['three_or_more']}개는 2개로 셌다)")
+    parts = [f"{k}={v}" for k, v in (("p_nouse", d["nouse_rate"]), ("common", c["common"]), ("p_two", c["p_two"]))
+             if v is not None]
+    print(f"  시뮬레이션에 넣는 값: --pilot \"{','.join(parts)}\"  (사전등록 3장 규칙대로 가정을 더한다)")
     return EXIT_OK
 
 
@@ -411,8 +442,14 @@ def main(argv=None, root: Path = ROOT) -> int:
         p.add_argument("--out", default="private/coding")
         if name == "count":
             p.add_argument("--detail", action="store_true",
-                           help="파일럿 숫자도 센다: 4-3 답 개수, 4-5·4-6 보기 개수, 서술 쓴 비율, 공통 이유 비율 대략값")
-            p.add_argument("--first", type=int, help="응답 순서대로 앞의 N명만 센다")
+                           help="파일럿 사본 폼에만: 4-3 답 개수, 안 써본 비율, 4-5·4-6 보기 개수, 서술 쓴 비율")
+    p = sub.add_parser("params")
+    p.add_argument("--responses", required=True, help="파일럿 사본 폼 응답 CSV")
+    p.add_argument("--human", required=True, help="파일럿 정리 시트를 import한 사람 코드 CSV")
+    p.add_argument("--codebook", required=True, help="코드북 CSV (code, scope)")
+    p.add_argument("--service-map", help="폼 보기=스냅샷 service. 안 주면 모든 서비스를 센다")
+    p.add_argument("--features", default="docs/ai-protocol/features.txt")
+    p.add_argument("--options", default="docs/ai-protocol/options_4-6.txt", help="4-6 보기 파일")
     p = sub.add_parser("import")
     p.add_argument("--sheet", required=True)
     p.add_argument("--codebook", help="코드북 CSV (code, scope). 주면 코드북에 없는 코드에서 멈춘다")
@@ -423,7 +460,7 @@ def main(argv=None, root: Path = ROOT) -> int:
     except SystemExit as e:
         return EXIT_OK if e.code == 0 else EXIT_USAGE
     try:
-        return {"count": cmd_count, "make": cmd_make, "import": cmd_import}[args.cmd](args, root)
+        return {"count": cmd_count, "make": cmd_make, "import": cmd_import, "params": cmd_params}[args.cmd](args, root)
     except FileNotFoundError as e:
         print(f"[오류] 입력 파일 없음: {e}", file=sys.stderr)
         return EXIT_USAGE

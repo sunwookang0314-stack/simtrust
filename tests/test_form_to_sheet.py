@@ -125,24 +125,15 @@ class TestCountAndMake(unittest.TestCase):
         self.assertIn("4-7 서술을 쓴 사람: 2/2명", log)
         self.assertIn("안 써본 비율: 0.25", log)  # 8칸 중 2칸
         # 기타 뺀 체크 3개, 기능별 서술 줄 3개("써본 적은 없습니다."는 이유가 아니라 빼고 센다)
-        self.assertIn("공통 이유 비율 (대략값): 0.5", log)
-        self.assertIn("--p-nouse 0.25 --common 0.50", log)
+        self.assertIn("공통 이유 비율 (참고용 대략값): 0.5", log)
+        self.assertIn("파일럿 사본 폼 응답에만", log)
+        self.assertIn("params로 잰다", log)
         for text in ("카톡", "알림이 너무", "검색창"):
             self.assertNotIn(text, log)
         d = fts.detail_counts(fts.read_responses(TMP / self.src, FEATURES, fts.load_lines(
             REPO / "docs/ai-protocol/options_4-6.txt"), fts.parse_service_map(MAP))["people"], FEATURES,
             fts.load_lines(REPO / "docs/ai-protocol/options_4-6.txt"))
         self.assertEqual((d["common_checks"], d["feature_lines"]), (3, 3))
-
-    def test_count_first_n(self):
-        code, log = run("count", "--responses", self.src, "--service-map", MAP, "--detail", "--first", "1")
-        self.assertEqual(code, 0, log)
-        self.assertIn("앞의 1명만", log)
-        self.assertIn("linkareer: 1명", log)
-        self.assertNotIn("campuspick", log)
-        self.assertIn("F4 1명", log)  # 첫 응답자가 F4를 "있는지 모르겠다"로 답함
-        code, log = run("count", "--responses", self.src, "--first", "0")
-        self.assertEqual(code, 4, log)
 
     def test_make_sheet(self):
         code, log = run("make", "--responses", self.src, "--service-map", MAP, "--out", "out_make")
@@ -187,6 +178,37 @@ class TestCountAndMake(unittest.TestCase):
         code, log = run("make", "--responses", "nothing.csv", "--service-map", MAP, "--out", "out_err")
         self.assertEqual(code, 1, log)
         self.assertFalse((TMP / "out_err").exists())
+
+
+class TestPilotParams(unittest.TestCase):
+    def test_params_from_coded_pilot(self):
+        # 사전등록 3장: 안 써본 칸마다 4-6 보기와 4-7 코드를 합친 코드 묶음으로 공통 이유 비율과 이유 2개 비율을 잰다
+        src = write_responses("pilot.csv", [R1, R6])
+        code, log = run("make", "--responses", src, "--service-map", MAP, "--out", "out_pilot")
+        self.assertEqual(code, 0, log)
+        rows = read(next((TMP / "out_pilot").glob("sheet_*.csv")))
+        fill = {"R001-F2": "C01;C02;F2-01", "R002-F1": "C02"}  # 안 써본 칸 2개. 나머지 칸은 이유 없음(-)
+        for r in rows:
+            c = fill.get(r["row_id"], "-")
+            r.update({"code_1": c, "code_2": c, "code_final": c})
+        with (TMP / "pilot_filled.csv").open("w", encoding="utf-8-sig", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=fts.SHEET_FIELDS)
+            w.writeheader()
+            w.writerows(rows)
+        (TMP / "pilot_book.csv").write_text(f"code,scope{NL}C01,공통{NL}C02,공통{NL}F2-01,기능{NL}", encoding="utf-8")
+        code, log = run("import", "--sheet", "pilot_filled.csv", "--codebook", "pilot_book.csv", "--out", "out_pilot_h")
+        self.assertEqual(code, 0, log)
+        human = next((TMP / "out_pilot_h").glob("human_codes_*.csv")).relative_to(TMP).as_posix()
+        code, log = run("params", "--responses", src, "--service-map", MAP, "--human", human,
+                        "--codebook", "pilot_book.csv")
+        self.assertEqual(code, 0, log)
+        # 안 써본 칸 8칸 중 2칸, 코드 4개 중 공통 3개, 코드가 있는 칸 2개 중 2개 이상인 칸 1개(3개짜리)
+        self.assertIn("안 써본 비율 (4-3 \"안 써봤다\"만): 0.25", log)
+        self.assertIn("공통 이유 비율: 0.75", log)
+        self.assertIn("이유 2개 비율: 0.5 (3개 이상인 칸 1개", log)
+        self.assertIn('--pilot "p_nouse=0.25,common=0.75,p_two=0.5"', log)
+        for text in ("카톡", "알림이 너무", "검색창"):
+            self.assertNotIn(text, log)
 
 
 class TestImport(unittest.TestCase):
