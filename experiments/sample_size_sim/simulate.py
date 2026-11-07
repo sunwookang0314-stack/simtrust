@@ -1,27 +1,31 @@
-"""사람 수 시뮬레이션: 서비스당 응답자가 몇 명이면 판정이 믿을 만하게 나오나.
+"""사람 수 시뮬레이션 v2 (사전등록 v1, docs/measurement/사전등록_v1.md).
 
-사람 응답을 모으기 전에 가짜 데이터로 판정 계산기(scripts/score_reasons.py)를 그대로 돌려 본다.
-실제 응답은 쓰지 않고 외부 API도 부르지 않는다.
+가짜 데이터로 판정 계산기(scripts/score_reasons.py)를 그대로 돌려서, 판정 규칙마다 합격 기준(1장)을 넘는 최소 인원을
+찾고 2장의 고르는 법대로 규칙을 고른다. 실제 응답은 쓰지 않고 외부 API도 부르지 않는다.
 
-먼저 기준을 정하고(criteria.draft.json), 그 기준을 넘는 최소 인원을 찾는다 (11/8 강선우 제안).
-- 기준 A: 사람과 다르게 답하는 AI(반만 맞는 AI, 공통 이유만 말하는 AI)가 "믿고 써도 됨"을 받는 비율 상한
-- 기준 B: 사람과 같은 분포로 답하는 AI가 "믿고 써도 됨"을 받는 비율 하한
-- 기준 C: 자료 부족 칸 비율 상한
-- 최소 인원은 "이 인원부터 시험한 더 큰 인원에서도 계속 기준을 넘는" 가장 작은 인원이다
+- 합격 기준 (criteria_v1.json, 사전등록 1장): 가정마다 아래를 모두 넘어야 그 인원에서 합격이다
+  사람 같은 AI를 "믿고 써도 됨" 80% 이상, 반만 맞는 AI 10% 이하, 공통 이유만 말하는 AI 5% 이하,
+  자료 부족 칸 5% 이하(사람 같은 AI 시나리오 칸). 점추정 그대로 댄다
+- 최소 인원: 그 인원과 그보다 큰 시뮬레이션 인원 전부에서 합격하는 가장 작은 인원
+- 구성 두 가지 (사전등록 2장)
+  single: 서비스 하나. 인원 10, 15, 20, 30, 35, 40, 45, 60, 90명
+  merged: 두 서비스 합친 것. 합 인원 30, 40, 50, 60, 80, 90, 120명을 반씩 나누고 서비스를 빼고 판정한다.
+          두 서비스 사람 이유 분포는 같다. AI는 두 서비스분이고 페르소나 번호는 같게 둔다(계산기가 서비스까지 나눠 센다)
+- 가정 (assumptions_v1.json): 공통 이유 60%·30%, 안 써본 비율 3분의 1, 이유 2개 40%. 파일럿 값은 --pilot으로 주면
+  사전등록 3장 규칙대로 가정을 더한다(빼지 않는다)
+- 반복 500번, 시드 20261108. 다시 뽑기는 가정이 4개 이하면 1,000번, 넘으면 200번. 나머지 규칙 값은 규칙 파일 그대로
+- 코드 시험 실행은 반복 10번 이하로만 하고 그 결과는 고르는 데 쓰지 않는다 (--reps 10 --out runs/...)
 
-가정 (값을 바꿔 가며 돌릴 수 있다. 파일럿 응답이 나오면 그 값을 넣는다)
-- 한 판정 단위(서비스 하나, 또는 합친 두 서비스), 기능 4개, 안 쓸 이유(nouse) 칸만 본다. 앱·웹을 합친다 (11/6 D4)
-- 응답자마다 기능별로 p_nouse 확률로 "안 써봤다". 안 써본 기능에 이유 1~2개
-- 이유는 공통 코드 4개(C1~C4)와 기능 코드 4개. 공통 이유 비율은 common. 서술이 적으면 이 비율이 커진다
-- 응답자 70%가 앱, 30%가 웹. AI는 조건 2, 플랫폼마다 페르소나 10명, 1회씩
-
-    python experiments/sample_size_sim/simulate.py --p-nouse 0.25,0.333,0.5 --common 0.3,0.6,0.8
+    python experiments/sample_size_sim/simulate.py --out experiments/sample_size_sim/result_v2.json
+    python experiments/sample_size_sim/simulate.py --pilot "p_nouse=0.42,common=0.71,p_two=0.35" --out ...
 """
 
 import argparse
 import copy
+import hashlib
 import json
 import random
+import subprocess
 import sys
 import time
 from collections import Counter
@@ -37,11 +41,12 @@ COMMON = ["C1", "C2", "C3", "C4"]
 GROUP_WEIGHTS = [0.4, 0.3, 0.2, 0.1]  # 묶음 안에서 많이 나오는 순서
 SHAPES = {"common60": 0.6, "common30": 0.3}  # 데모 견본(experiments/demo_sample)이 쓰는 이름
 AI_KINDS = ("same", "common_only", "half")
-EXPECTED = {"same": sr.TRUST, "common_only": sr.ASK, "half": sr.REF}
 P_NOUSE = 1 / 3
 P_TWO_REASONS = 0.4
 P_APP = 0.7
-AI_PERSONAS_PER_PLATFORM = 10
+AI_PERSONAS_PER_PLATFORM = 10  # 본실험: 서비스·플랫폼·조건마다 페르소나 10명. 반복 3회는 계산기가 한 사람으로 묶는다
+SIZES = {"single": [10, 15, 20, 30, 35, 40, 45, 60, 90], "merged": [30, 40, 50, 60, 80, 90, 120]}
+RULE_ORDER = ["main", "anchors_90", "gate_fixed_70", "fixed_80", "fixed_70", "fixed_60"]  # 사전등록 2장 동점 순서
 
 
 def human_dist(feature_index: int, common_share: float) -> dict:
@@ -65,8 +70,8 @@ def ai_dist(feature_index: int, common_share: float, kind: str) -> dict:
     return out
 
 
-def draw_reasons(dist: dict, rng: random.Random) -> list:
-    k = 2 if rng.random() < P_TWO_REASONS else 1
+def draw_reasons(dist: dict, rng: random.Random, p_two: float = P_TWO_REASONS) -> list:
+    k = 2 if rng.random() < p_two else 1
     codes, weights = list(dist), list(dist.values())
     out = []
     while len(out) < k:
@@ -76,148 +81,253 @@ def draw_reasons(dist: dict, rng: random.Random) -> list:
     return out
 
 
-def make_data(n: int, share: float, ai_kind: str, rng: random.Random, p_nouse: float = P_NOUSE) -> tuple:
+def make_data(n: int, a: dict, ai_kind: str, rng: random.Random, config: str = "single") -> tuple:
+    """a = 가정 {common, p_nouse, p_two}. merged면 사람을 두 서비스에 반씩 나누고 AI도 두 서비스분을 만든다."""
+    services = ["s1", "s2"] if config == "merged" else ["s1"]
     human, ai = [], []
     for r in range(n):
+        service = services[r * len(services) // n]
         plat = "app" if rng.random() < P_APP else "web"
         for j, f in enumerate(FEATURES):
-            if rng.random() < p_nouse:
-                for c in draw_reasons(human_dist(j, share), rng):
-                    human.append({"respondent_id": f"R{r:03d}", "service": "sim", "platform": plat,
+            if rng.random() < a["p_nouse"]:
+                for c in draw_reasons(human_dist(j, a["common"]), rng, a["p_two"]):
+                    human.append({"respondent_id": f"R{r:03d}", "service": service, "platform": plat,
                                   "feature_id": f, "kind": "nouse", "code": c, "order": str(r)})
-    for plat in ("app", "web"):
-        for p in range(AI_PERSONAS_PER_PLATFORM):
-            run_id = f"{plat}-P{p:02d}"
-            for j, f in enumerate(FEATURES):
-                for c in draw_reasons(ai_dist(j, share, ai_kind), rng):
-                    ai.append({"item_id": f"{run_id}-{f}-{c}", "run_id": run_id, "service": "sim",
-                               "platform": plat, "condition": 2, "persona_id": f"P{p:02d}", "repeat": "1",
-                               "feature_id": f, "kind": "nouse", "code": c})
+    for service in services:
+        for plat in ("app", "web"):
+            for p in range(AI_PERSONAS_PER_PLATFORM):
+                run_id = f"{service}-{plat}-P{p:02d}"
+                for j, f in enumerate(FEATURES):
+                    for c in draw_reasons(ai_dist(j, a["common"], ai_kind), rng, a["p_two"]):
+                        ai.append({"item_id": f"{run_id}-{f}-{c}", "run_id": run_id, "service": service,
+                                   "platform": plat, "condition": 2, "persona_id": f"P{p:02d}", "repeat": "1",
+                                   "feature_id": f, "kind": "nouse", "code": c})
     return human, ai
 
 
-def sim_rules(resamples: int) -> dict:
-    rules = copy.deepcopy(json.loads((ROOT / "configs/rules.draft.json").read_text(encoding="utf-8")))
+def sim_rules(path: Path, resamples: int, config: str) -> dict:
+    rules = copy.deepcopy(json.loads(path.read_text(encoding="utf-8")))
     rules["resamples"] = resamples
-    # 안정 인원은 판정에 안 쓰고 오래 걸려서 끈다 (시작 인원과 전체 인원만 잼)
+    # 안정 인원은 판정에 안 쓰고 오래 걸려서 끈다 (시작 인원과 전체 인원만 잼). 사전등록 7장에 한계로 적힘
     rules["stability"] = {**rules["stability"], "step": 10 ** 6}
     rules["platform_reference"] = False
+    rules["cell_keys"] = ["feature_id", "kind"] if config == "merged" else ["service", "feature_id", "kind"]
     return rules
 
 
-def run_once(job: tuple) -> tuple:
-    """job = (p_nouse, common, ai_kind, n, seed, rules). 반환: (job 키, 칸마다 판정과 구간 폭)"""
-    p_nouse, share, kind, n, seed, rules = job
-    rng = random.Random(seed)
-    human, ai = make_data(n, share, kind, rng, p_nouse)
+def run_job(job: tuple) -> tuple:
+    """job = (구성, 가정 이름, 가정, AI 종류, 인원, 시드, 규칙). 반환은 칸 수만 센 작은 묶음이다 (메모리 아끼려고)."""
+    config, a_name, a, kind, n, seed, rules = job
+    human, ai = make_data(n, a, kind, random.Random(seed), config)
     res = sr.score(human, ai, {**rules, "seed": seed})
-    cells = []
+    verdicts = {name: Counter() for name in ["main"] + [x["name"] for x in rules["sensitivity"]]}
+    widths, n_cells = [], []
     for c in res["cells"]:
+        verdicts["main"][c["verdict"]] += 1
+        for name, v in c["sensitivity"].items():
+            verdicts[name][v] += 1
+        n_cells.append(c["n_humans"])
         hi = sr.interval(c["draws"]["human_precision"], rules["level"])
-        cells.append({"n_cell": c["n_humans"], "verdicts": {"main": c["verdict"], **c["sensitivity"]},
-                      "human_width": (hi[1] - hi[0]) if hi else None})
-    return (p_nouse, share, kind, n), cells
+        if hi and c["verdict"] != sr.LOW:
+            widths.append(hi[1] - hi[0])
+    return (config, a_name, kind, n), verdicts, widths, n_cells
 
 
-def summarize_cells(cells: list, kind: str, rule_names: list) -> dict:
-    total = len(cells)
-    widths = [c["human_width"] for c in cells if c["human_width"] is not None and c["verdicts"]["main"] != sr.LOW]
-    n_cells = sorted(c["n_cell"] for c in cells)
-    by_rule = {}
-    for name in rule_names:
-        v = Counter(c["verdicts"][name] for c in cells)
-        by_rule[name] = {"trust": round(v[sr.TRUST] / total, 3), "reference": round(v[sr.REF] / total, 3),
-                         "ask": round(v[sr.ASK] / total, 3), "low": round(v[sr.LOW] / total, 3),
-                         "expected": round(v[EXPECTED[kind]] / total, 3)}
-    return {"cells": total, "median_n_cell": n_cells[len(n_cells) // 2],
-            "human_width_mean": round(sum(widths) / len(widths), 3) if widths else None, "rules": by_rule}
-
-
-def check(rows: dict, n: int, rule: str, crit: dict) -> dict:
-    """한 인원에서 기준 A·B·C(와 D)를 넘는지. rows[kind][n]은 summarize_cells 결과."""
-    r = {k: rows[k][n]["rules"][rule] for k in AI_KINDS}
-    false_trust = max(r["half"]["trust"], r["common_only"]["trust"])
-    out = {"false_trust": false_trust, "true_trust": r["same"]["trust"],
-           "low": max(x["low"] for x in r.values()), "generic_ask": r["common_only"]["ask"]}
-    out["pass"] = (false_trust <= crit["max_false_trust"] and out["true_trust"] >= crit["min_true_trust"]
-                   and out["low"] <= crit["max_low"]
-                   and (crit.get("min_generic_ask") is None or out["generic_ask"] >= crit["min_generic_ask"]))
+def pilot_assumptions(base: list, pilot: dict) -> list:
+    """사전등록 3장: 파일럿은 가정을 더하기만 한다.
+    공통 이유 비율이 30~60% 밖이면 그 값을 공통 이유 가정으로 더하고, 안 써본 비율이 3분의 1과 10%p 넘게 다르거나
+    이유 2개 비율이 40%와 10%p 넘게 다르면 그 값 하나만 바꾼 가정을 공통 이유 가정마다 더한다."""
+    out = list(base)
+    commons = sorted({a["common"] for a in base}, reverse=True)
+    if "common" in pilot and not 0.3 <= pilot["common"] <= 0.6:
+        out.append({"name": f"pilot_common{pilot['common']:.2f}", "common": pilot["common"],
+                    "p_nouse": P_NOUSE, "p_two": P_TWO_REASONS})
+        commons.append(pilot["common"])
+    if "p_nouse" in pilot and abs(pilot["p_nouse"] - P_NOUSE) > 0.10:
+        out += [{"name": f"common{c:.2f}_nouse{pilot['p_nouse']:.2f}", "common": c, "p_nouse": pilot["p_nouse"],
+                 "p_two": P_TWO_REASONS} for c in commons]
+    if "p_two" in pilot and abs(pilot["p_two"] - P_TWO_REASONS) > 0.10:
+        out += [{"name": f"common{c:.2f}_two{pilot['p_two']:.2f}", "common": c, "p_nouse": P_NOUSE,
+                 "p_two": pilot["p_two"]} for c in commons]
     return out
 
 
-def minimum_n(checks: list) -> int:
-    """이 인원부터 시험한 더 큰 인원에서도 계속 기준을 넘는 가장 작은 인원. 없으면 None."""
+def parse_pilot(text: str) -> dict:
+    out = {}
+    for part in (text or "").split(","):
+        if part.strip():
+            k, v = part.split("=", 1)
+            if k.strip() not in ("p_nouse", "common", "p_two"):
+                raise SystemExit(f"--pilot에 모르는 값: {k}")
+            out[k.strip()] = float(v)
+    return out
+
+
+def rates(verdicts: Counter) -> dict:
+    total = sum(verdicts.values())
+    return {"trust": verdicts[sr.TRUST] / total, "reference": verdicts[sr.REF] / total,
+            "ask": verdicts[sr.ASK] / total, "low": verdicts[sr.LOW] / total, "na": verdicts[sr.NA] / total}
+
+
+def check(by_kind: dict, crit: dict) -> dict:
+    """가정 하나, 인원 하나에서 합격 기준 1장."""
+    same, half, gen = by_kind["same"], by_kind["half"], by_kind["common_only"]
+    out = {"same_trust": same["trust"], "half_trust": half["trust"], "common_only_trust": gen["trust"],
+           "low_same": same["low"], "common_only_ask": gen["ask"]}
+    out["pass"] = (same["trust"] >= crit["min_same_trust"] and half["trust"] <= crit["max_half_trust"]
+                   and gen["trust"] <= crit["max_common_only_trust"] and same["low"] <= crit["max_low_same"])
+    return out
+
+
+def minimum_n(passes: list) -> int:
+    """passes = [(인원, 합격)] 작은 인원부터. 그 인원부터 끝까지 합격하는 가장 작은 인원. 없으면 None."""
     best = None
-    for n, c in reversed(checks):
-        if not c["pass"]:
+    for n, ok in reversed(passes):
+        if not ok:
             break
         best = n
     return best
 
 
-def floats(text: str) -> list:
-    return [round(float(x), 4) for x in text.split(",") if x.strip()]
+def select_rule(table: dict) -> dict:
+    """사전등록 2장 고르는 법. table[rule] = {single_min, merged_min, generic_ask}."""
+    order = {r: i for i, r in enumerate(RULE_ORDER)}
+    rules = [r for r in RULE_ORDER if r in table]
+
+    def by_single(r):
+        t = table[r]
+        return (t["single_min"], t["merged_min"], -t["generic_ask"], order[r])
+
+    both = [r for r in rules if table[r]["single_min"] is not None and table[r]["merged_min"] is not None]
+    if both:
+        r = min(both, key=by_single)
+        return {"rule": r, "case": "두 구성 모두 합격", "service_judgment": True}
+    merged_only = [r for r in rules if table[r]["merged_min"] is not None]
+    if merged_only:
+        r = min(merged_only, key=lambda x: (table[x]["merged_min"], -table[x]["generic_ask"], order[x]))
+        return {"rule": r, "case": "합친 구성에서만 합격. 서비스별 판정은 하지 않는다", "service_judgment": False}
+    single_only = [r for r in rules if table[r]["single_min"] is not None]
+    if single_only:
+        r = min(single_only, key=by_single)
+        return {"rule": r, "case": "서비스 하나 구성에서만 합격. 합쳐서 낸 판정은 전부 미달로 적는다",
+                "service_judgment": True}
+    return {"rule": "main", "case": "합격하는 규칙 없음. main을 쓰고 모든 판정 옆에 미달로 적는다",
+            "service_judgment": False}
+
+
+def git_commit() -> str:
+    try:
+        sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--", "scripts", "experiments/sample_size_sim",
+                                "configs"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+        return sha + ("+dirty" if dirty else "")
+    except OSError:
+        return "unknown"
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="사람 수 시뮬레이션 (가짜 데이터)")
-    ap.add_argument("--sizes", default="15,20,30,45,60,90,120", help="판정 단위 하나의 응답자 수")
-    ap.add_argument("--p-nouse", default="0.25,0.333,0.5", help="기능을 안 써본 비율. 쉼표로 여러 값")
-    ap.add_argument("--common", default="0.3,0.6,0.8", help="사람 이유 중 공통 이유 비율. 쉼표로 여러 값")
-    ap.add_argument("--criteria", default="experiments/sample_size_sim/criteria.draft.json")
-    ap.add_argument("--reps", type=int, default=50, help="조건마다 가짜 데이터를 만드는 횟수")
-    ap.add_argument("--resamples", type=int, default=200, help="계산기 다시 뽑기 횟수 (본 규칙은 1,000)")
-    ap.add_argument("--workers", type=int, default=4, help="동시에 돌릴 프로세스 수")
+    ap = argparse.ArgumentParser(description="사람 수 시뮬레이션 v2 (사전등록 v1)")
+    ap.add_argument("--criteria", default="experiments/sample_size_sim/criteria_v1.json")
+    ap.add_argument("--assumptions", default="experiments/sample_size_sim/assumptions_v1.json")
+    ap.add_argument("--pilot", default="", help="파일럿 값. 예: p_nouse=0.42,common=0.71,p_two=0.35")
+    ap.add_argument("--rules", default="configs/rules.draft.json")
+    ap.add_argument("--configs", default="single,merged")
+    ap.add_argument("--reps", type=int, default=500)
+    ap.add_argument("--resamples", type=int, default=None, help="안 주면 가정 4개 이하 1,000, 넘으면 200 (사전등록 2장)")
+    ap.add_argument("--workers", type=int, default=5)
     ap.add_argument("--seed", default="20261108")
-    ap.add_argument("--out", default="experiments/sample_size_sim/result.json")
+    ap.add_argument("--out", default="experiments/sample_size_sim/result_v2.json")
     args = ap.parse_args(argv)
-    sizes, p_list, c_list = sorted(int(x) for x in args.sizes.split(",")), floats(args.p_nouse), floats(args.common)
     crit = json.loads((ROOT / args.criteria).read_text(encoding="utf-8"))
-    rules = sim_rules(args.resamples)
-    rule_names = ["main"] + [a["name"] for a in rules["sensitivity"]]
-    jobs = [(p, c, k, n, f"{args.seed}|{p}|{c}|{k}|{n}|{i}", rules)
-            for p in p_list for c in c_list for k in AI_KINDS for n in sizes for i in range(args.reps)]
+    base = json.loads((ROOT / args.assumptions).read_text(encoding="utf-8"))["assumptions"]
+    for a in base:
+        a.setdefault("p_nouse", P_NOUSE)
+        a.setdefault("p_two", P_TWO_REASONS)
+    pilot = parse_pilot(args.pilot)
+    assumptions = pilot_assumptions(base, pilot) if pilot else base
+    resamples = args.resamples or (1000 if len(assumptions) <= 4 else 200)
+    configs = [c for c in args.configs.split(",") if c]
+    rules_path = ROOT / args.rules
+    rules_by_config = {c: sim_rules(rules_path, resamples, c) for c in configs}
+    rule_names = ["main"] + [x["name"] for x in rules_by_config[configs[0]]["sensitivity"]]
+    if args.reps > 10 and not args.out.startswith("experiments/"):
+        print("[주의] 반복 10번을 넘는 실행은 v2 본 실행이다. 결과는 experiments/ 아래에 남긴다")
+    jobs = [(cfg, a["name"], a, kind, n, f"{args.seed}|{cfg}|{a['name']}|{kind}|{n}|{i}", rules_by_config[cfg])
+            for cfg in configs for a in assumptions for kind in AI_KINDS for n in SIZES[cfg] for i in range(args.reps)]
+    print(f"[v2] 구성 {configs}, 가정 {len(assumptions)}개, 반복 {args.reps}, 다시 뽑기 {resamples}, "
+          f"작업 {len(jobs):,}개, 프로세스 {args.workers}", flush=True)
     started = time.time()
-    gathered = {}
+    agg = {}
+    done = 0
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
-        for key, cells in pool.map(run_once, jobs, chunksize=8):
-            gathered.setdefault(key, []).extend(cells)
-    scenarios, table = [], []
-    for p in p_list:
-        for c in c_list:
-            rows = {k: {n: summarize_cells(gathered[(p, c, k, n)], k, rule_names) for n in sizes} for k in AI_KINDS}
-            per_rule = {}
-            for rule in rule_names:
-                checks = [(n, check(rows, n, rule, crit)) for n in sizes]
-                per_rule[rule] = {"minimum_n": minimum_n(checks), "checks": {str(n): ck for n, ck in checks}}
-                table.append({"p_nouse": p, "common": c, "rule": rule, "minimum_n": per_rule[rule]["minimum_n"]})
-            scenarios.append({"p_nouse": p, "common": c,
-                              "rows": {k: {str(n): v for n, v in rows[k].items()} for k in AI_KINDS},
-                              "rules": per_rule})
-    result = {"criteria": crit, "criteria_file": args.criteria,
-              "assumptions": {"features": len(FEATURES), "p_two_reasons": P_TWO_REASONS, "p_app": P_APP,
-                              "ai_personas_per_platform": AI_PERSONAS_PER_PLATFORM, "p_nouse": p_list,
-                              "common": c_list, "ai_kinds": list(AI_KINDS)},
-              "expected": EXPECTED,
-              "settings": {"sizes": sizes, "reps": args.reps, "resamples": args.resamples, "seed": args.seed,
-                           "rules_file": "configs/rules.draft.json", "min_humans": rules["min_humans"],
-                           "level": rules["level"]},
-              "minimum_n": table, "scenarios": scenarios, "elapsed_sec": round(time.time() - started, 1)}
+        for key, verdicts, widths, n_cells in pool.map(run_job, jobs, chunksize=4):
+            slot = agg.setdefault(key, {"verdicts": {r: Counter() for r in rule_names}, "width_sum": 0.0,
+                                        "width_n": 0, "n_cells": Counter()})
+            for r in rule_names:
+                slot["verdicts"][r].update(verdicts[r])
+            slot["width_sum"] += sum(widths)
+            slot["width_n"] += len(widths)
+            slot["n_cells"].update(n_cells)
+            done += 1
+            if done % max(1, len(jobs) // 20) == 0:
+                el = time.time() - started
+                print(f"  {done:,}/{len(jobs):,} ({el / 60:.1f}분, 남은 시간 약 {el / done * (len(jobs) - done) / 60:.0f}분)",
+                      flush=True)
+
+    results = {}
+    for cfg in configs:
+        results[cfg] = {}
+        for rule in rule_names:
+            per_n = []
+            for n in SIZES[cfg]:
+                per_a = {}
+                for a in assumptions:
+                    by_kind = {k: rates(agg[(cfg, a["name"], k, n)]["verdicts"][rule]) for k in AI_KINDS}
+                    per_a[a["name"]] = check(by_kind, crit)
+                per_n.append({"n": n, "pass": all(v["pass"] for v in per_a.values()), "by_assumption": per_a})
+            results[cfg][rule] = {"minimum_n": minimum_n([(x["n"], x["pass"]) for x in per_n]), "rows": per_n}
+    table = {}
+    for rule in rule_names:
+        smin = results.get("single", {}).get(rule, {}).get("minimum_n")
+        mmin = results.get("merged", {}).get(rule, {}).get("minimum_n")
+        gen = None
+        if smin is not None:
+            row = next(x for x in results["single"][rule]["rows"] if x["n"] == smin)
+            gen = min(v["common_only_ask"] for v in row["by_assumption"].values())  # 두 가정 중 낮은 쪽
+        table[rule] = {"single_min": smin, "merged_min": mmin, "generic_ask": gen if gen is not None else 0.0}
+    selection = select_rule(table) if set(configs) == {"single", "merged"} else None
+    if selection:
+        smin = table[selection["rule"]]["single_min"]
+        selection["T"] = max(40, smin) if (smin is not None and selection["service_judgment"]) else None
+    summary_cells = {f"{k[0]}|{k[1]}|{k[2]}|{k[3]}": {
+        "width_mean": round(v["width_sum"] / v["width_n"], 4) if v["width_n"] else None,
+        "median_n_cell": sorted(v["n_cells"].elements())[sum(v["n_cells"].values()) // 2]} for k, v in agg.items()}
+    record = {"version": "v2", "preregistration": "docs/measurement/사전등록_v1.md",
+              "command": "python " + " ".join([Path(sys.argv[0]).as_posix()] + (argv if argv is not None else sys.argv[1:])),
+              "code_commit": git_commit(), "criteria": crit, "assumptions": assumptions, "pilot": pilot or None,
+              "settings": {"configs": configs, "sizes": {c: SIZES[c] for c in configs}, "reps": args.reps,
+                           "resamples": resamples, "seed": args.seed, "rules_file": args.rules,
+                           "rules_sha256": hashlib.sha256(rules_path.read_bytes()).hexdigest(),
+                           "ai_personas_per_platform_per_service": AI_PERSONAS_PER_PLATFORM, "p_app": P_APP},
+              "minimum_n": table, "selection": selection, "results": results, "cells": summary_cells,
+              "elapsed_sec": round(time.time() - started, 1)}
     out = ROOT / args.out
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+    out.write_text(json.dumps(record, ensure_ascii=False, indent=1), encoding="utf-8")
+    sha = hashlib.sha256(out.read_bytes()).hexdigest()
 
-    print(f"[기준] 잘못 믿음 {crit['max_false_trust']:.0%} 이하, 제대로 믿음 {crit['min_true_trust']:.0%} 이상, "
-          f"자료 부족 {crit['max_low']:.0%} 이하"
-          + (f", 공통 이유 AI 물어봄 {crit['min_generic_ask']:.0%} 이상" if crit.get("min_generic_ask") else ""))
-    print("[최소 인원] 판정 단위 하나당. '없음'은 시험한 최대 인원까지 기준을 못 넘음")
-    print("  안 써본 비율 / 공통 이유 | " + " | ".join(rule_names))
-    for p in p_list:
-        for c in c_list:
-            vals = [next(t["minimum_n"] for t in table if t["p_nouse"] == p and t["common"] == c and t["rule"] == r)
-                    for r in rule_names]
-            print(f"  {p:.2f} / {c:.1f} | " + " | ".join("없음" if v is None else f"{v}명" for v in vals))
-    print(f"기록: {args.out} ({result['elapsed_sec']}초)")
+    print("[합격 기준] 사람 같은 AI 믿음 {:.0%} 이상, 반만 맞는 AI {:.0%} 이하, 공통 이유만 AI {:.0%} 이하, "
+          "자료 부족 {:.0%} 이하. 가정 {}개 중 가장 나쁜 경우".format(
+              crit["min_same_trust"], crit["max_half_trust"], crit["max_common_only_trust"], crit["max_low_same"],
+              len(assumptions)))
+    print("[최소 인원] 규칙 | 서비스 하나 | 두 서비스 합친 것")
+    for rule in RULE_ORDER:
+        if rule in table:
+            t = table[rule]
+            print(f"  {rule:<14} | {t['single_min'] or '없음'} | {t['merged_min'] or '없음'}")
+    if selection:
+        print(f"[고른 규칙] {selection['rule']} ({selection['case']}), T = {selection['T']}")
+    print(f"기록: {args.out} ({record['elapsed_sec']}초), sha256 {sha}")
     return 0
 
 
