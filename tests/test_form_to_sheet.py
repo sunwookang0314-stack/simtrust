@@ -18,6 +18,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 
 import form_to_sheet as fts  # noqa: E402
+import reason_sheet as rsh  # noqa: E402
 import score_reasons as sr  # noqa: E402
 
 TMP = Path(tempfile.mkdtemp(prefix="simtrust_form_test_"))
@@ -228,6 +229,36 @@ class TestImport(unittest.TestCase):
         # 계산기가 그대로 읽는다
         loaded = sr.load_human(next((TMP / "out_h").glob("human_codes_*.csv")))
         self.assertEqual(len(loaded), 8)
+
+    def test_import_alt_means_and_subtype(self):
+        # 코딩 규칙 v0.1 4장: 대체 수단, 세부 유형(F4만)을 칸으로 받아 사람 코드 CSV에 같이 남긴다
+        extra = {"R001-F2": {"alt_means": "범용 앱 ; 사람·학교"}, "R002-F1": {"alt_means": "다른 공고 서비스"}}
+        sheet = self.write_sheet("extra.csv", lambda r: {**self.good(r), **extra.get(r["row_id"], {})})
+        code, log = run("import", "--sheet", sheet, "--codebook", "book.csv", "--out", "out_x")
+        self.assertEqual(code, 0, log)
+        human = read(next((TMP / "out_x").glob("human_codes_*.csv")))
+        got = {(r["respondent_id"], r["feature_id"], r["code"]): r["alt_means"] for r in human}
+        self.assertEqual(got[("R001", "F2", "NEED")], "범용 앱;사람·학교")
+        self.assertEqual(got[("R002", "F1", "ALT")], "다른 공고 서비스")
+        self.assertEqual(got[("R001", "F1", "FIND")], "")
+        self.assertEqual(len(sr.load_human(next((TMP / "out_x").glob("human_codes_*.csv")))), 8)  # 계산기가 읽는다
+        # 정해진 값이 아니거나, 세부 유형을 F4가 아닌 기능에 적으면 멈춘다
+        bad_alt = self.write_sheet("bad_alt.csv", lambda r: {**self.good(r), "alt_means": "카톡"})
+        bad_sub = self.write_sheet("bad_sub.csv", lambda r: {**self.good(r), "subtype": "광고"})
+        for name, word in ((bad_alt, "alt_means"), (bad_sub, "F4")):
+            with self.subTest(name=name):
+                code, log = run("import", "--sheet", name, "--codebook", "book.csv", "--out", "out_bad_x")
+                self.assertEqual(code, 4, log)
+                self.assertIn(word, log)
+        self.assertFalse((TMP / "out_bad_x").exists())
+        # 두 칸이 없는 옛 시트도 받는다
+        old = [{k: v for k, v in {**r, **self.good(r)}.items() if k not in rsh.EXTRA_COLS} for r in self.rows]
+        with (TMP / "old.csv").open("w", encoding="utf-8-sig", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=[c for c in fts.SHEET_FIELDS if c not in rsh.EXTRA_COLS])
+            w.writeheader()
+            w.writerows(old)
+        code, log = run("import", "--sheet", "old.csv", "--codebook", "book.csv", "--out", "out_old")
+        self.assertEqual(code, 0, log)
 
     def test_import_errors(self):
         blank = self.write_sheet("blank.csv", lambda r: {**self.good(r), "code_2": ""})

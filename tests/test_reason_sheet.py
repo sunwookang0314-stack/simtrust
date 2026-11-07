@@ -150,6 +150,27 @@ class TestImport(unittest.TestCase):
         self.assertEqual(report["agreement"], 0.8)
         self.assertEqual(report["not_reason_rows"], 2)  # "편해서", "따로 안 모읍니다"는 코드북에 없어서 '-'
 
+    def test_alt_means_and_subtype(self):
+        # 사람 정리 시트와 같은 칸. F4가 아닌 줄의 세부 유형, 정해진 값이 아닌 대체 수단은 멈춘다
+        sheet, key_rows, _ = make("extra")
+        key = str(next((TMP / "sheet_extra").glob("key_*.csv")).relative_to(TMP))
+        feat = {r["item_id"]: r["feature_id"] for r in key_rows}
+        rows = [dict(r) for r in sheet]
+        rows[0]["alt_means"] = "다른 공고 서비스"
+        filled = fill(rows, TMP / "filled_extra.csv")
+        code, log = run(rsh, "import", "--sheet", filled, "--key", key, "--out", "coded_extra")
+        self.assertEqual(code, 0, log)
+        out = read(next((TMP / "coded_extra").glob("ai_codes_*.csv")))
+        self.assertEqual({r["alt_means"] for r in out if r["item_id"] == rows[0]["item_id"]}, {"다른 공고 서비스"})
+        rows = [dict(r) for r in sheet]
+        not_f4 = next(r for r in rows if feat[r["item_id"]] != "F4")
+        not_f4["subtype"] = "광고"
+        filled = fill(rows, TMP / "bad_extra.csv")
+        code, log = run(rsh, "import", "--sheet", filled, "--key", key, "--out", "coded_bad_extra")
+        self.assertEqual(code, 4, log)
+        self.assertIn("F4", log)
+        self.assertFalse((TMP / "coded_bad_extra").exists())
+
     def test_blank_or_mismatch_writes_nothing(self):
         sheet, key_rows, _ = make("blank")
         key = str(next((TMP / "sheet_blank").glob("key_*.csv")).relative_to(TMP))
