@@ -20,8 +20,10 @@
   {"name": "anchors_90", "method": "anchors", "level": 0.90},
   {"name": "fixed_60", "method": "fixed", "trust": 0.6, "reference": 0.4},
   {"name": "fixed_70", "method": "fixed", "trust": 0.7, "reference": 0.5},
-  {"name": "fixed_80", "method": "fixed", "trust": 0.8, "reference": 0.6}
+  {"name": "fixed_80", "method": "fixed", "trust": 0.8, "reference": 0.6},
+  {"name": "gate_fixed_70", "method": "gate", "trust": 0.7, "reference": 0.5}
  ],
+ "_gate_fixed_70": "Floor check first, then fixed 70%/50% on pooled values. Definition fixed in docs/measurement/사전등록_v1.md section 2.",
  "stability": {"start": 3, "step": 2, "draws": 200, "tolerance": 0.05},
  "saturation": {"group_keys": ["service"], "min_respondents": 15, "run": 3, "max_new": 1}
 }

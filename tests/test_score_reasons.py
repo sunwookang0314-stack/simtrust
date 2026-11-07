@@ -215,6 +215,14 @@ class TestNumbers(unittest.TestCase):
         plain = find(sr.score(h, a, rules())["cells"], feature_id="F1", condition=2)
         self.assertIsNone(plain["nocommon"])
 
+    def test_ai_persona_counted_per_service(self):
+        # 사전등록 v1 6장: 두 서비스를 합쳐 판정할 때 같은 페르소나 번호라도 서비스가 다르면 다른 사람이다
+        a = [{**r, "persona_id": "C0-01"} for r in ai_rows("F1", {"e1": ["A"]}, service="s1")
+             + ai_rows("F1", {"e2": ["B"]}, service="s2")]
+        h = human_rows("F1", {"P1": ["A"]}, service="s1") + human_rows("F1", {"P2": ["B"]}, service="s2")
+        _, _, ai_cells, _ = sr.build_cells(h, a, rules(cell_keys=["feature_id", "kind"]))
+        self.assertEqual(len(ai_cells[(2, ("F1", "nouse"))]["persona_eps"]), 2)
+
     def test_pooled_cell_keys(self):
         h = human_rows("F1", {"P1": ["A"]}, service="s1") + human_rows("F1", {"P2": ["B"]}, service="s2")
         a = ai_rows("F1", {"e1": ["A"]}, service="s1") + ai_rows("F1", {"e2": ["B"]}, service="s2")
@@ -275,6 +283,21 @@ class TestJudge(unittest.TestCase):
         self.assertEqual(sr.judge(cell(0.75, self.HUMAN, self.FLOOR, recall=low_recall), self.rule), sr.REF)
         only_p = {**self.rule, "metrics": ["precision"]}
         self.assertEqual(sr.judge(cell(0.75, self.HUMAN, self.FLOOR, recall=low_recall), only_p), sr.TRUST)
+
+    def test_gate_fixed_70(self):
+        # 사전등록 v1 2장: 아무 기능에나 할 말 검사를 먼저 하고, 통과하면 에피소드 전체 값으로 고정 70%·50%
+        gate = sr.merge_rule(RULES, {"method": "gate", "trust": 0.7, "reference": 0.5})
+        self.assertEqual(sr.judge(cell(0.75, self.HUMAN, self.FLOOR), gate), sr.TRUST)
+        self.assertEqual(sr.judge(cell(0.6, self.HUMAN, self.FLOOR), gate), sr.REF)
+        self.assertEqual(sr.judge(cell(0.45, self.HUMAN, self.FLOOR), gate), sr.ASK)
+        self.assertEqual(sr.judge(cell(0.75, [], self.FLOOR), gate), sr.TRUST)  # 사람끼리 구간은 안 본다
+        self.assertEqual(sr.judge(cell(0.4, self.HUMAN, [0.1, 0.3, 0.5]), gate), sr.ASK)  # 4번
+        self.assertEqual(sr.judge(cell(0.0, self.HUMAN, [None, None]), gate), sr.ASK)  # 3번
+        self.assertEqual(sr.judge(cell(0.75, self.HUMAN, [None, None]), gate), sr.REF)  # 5번
+        self.assertEqual(sr.judge(cell(0.6, self.HUMAN, [None, None]), gate), sr.REF)
+        self.assertEqual(sr.judge(cell(0.75, self.HUMAN, self.FLOOR, n=4), gate), sr.LOW)
+        self.assertEqual(sr.judge(cell(0.75, self.HUMAN, self.FLOOR, codes=()), gate), sr.NA)
+        self.assertIn("gate_fixed_70", {a["name"] for a in RULES["sensitivity"]})
 
     def test_fixed_thresholds(self):
         fixed = sr.merge_rule(RULES, {"method": "fixed", "trust": 0.7, "reference": 0.5})

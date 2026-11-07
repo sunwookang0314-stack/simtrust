@@ -236,8 +236,8 @@ def merge_rule(rules: dict, alt: dict) -> dict:
 
 
 def check_rule(rule: dict, where: str) -> None:
-    if rule.get("method") not in ("anchors", "fixed"):
-        raise InputError(f"{where}: method는 anchors 또는 fixed")
+    if rule.get("method") not in ("anchors", "fixed", "gate"):
+        raise InputError(f"{where}: method는 anchors, fixed, gate 중 하나")
     if not isinstance(rule.get("level"), (int, float)) or not 0 < rule["level"] < 1:
         raise InputError(f"{where}: level은 0과 1 사이")
     t, r = rule.get("trust"), rule.get("reference")
@@ -304,8 +304,9 @@ def build_cells(human: list, ai: list, rules: dict, keys: list = None) -> tuple:
     for r in ai:
         cell = ai_cells[(r["condition"], tuple(r[k] for k in keys))]
         cell["episodes"].add(r["run_id"])
-        # 같은 페르소나를 앱·웹에서 따로 돌릴 수 있어서 (플랫폼, 페르소나)를 한 사람으로 센다
-        cell["persona_eps"][(r["platform"], r["persona_id"])].add(r["run_id"])
+        # 같은 페르소나 번호를 앱·웹, 두 서비스에서 따로 돌리니 (플랫폼, 서비스, 페르소나)를 한 사람으로 센다.
+        # 서비스를 빼면 두 서비스를 합쳐 판정할 때 다른 서비스 답이 한 사람으로 묶인다 (사전등록 v1 6장)
+        cell["persona_eps"][(r["platform"], r["service"], r["persona_id"])].add(r["run_id"])
         cell["ep_codes"].setdefault(r["run_id"], set())
         if r["code"] in drop:
             dropped += 1
@@ -469,6 +470,8 @@ def judge(cell: dict, rule: dict) -> str:
         if all(v >= rule["trust"] for v in vals):
             return TRUST
         return REF if all(v >= rule["reference"] for v in vals) else ASK
+    if rule["method"] == "gate":
+        return judge_gate(cell, rule, metrics)
     view = anchor_view(cell["draws"], rule["level"], metrics)
     if any(view[m]["ai"] is None or view[m]["human"] is None for m in metrics):
         return NA
@@ -484,6 +487,30 @@ def judge(cell: dict, rule: dict) -> str:
     if all(view[m]["ai"] >= view[m]["human"][0] for m in metrics):
         return TRUST
     return REF
+
+
+def judge_gate(cell: dict, rule: dict, metrics: list) -> str:
+    """기준점 검사 + 고정 문턱 (사전등록 v1 2장 gate_fixed_70). 1·2번(자료 부족, 계산 불가)은 judge가 먼저 본다.
+    3. 다시 뽑기로 잰 중앙값이 0이면 물어볼 것  4. 중앙값이 아무 기능에나 할 말 구간 위쪽 끝 이하이면 물어볼 것
+    5. 그 구간이 없으면 6~8번을 보되 믿고 써도 됨 대신 참고용  6~8. 에피소드 전체로 잰 값으로 고정 문턱
+    3·4번 중앙값이나 6번 값이 계산 안 되면 계산 불가."""
+    view = anchor_view(cell["draws"], rule["level"], metrics)
+    full = [cell["full"][m] for m in metrics]
+    if any(view[m]["ai"] is None for m in metrics) or any(v is None for v in full):
+        return NA
+    if any(view[m]["ai"] == 0 for m in metrics):
+        return ASK
+    if any(view[m]["floor"] is not None and view[m]["ai"] <= view[m]["floor"][1] for m in metrics):
+        return ASK
+    if all(v >= rule["trust"] for v in full):
+        verdict = TRUST
+    elif all(v >= rule["reference"] for v in full):
+        verdict = REF
+    else:
+        verdict = ASK
+    if verdict == TRUST and any(view[m]["floor"] is None for m in metrics):
+        return REF
+    return verdict
 
 
 def with_platform(keys: list) -> list:
