@@ -113,6 +113,37 @@ class TestCountAndMake(unittest.TestCase):
         self.assertEqual(code, 0, log)
         self.assertIn("사람인: 1명", log)
 
+    def test_count_detail_for_pilot(self):
+        # 파일럿 숫자: 개수만 찍고 서술은 안 찍는다. 사람 수 시뮬레이션에 넣을 값까지 낸다
+        code, log = run("count", "--responses", self.src, "--service-map", MAP, "--detail")
+        self.assertEqual(code, 0, log)
+        self.assertIn("응답자 2명", log)
+        self.assertIn("F1 4-3: 자주 쓴다 1, 가끔 쓴다 0, 써봤는데 지금은 안 쓴다 0, 안 써봤다 1", log)
+        self.assertIn("F2 4-6: 나한테 필요 없을 것 같아서 1, 다른 앱이나 방법으로 해결해서 1", log)
+        self.assertIn("F3 4-5: 써보니 불편해서 1", log)
+        self.assertIn("4-4 서술을 쓴 사람: 1/2명", log)  # 2번째 응답자는 "없음"
+        self.assertIn("4-7 서술을 쓴 사람: 2/2명", log)
+        self.assertIn("안 써본 비율: 0.25", log)  # 8칸 중 2칸
+        # 기타 뺀 체크 3개, 기능별 서술 줄 3개("써본 적은 없습니다."는 이유가 아니라 빼고 센다)
+        self.assertIn("공통 이유 비율 (대략값): 0.5", log)
+        self.assertIn("--p-nouse 0.25 --common 0.50", log)
+        for text in ("카톡", "알림이 너무", "검색창"):
+            self.assertNotIn(text, log)
+        d = fts.detail_counts(fts.read_responses(TMP / self.src, FEATURES, fts.load_lines(
+            REPO / "docs/ai-protocol/options_4-6.txt"), fts.parse_service_map(MAP))["people"], FEATURES,
+            fts.load_lines(REPO / "docs/ai-protocol/options_4-6.txt"))
+        self.assertEqual((d["common_checks"], d["feature_lines"]), (3, 3))
+
+    def test_count_first_n(self):
+        code, log = run("count", "--responses", self.src, "--service-map", MAP, "--detail", "--first", "1")
+        self.assertEqual(code, 0, log)
+        self.assertIn("앞의 1명만", log)
+        self.assertIn("linkareer: 1명", log)
+        self.assertNotIn("campuspick", log)
+        self.assertIn("F4 1명", log)  # 첫 응답자가 F4를 "있는지 모르겠다"로 답함
+        code, log = run("count", "--responses", self.src, "--first", "0")
+        self.assertEqual(code, 4, log)
+
     def test_make_sheet(self):
         code, log = run("make", "--responses", self.src, "--service-map", MAP, "--out", "out_make")
         self.assertEqual(code, 0, log)

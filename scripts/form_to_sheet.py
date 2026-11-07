@@ -5,6 +5,8 @@
 출력에 응답 원문이 들어가니 저장소 밖이나 private/(커밋 제외)에 둔다.
 
     count   서비스·플랫폼별 응답 수만 센다. 서술은 안 보여준다 (폼 소유자가 하한 15명 넘었나 볼 때)
+            --detail을 붙이면 파일럿 숫자(4-3 답 개수, 4-5·4-6 보기 개수, 서술 쓴 비율, 공통 이유 비율 대략값)도
+            센다. 사람 수 시뮬레이션(experiments/sample_size_sim)에 넣을 값이다
     make    정리 시트를 만든다. 응답자 x 기능마다 한 줄, 정리 담당 두 사람이 코드를 채운다
     import  다 채운 정리 시트를 판정 계산기가 읽는 사람 코드 CSV로 바꾼다
 
@@ -147,11 +149,12 @@ def read_responses(path: Path, features: list, options_46: list, service_map: di
             counts["대조 서비스 아님"] += 1
             continue
         person = {"order": len(people) + 1, "service": service, "shown": shown, "platform": platform,
-                  "why_use": r[Q_WHY_USE], "why_not": r[Q_WHY_NOT], "features": []}
+                  "why_use": r[Q_WHY_USE], "why_not": r[Q_WHY_NOT], "features": [], "states": {}}
         for fid, name in features:
             state = r[grid_col(Q_STATE, name)]
             if state not in STATE_KIND:
                 raise InputError(f"응답 CSV {i}행: 4-3 [{fid}] 값이 보기에 없음")
+            person["states"][fid] = state
             kind = STATE_KIND[state]
             quit_checks = split_checks(r[grid_col(Q_QUIT, name)], QUIT_OPTIONS, f"응답 CSV {i}행 4-5 [{fid}]")
             never_checks = split_checks(r[grid_col(Q_NEVER, name)], options_46, f"응답 CSV {i}행 4-6 [{fid}]")
@@ -173,13 +176,83 @@ def read_responses(path: Path, features: list, options_46: list, service_map: di
             "by_group": by_group, "rows": len(rows)}
 
 
-def text_by_feature(text: str, targets: list) -> dict:
-    """서술 답을 기능별 줄로 나눈다. 추출기와 같은 규칙이고, 못 나누면 빈칸으로 두고 정리 담당이 원문을 본다."""
+def lines_by_feature(text: str, targets: list) -> dict:
+    """서술 답을 기능별 줄로 나눈다. 추출기와 같은 규칙이다. 못 나눈 기능은 빈 목록."""
     if not text or NONE_TEXT.match(text) or not targets:
-        return {fid: "" for fid, _ in targets}
+        return {fid: [] for fid, _ in targets}
     sole = targets[0][0] if len(targets) == 1 else None
     by_feature, _, _, _ = er.assign(text, targets, sole)
-    return {fid: " / ".join(lines) for fid, lines in by_feature.items()}
+    return by_feature
+
+
+def text_by_feature(text: str, targets: list) -> dict:
+    """못 나누면 빈칸으로 두고 정리 담당이 원문을 본다."""
+    return {fid: " / ".join(lines) for fid, lines in lines_by_feature(text, targets).items()}
+
+
+def restrict(data: dict, first: int) -> dict:
+    """응답 순서대로 앞의 first명만 남긴다 (본 폼 안에서 앞쪽 응답을 파일럿으로 쓸 때)."""
+    people = data["people"][:first]
+    unknown = Counter(fid for p in people for fid, s in p["states"].items() if STATE_KIND[s] is None)
+    return {**data, "people": people, "by_group": Counter((p["service"], p["platform"]) for p in people),
+            "unknown_feature": dict(unknown)}
+
+
+def detail_counts(people: list, features: list, options_46: list) -> dict:
+    """파일럿 숫자. 서술 원문은 안 남기고 개수만 센다.
+    공통 이유 비율은 코드북으로 정리하기 전이라 대략값이다: 기타를 뺀 4-5·4-6 체크를 공통 이유로, 기능별로 나뉜
+    서술 줄을 그 밖의 이유로 보고 센다. 서술에 체크와 같은 이유를 또 쓰면 공통 이유 비율이 실제보다 낮게 나온다."""
+    n = len(people)
+    states = {fid: Counter(p["states"][fid] for p in people) for fid, _ in features}
+    never = {fid: Counter() for fid, _ in features}
+    quit_ = {fid: Counter() for fid, _ in features}
+    checks = lines = 0
+    wrote = {"use": [0, 0], "not": [0, 0]}  # [서술을 쓴 사람, 그 문항을 받은 사람]
+    for p in people:
+        groups = {"use": [], "not": []}
+        for f in p["features"]:
+            groups["use" if f["kind"] == "use" else "not"].append((f["feature_id"], f["feature_name"]))
+            target = never if f["kind"] == "nouse" else quit_ if f["kind"] == "nouse_quit" else None
+            if target is not None:
+                target[f["feature_id"]].update(f["options"])
+                checks += sum(1 for o in f["options"] if o != "기타")
+        for g, text in (("use", p["why_use"]), ("not", p["why_not"])):
+            if groups[g]:
+                wrote[g][1] += 1
+                wrote[g][0] += int(bool(text) and not NONE_TEXT.match(text))
+        split = lines_by_feature(p["why_not"], groups["not"])
+        lines += sum(1 for fid in split for x in split[fid] if not er.STATUS.match(x))
+    nouse_cells = sum(states[fid]["안 써봤다"] for fid, _ in features)
+    return {"respondents": n, "states": {k: dict(v) for k, v in states.items()},
+            "nouse_rate": round(nouse_cells / (n * len(features)), 3) if n else None,
+            "nouse_rate_by_feature": {fid: round(states[fid]["안 써봤다"] / n, 3) if n else None for fid, _ in features},
+            "options_4_6": {k: dict(v) for k, v in never.items()},
+            "options_4_5": {k: dict(v) for k, v in quit_.items()},
+            "wrote_4_4": wrote["use"], "wrote_4_7": wrote["not"],
+            "common_checks": checks, "feature_lines": lines,
+            "common_share_rough": round(checks / (checks + lines), 3) if checks + lines else None}
+
+
+def print_detail(d: dict, features: list) -> None:
+    print(f"[파일럿 숫자] 응답자 {d['respondents']}명. 서술 원문은 찍지 않는다")
+    order = list(STATE_KIND)
+    for fid, _ in features:
+        st = d["states"][fid]
+        print(f"  {fid} 4-3: " + ", ".join(f"{s} {st.get(s, 0)}" for s in order))
+    for fid, _ in features:
+        if d["options_4_6"][fid]:
+            print(f"  {fid} 4-6: " + ", ".join(f"{o} {c}" for o, c in sorted(d["options_4_6"][fid].items())))
+        if d["options_4_5"][fid]:
+            print(f"  {fid} 4-5: " + ", ".join(f"{o} {c}" for o, c in sorted(d["options_4_5"][fid].items())))
+    for label, (w, total) in (("4-4", d["wrote_4_4"]), ("4-7", d["wrote_4_7"])):
+        print(f"  {label} 서술을 쓴 사람: {w}/{total}명 (나머지는 \"없음\")")
+    print(f"  안 써본 비율: {d['nouse_rate']} (기능별 "
+          + ", ".join(f"{k} {v}" for k, v in d["nouse_rate_by_feature"].items()) + ")")
+    print(f"  공통 이유 비율 (대략값): {d['common_share_rough']} = 기타 뺀 체크 {d['common_checks']}개 / "
+          f"(체크 {d['common_checks']}개 + 기능별 서술 줄 {d['feature_lines']}개)")
+    if d["nouse_rate"] is not None and d["common_share_rough"] is not None:
+        print("  시뮬레이션에 넣을 값 (주변 값을 같이 넣는다): "
+              f"--p-nouse {d['nouse_rate']:.2f} --common {d['common_share_rough']:.2f}")
 
 
 def build_sheet(people: list) -> list:
@@ -228,7 +301,15 @@ def common_inputs(args, root: Path) -> tuple:
 def cmd_count(args, root: Path) -> int:
     paths, features, options = common_inputs(args, root)
     service_map = parse_service_map(args.service_map) if args.service_map else None
-    print_counts(read_responses(paths["responses"], features, options, service_map))
+    data = read_responses(paths["responses"], features, options, service_map)
+    if args.first is not None:
+        if args.first < 1:
+            raise InputError("--first는 1 이상")
+        data = restrict(data, args.first)
+        print(f"[범위] 응답 순서대로 앞의 {len(data['people'])}명만 센다 (뺀 응답 수는 파일 전체 기준)")
+    print_counts(data)
+    if args.detail:
+        print_detail(detail_counts(data["people"], features, options), features)
     return EXIT_OK
 
 
@@ -328,6 +409,10 @@ def main(argv=None, root: Path = ROOT) -> int:
         p.add_argument("--features", default="docs/ai-protocol/features.txt")
         p.add_argument("--options", default="docs/ai-protocol/options_4-6.txt", help="4-6 보기 파일")
         p.add_argument("--out", default="private/coding")
+        if name == "count":
+            p.add_argument("--detail", action="store_true",
+                           help="파일럿 숫자도 센다: 4-3 답 개수, 4-5·4-6 보기 개수, 서술 쓴 비율, 공통 이유 비율 대략값")
+            p.add_argument("--first", type=int, help="응답 순서대로 앞의 N명만 센다")
     p = sub.add_parser("import")
     p.add_argument("--sheet", required=True)
     p.add_argument("--codebook", help="코드북 CSV (code, scope). 주면 코드북에 없는 코드에서 멈춘다")
