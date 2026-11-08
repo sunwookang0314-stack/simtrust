@@ -77,5 +77,61 @@ class TestPreregistrationRules(unittest.TestCase):
         self.assertEqual(len(per_service["s1"]), sim.AI_PERSONAS_PER_PLATFORM)
 
 
+class TestPreregistrationV11(unittest.TestCase):
+    """사전등록 v1.1 추가안: 순위 뒤집힌 AI, 두 단계 고르기, 커버리지용 실제 확률."""
+
+    def test_reversed_ai_keeps_codes_and_reverses_order(self):
+        h = sim.human_dist(0, 0.6)
+        r = sim.ai_dist(0, 0.6, "reversed")
+        self.assertEqual(set(r), set(h))  # 이유 종류는 같다
+        self.assertAlmostEqual(sum(r.values()), sum(h.values()))
+        top, bottom = max(h, key=h.get), min(h, key=h.get)
+        self.assertEqual((r[top], r[bottom]), (h[bottom], h[top]))  # 1등과 꼴찌 비율이 바뀐다
+
+    def test_incidence_probs(self):
+        self.assertEqual(sim.incidence_probs({"a": 3, "b": 1}, 0.0), {"a": 0.75, "b": 0.25})
+        both = sim.incidence_probs({"a": 1, "b": 1}, 1.0)  # 늘 서로 다른 2개면 둘 다 말한다
+        self.assertAlmostEqual(both["a"], 1.0)
+        # a 0.5, b 0.3, c 0.2에서 2개일 때 a: 0.5 + 0.3*0.5/0.7 + 0.2*0.5/0.8
+        p = sim.incidence_probs({"a": 0.5, "b": 0.3, "c": 0.2}, 1.0)
+        self.assertAlmostEqual(p["a"], 0.5 + 0.3 * 0.5 / 0.7 + 0.2 * 0.5 / 0.8)
+        self.assertAlmostEqual(sum(p.values()), 2.0)
+
+    def test_check_with_reversed_ai(self):
+        crit = {**CRIT, "max_reversed_trust": 0.1}
+        k = kinds()
+        k["reversed"] = {**k["half"], "trust": 0.1}
+        out = sim.check(k, crit)
+        self.assertTrue(out["pass"] and out["pass_v1"])
+        k["reversed"]["trust"] = 0.101
+        out = sim.check(k, crit)
+        self.assertEqual((out["pass_v1"], out["pass"]), (True, False))  # v1 기준만 넘음
+        self.assertTrue(sim.check(kinds(), crit)["pass"])  # 뒤집힌 AI가 없으면 v1 기준만 본다
+
+    def test_select_tiered(self):
+        t1 = {"main": {"single_min": None, "merged_min": None, "generic_ask": 0.0},
+              "main_dist": {"single_min": 90, "merged_min": 60, "generic_ask": 0.9},
+              "main_rank": {"single_min": None, "merged_min": 50, "generic_ask": 0.9}}
+        v1 = {"main": {"single_min": 45, "merged_min": 40, "generic_ask": 1.0},
+              "main_dist": {"single_min": 60, "merged_min": 50, "generic_ask": 1.0},
+              "main_rank": {"single_min": None, "merged_min": 50, "generic_ask": 1.0}}
+        s = sim.select_tiered(t1, v1)
+        # 1단계: 합친 구성 60명 이하인 main_dist, main_rank 중 두 구성 모두 넘는 main_dist
+        self.assertEqual((s["tier"], s["rule"], s["service_judgment"]), (1, "main_dist", True))
+        t1["main_dist"]["merged_min"] = 80  # 목표 합 60명을 넘으면 1단계에서 빠진다
+        s = sim.select_tiered(t1, v1)
+        self.assertEqual((s["tier"], s["rule"], s["service_judgment"]), (1, "main_rank", False))
+        t1["main_rank"]["merged_min"] = None
+        s = sim.select_tiered(t1, v1)
+        self.assertEqual((s["tier"], s["rule"]), (2, "main"))  # 2단계: v1 기준 넷으로 고른다
+        self.assertIn("한계", s["case"])
+
+    def test_simulation_rules_include_new_candidates(self):
+        r = sim.sim_rules(REPO / "configs/rules.draft.json", 10, "single")
+        names = ["main"] + [x["name"] for x in r["sensitivity"]]
+        self.assertEqual(sorted(names), sorted(sim.RULE_ORDER))
+        self.assertEqual(r["human_equivalent"], {"draws": 0})
+
+
 if __name__ == "__main__":
     unittest.main()

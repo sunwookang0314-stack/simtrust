@@ -1,11 +1,14 @@
-"""사람 수 시뮬레이션 v2 (사전등록 v1, docs/measurement/사전등록_v1.md).
+"""사람 수 시뮬레이션 v2 (사전등록 v1과 v1.1 추가안, docs/measurement/사전등록_v1.md, 사전등록_v1.1_추가.md).
 
 가짜 데이터로 판정 계산기(scripts/score_reasons.py)를 그대로 돌려서, 판정 규칙마다 합격 기준(1장)을 넘는 최소 인원을
 찾고 2장의 고르는 법대로 규칙을 고른다. 실제 응답은 쓰지 않고 외부 API도 부르지 않는다.
 
-- 합격 기준 (criteria_v1.json, 사전등록 1장): 가정마다 아래를 모두 넘어야 그 인원에서 합격이다
+- 합격 기준 (criteria_v1.1.json): 가정마다 아래를 모두 넘어야 그 인원에서 합격이다
   사람 같은 AI를 "믿고 써도 됨" 80% 이상, 반만 맞는 AI 10% 이하, 공통 이유만 말하는 AI 5% 이하,
-  자료 부족 칸 5% 이하(사람 같은 AI 시나리오 칸). 점추정 그대로 댄다
+  자료 부족 칸 5% 이하(사람 같은 AI 시나리오 칸). 점추정 그대로 댄다 (여기까지 v1 1장)
+  순위 뒤집힌 AI(이유 종류는 사람과 같고 많이 말하는 순서만 반대) 10% 이하 (v1.1 추가)
+- 고르는 법 (v1.1 추가): 1단계는 다섯 기준을 다 넘고 합친 구성 최소 인원이 목표 합 60명 이하인 규칙 중에서
+  2장 고르는 법으로 고른다. 그런 규칙이 없으면 2단계로 v1 기준 넷만 보고 2장 고르는 법 그대로 고른다
 - 최소 인원: 그 인원과 그보다 큰 시뮬레이션 인원 전부에서 합격하는 가장 작은 인원
 - 구성 두 가지 (사전등록 2장)
   single: 서비스 하나. 인원 10, 15, 20, 30, 35, 40, 45, 60, 90명
@@ -14,6 +17,9 @@
 - 가정 (assumptions_v1.json): 공통 이유 60%·30%, 안 써본 비율 3분의 1, 이유 2개 40%. 파일럿 값은 --pilot으로 주면
   사전등록 3장 규칙대로 가정을 더한다(빼지 않는다)
 - 반복 500번, 시드 20261108. 다시 뽑기는 가정이 4개 이하면 1,000번, 넘으면 200번. 나머지 규칙 값은 규칙 파일 그대로
+  (순열 검정 횟수도 다시 뽑기 횟수와 같다. 사람 환산 인원은 판정에 안 써서 끈다)
+- 커버리지(v1.1 추가, 판정에 안 씀): 사람 같은 AI 시나리오에서 칸마다 추정 커버리지(Chao 외 2014)와 실제 커버리지,
+  90%까지 필요한 전체 응답자 수 추정을 인원별로 모은다
 - 코드 시험 실행은 반복 10번 이하로만 하고 그 결과는 고르는 데 쓰지 않는다 (--reps 10 --out runs/...)
 
     python experiments/sample_size_sim/simulate.py --out experiments/sample_size_sim/result_v2.json
@@ -40,13 +46,15 @@ FEATURES = ["F1", "F2", "F3", "F4"]
 COMMON = ["C1", "C2", "C3", "C4"]
 GROUP_WEIGHTS = [0.4, 0.3, 0.2, 0.1]  # 묶음 안에서 많이 나오는 순서
 SHAPES = {"common60": 0.6, "common30": 0.3}  # 데모 견본(experiments/demo_sample)이 쓰는 이름
-AI_KINDS = ("same", "common_only", "half")
+AI_KINDS = ("same", "common_only", "half", "reversed")
 P_NOUSE = 1 / 3
 P_TWO_REASONS = 0.4
 P_APP = 0.7
 AI_PERSONAS_PER_PLATFORM = 10  # 본실험: 서비스·플랫폼·조건마다 페르소나 10명. 반복 3회는 계산기가 한 사람으로 묶는다
 SIZES = {"single": [10, 15, 20, 30, 35, 40, 45, 60, 90], "merged": [30, 40, 50, 60, 80, 90, 120]}
-RULE_ORDER = ["main", "anchors_90", "gate_fixed_70", "fixed_80", "fixed_70", "fixed_60"]  # 사전등록 2장 동점 순서
+RULE_ORDER = ["main", "anchors_90", "gate_fixed_70", "fixed_80", "fixed_70", "fixed_60",
+              "main_dist", "main_rank"]  # 사전등록 2장 동점 순서, v1.1 추가 후보는 뒤에 붙인다
+TARGET_TOTAL = 60  # 사전등록 5장 1차 목표 (두 서비스 합). v1.1 1단계는 합친 구성 최소 인원이 이 안이어야 한다
 
 
 def human_dist(feature_index: int, common_share: float) -> dict:
@@ -64,10 +72,23 @@ def ai_dist(feature_index: int, common_share: float, kind: str) -> dict:
     if kind == "common_only":
         total = sum(h[c] for c in COMMON)
         return {c: h[c] / total for c in COMMON}
+    if kind == "reversed":
+        # 이유 종류는 사람과 같고, 사람 쪽 많이 말하는 순서를 거꾸로 해서 비율을 바꿔 단다 (같은 값은 코드 순서)
+        ranked = sorted(h, key=lambda c: (-h[c], c))
+        weights = [h[c] for c in ranked]
+        return dict(zip(ranked, reversed(weights)))
     f = FEATURES[feature_index]  # half: 절반은 사람이 안 말하는 이유
     out = {k: v * 0.5 for k, v in h.items()}
     out.update({f"{f}-AI{i + 1}": 0.5 / 4 for i in range(4)})
     return out
+
+
+def incidence_probs(dist: dict, p_two: float) -> dict:
+    """한 사람이 그 코드를 말할 확률. draw_reasons와 같은 뽑기다: 1개, 또는 p_two 확률로 서로 다른 2개.
+    2개일 때 c가 들어갈 확률 = w_c + (c 아닌 d마다) w_d x w_c / (1 - w_d)."""
+    total = sum(dist.values())
+    w = {c: v / total for c, v in dist.items()}
+    return {c: wc + p_two * sum(wd * wc / (1 - wd) for d, wd in w.items() if d != c) for c, wc in w.items()}
 
 
 def draw_reasons(dist: dict, rng: random.Random, p_two: float = P_TWO_REASONS) -> list:
@@ -111,18 +132,27 @@ def sim_rules(path: Path, resamples: int, config: str) -> dict:
     # 안정 인원은 판정에 안 쓰고 오래 걸려서 끈다 (시작 인원과 전체 인원만 잼). 사전등록 7장에 한계로 적힘
     rules["stability"] = {**rules["stability"], "step": 10 ** 6}
     rules["platform_reference"] = False
+    rules["human_equivalent"] = {"draws": 0}  # 판정에 안 쓰고 오래 걸린다
     rules["cell_keys"] = ["feature_id", "kind"] if config == "merged" else ["service", "feature_id", "kind"]
     return rules
 
 
 def run_job(job: tuple) -> tuple:
-    """job = (구성, 가정 이름, 가정, AI 종류, 인원, 시드, 규칙). 반환은 칸 수만 센 작은 묶음이다 (메모리 아끼려고)."""
+    """job = (구성, 가정 이름, 가정, AI 종류, 인원, 시드, 규칙). 반환은 칸 수만 센 작은 묶음이다 (메모리 아끼려고).
+    사람 같은 AI 작업에서는 칸마다 (추정 커버리지, 실제 커버리지, 90%까지 필요한 전체 응답자 수)도 돌려준다."""
     config, a_name, a, kind, n, seed, rules = job
     human, ai = make_data(n, a, kind, random.Random(seed), config)
     res = sr.score(human, ai, {**rules, "seed": seed})
     verdicts = {name: Counter() for name in ["main"] + [x["name"] for x in rules["sensitivity"]]}
-    widths, n_cells = [], []
+    widths, n_cells, cov = [], [], []
     for c in res["cells"]:
+        if kind == "same" and c.get("coverage"):
+            probs = incidence_probs(human_dist(FEATURES.index(c["feature_id"]), a["common"]), a["p_two"])
+            seen = {r["code"] for r in c["reasons"] if r["human_count"]} | {m["code"] for m in c["missed"]}
+            true = sum(v for k, v in probs.items() if k in seen) / sum(probs.values())
+            need = c["coverage"]["need"]
+            cov.append((c["coverage"]["estimate"], true,
+                        need * n / c["n_humans"] if need is not None else None, c["coverage"]["need_reliable"]))
         verdicts["main"][c["verdict"]] += 1
         for name, v in c["sensitivity"].items():
             verdicts[name][v] += 1
@@ -130,7 +160,7 @@ def run_job(job: tuple) -> tuple:
         hi = sr.interval(c["draws"]["human_precision"], rules["level"])
         if hi and c["verdict"] != sr.LOW:
             widths.append(hi[1] - hi[0])
-    return (config, a_name, kind, n), verdicts, widths, n_cells
+    return (config, a_name, kind, n), verdicts, widths, n_cells, cov
 
 
 def pilot_assumptions(base: list, pilot: dict) -> list:
@@ -170,12 +200,17 @@ def rates(verdicts: Counter) -> dict:
 
 
 def check(by_kind: dict, crit: dict) -> dict:
-    """가정 하나, 인원 하나에서 합격 기준 1장."""
+    """가정 하나, 인원 하나에서 합격 기준. pass_v1은 사전등록 v1 1장 기준 넷, pass는 v1.1에서 더한
+    순위 뒤집힌 AI 기준까지 (기준이나 그 AI가 없으면 pass = pass_v1)."""
     same, half, gen = by_kind["same"], by_kind["half"], by_kind["common_only"]
     out = {"same_trust": same["trust"], "half_trust": half["trust"], "common_only_trust": gen["trust"],
            "low_same": same["low"], "common_only_ask": gen["ask"]}
-    out["pass"] = (same["trust"] >= crit["min_same_trust"] and half["trust"] <= crit["max_half_trust"]
-                   and gen["trust"] <= crit["max_common_only_trust"] and same["low"] <= crit["max_low_same"])
+    out["pass_v1"] = (same["trust"] >= crit["min_same_trust"] and half["trust"] <= crit["max_half_trust"]
+                      and gen["trust"] <= crit["max_common_only_trust"] and same["low"] <= crit["max_low_same"])
+    out["pass"] = out["pass_v1"]
+    if "reversed" in by_kind and "max_reversed_trust" in crit:
+        out["reversed_trust"] = by_kind["reversed"]["trust"]
+        out["pass"] = out["pass_v1"] and out["reversed_trust"] <= crit["max_reversed_trust"]
     return out
 
 
@@ -215,6 +250,33 @@ def select_rule(table: dict) -> dict:
             "service_judgment": False}
 
 
+def select_tiered(table: dict, table_v1: dict, target_total: int = TARGET_TOTAL) -> dict:
+    """사전등록 v1.1 추가안. table은 다섯 기준(순위 뒤집힌 AI 포함), table_v1은 v1 기준 넷으로 잰 최소 인원.
+    1단계: 합친 구성 최소 인원이 목표 합 인원 이하인 규칙만 두고 2장 고르는 법(select_rule)으로 고른다.
+    2단계: 그런 규칙이 없으면 v1 기준 넷으로 2장 고르는 법 그대로 고르고, 순위 뒤집힌 AI는 한계로 적는다."""
+    ok = {r: t for r, t in table.items() if t["merged_min"] is not None and t["merged_min"] <= target_total}
+    if ok:
+        sel = select_rule(ok)
+        return {**sel, "tier": 1, "case": "1단계(순위 뒤집힌 AI 기준 포함): " + sel["case"]}
+    sel = select_rule(table_v1)
+    return {**sel, "tier": 2, "case": "2단계(v1 기준 넷): " + sel["case"]
+            + f". 순위 뒤집힌 AI를 거르는 규칙이 합 {target_total}명 안에서 없어서 한계로 적는다"}
+
+
+def min_table(results: dict, rule_names: list, key: str) -> dict:
+    """규칙마다 두 구성의 최소 인원과, 서비스 하나 최소 인원 줄에서 공통 이유만 AI '물어볼 것' 비율(가정 중 낮은 쪽)."""
+    table = {}
+    for rule in rule_names:
+        smin = results.get("single", {}).get(rule, {}).get(key)
+        mmin = results.get("merged", {}).get(rule, {}).get(key)
+        gen = None
+        if smin is not None:
+            row = next(x for x in results["single"][rule]["rows"] if x["n"] == smin)
+            gen = min(v["common_only_ask"] for v in row["by_assumption"].values())
+        table[rule] = {"single_min": smin, "merged_min": mmin, "generic_ask": gen if gen is not None else 0.0}
+    return table
+
+
 def git_commit() -> str:
     try:
         sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
@@ -227,7 +289,7 @@ def git_commit() -> str:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="사람 수 시뮬레이션 v2 (사전등록 v1)")
-    ap.add_argument("--criteria", default="experiments/sample_size_sim/criteria_v1.json")
+    ap.add_argument("--criteria", default="experiments/sample_size_sim/criteria_v1.1.json")
     ap.add_argument("--assumptions", default="experiments/sample_size_sim/assumptions_v1.json")
     ap.add_argument("--pilot", default="", help="파일럿 값. 예: p_nouse=0.42,common=0.71,p_two=0.35")
     ap.add_argument("--rules", default="configs/rules.draft.json")
@@ -260,9 +322,10 @@ def main(argv=None) -> int:
     agg = {}
     done = 0
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
-        for key, verdicts, widths, n_cells in pool.map(run_job, jobs, chunksize=4):
+        for key, verdicts, widths, n_cells, cov in pool.map(run_job, jobs, chunksize=4):
             slot = agg.setdefault(key, {"verdicts": {r: Counter() for r in rule_names}, "width_sum": 0.0,
-                                        "width_n": 0, "n_cells": Counter()})
+                                        "width_n": 0, "n_cells": Counter(), "coverage": []})
+            slot["coverage"] += cov
             for r in rule_names:
                 slot["verdicts"][r].update(verdicts[r])
             slot["width_sum"] += sum(widths)
@@ -284,32 +347,43 @@ def main(argv=None) -> int:
                 for a in assumptions:
                     by_kind = {k: rates(agg[(cfg, a["name"], k, n)]["verdicts"][rule]) for k in AI_KINDS}
                     per_a[a["name"]] = check(by_kind, crit)
-                per_n.append({"n": n, "pass": all(v["pass"] for v in per_a.values()), "by_assumption": per_a})
-            results[cfg][rule] = {"minimum_n": minimum_n([(x["n"], x["pass"]) for x in per_n]), "rows": per_n}
-    table = {}
-    for rule in rule_names:
-        smin = results.get("single", {}).get(rule, {}).get("minimum_n")
-        mmin = results.get("merged", {}).get(rule, {}).get("minimum_n")
-        gen = None
-        if smin is not None:
-            row = next(x for x in results["single"][rule]["rows"] if x["n"] == smin)
-            gen = min(v["common_only_ask"] for v in row["by_assumption"].values())  # 두 가정 중 낮은 쪽
-        table[rule] = {"single_min": smin, "merged_min": mmin, "generic_ask": gen if gen is not None else 0.0}
-    selection = select_rule(table) if set(configs) == {"single", "merged"} else None
+                per_n.append({"n": n, "pass": all(v["pass"] for v in per_a.values()),
+                              "pass_v1": all(v["pass_v1"] for v in per_a.values()), "by_assumption": per_a})
+            results[cfg][rule] = {"minimum_n": minimum_n([(x["n"], x["pass"]) for x in per_n]),
+                                  "minimum_n_v1": minimum_n([(x["n"], x["pass_v1"]) for x in per_n]), "rows": per_n}
+    table = min_table(results, rule_names, "minimum_n")
+    table_v1 = min_table(results, rule_names, "minimum_n_v1")
+    selection = select_tiered(table, table_v1) if set(configs) == {"single", "merged"} else None
     if selection:
-        smin = table[selection["rule"]]["single_min"]
+        smin = (table if selection["tier"] == 1 else table_v1)[selection["rule"]]["single_min"]
         selection["T"] = max(40, smin) if (smin is not None and selection["service_judgment"]) else None
+    coverage_by_n = {}
+    for k, v in agg.items():
+        if k[2] != "same" or not v["coverage"]:
+            continue
+        est = [x[0] for x in v["coverage"]]
+        true = [x[1] for x in v["coverage"]]
+        need = sorted(x[2] for x in v["coverage"] if x[2] is not None)
+        coverage_by_n[f"{k[0]}|{k[1]}|{k[3]}"] = {
+            "cells": len(est), "estimate_mean": round(sum(est) / len(est), 4),
+            "true_mean": round(sum(true) / len(true), 4),
+            "estimate_at_least_90": round(sum(e >= 0.9 for e in est) / len(est), 4),
+            "true_at_least_90": round(sum(t >= 0.9 for t in true) / len(true), 4),
+            "need_total_median": round(need[len(need) // 2], 1) if need else None,
+            "need_reliable_share": round(sum(bool(x[3]) for x in v["coverage"]) / len(est), 4)}
     summary_cells = {f"{k[0]}|{k[1]}|{k[2]}|{k[3]}": {
         "width_mean": round(v["width_sum"] / v["width_n"], 4) if v["width_n"] else None,
         "median_n_cell": sorted(v["n_cells"].elements())[sum(v["n_cells"].values()) // 2]} for k, v in agg.items()}
-    record = {"version": "v2", "preregistration": "docs/measurement/사전등록_v1.md",
+    record = {"version": "v2", "preregistration": ["docs/measurement/사전등록_v1.md",
+                                                    "docs/measurement/사전등록_v1.1_추가.md"],
               "command": "python " + " ".join([Path(sys.argv[0]).as_posix()] + (argv if argv is not None else sys.argv[1:])),
               "code_commit": git_commit(), "criteria": crit, "assumptions": assumptions, "pilot": pilot or None,
               "settings": {"configs": configs, "sizes": {c: SIZES[c] for c in configs}, "reps": args.reps,
                            "resamples": resamples, "seed": args.seed, "rules_file": args.rules,
                            "rules_sha256": hashlib.sha256(rules_path.read_bytes()).hexdigest(),
                            "ai_personas_per_platform_per_service": AI_PERSONAS_PER_PLATFORM, "p_app": P_APP},
-              "minimum_n": table, "selection": selection, "results": results, "cells": summary_cells,
+              "minimum_n": table, "minimum_n_v1": table_v1, "selection": selection, "results": results,
+              "cells": summary_cells, "coverage": coverage_by_n,
               "elapsed_sec": round(time.time() - started, 1)}
     out = ROOT / args.out
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -317,14 +391,16 @@ def main(argv=None) -> int:
     sha = hashlib.sha256(out.read_bytes()).hexdigest()
 
     print("[합격 기준] 사람 같은 AI 믿음 {:.0%} 이상, 반만 맞는 AI {:.0%} 이하, 공통 이유만 AI {:.0%} 이하, "
-          "자료 부족 {:.0%} 이하. 가정 {}개 중 가장 나쁜 경우".format(
+          "자료 부족 {:.0%} 이하, 순위 뒤집힌 AI {} 이하. 가정 {}개 중 가장 나쁜 경우".format(
               crit["min_same_trust"], crit["max_half_trust"], crit["max_common_only_trust"], crit["max_low_same"],
+              f"{crit['max_reversed_trust']:.0%}" if "max_reversed_trust" in crit else "(기준 없음)",
               len(assumptions)))
-    print("[최소 인원] 규칙 | 서비스 하나 | 두 서비스 합친 것")
+    print("[최소 인원] 규칙 | 서비스 하나 | 두 서비스 합친 것 | (v1 기준 넷) 서비스 하나 | 합친 것")
     for rule in RULE_ORDER:
         if rule in table:
-            t = table[rule]
-            print(f"  {rule:<14} | {t['single_min'] or '없음'} | {t['merged_min'] or '없음'}")
+            t, t1 = table[rule], table_v1[rule]
+            print(f"  {rule:<14} | {t['single_min'] or '없음'} | {t['merged_min'] or '없음'} | "
+                  f"{t1['single_min'] or '없음'} | {t1['merged_min'] or '없음'}")
     if selection:
         print(f"[고른 규칙] {selection['rule']} ({selection['case']}), T = {selection['T']}")
     print(f"기록: {args.out} ({record['elapsed_sec']}초), sha256 {sha}")
