@@ -1,13 +1,13 @@
 {
  "_설명": "사전등록 v1 1장의 합격 기준을 옮긴 것. 값을 바꾸려면 사전등록을 먼저 고친다.",
- "source": "docs/measurement/사전등록_v1.md 1장 (PR #40, 2026-11-08 머지)",
+ "source": "docs/measurement/사전등록_v1.md 1장 (PR #40, 11/8 머지. 자료 부족 세는 칸은 PR #41 변경 기록)",
  "min_same_trust": 0.8,
  "_min_same_trust": "사람 같은 AI를 '믿고 써도 됨'으로 판정하는 비율 하한",
  "max_half_trust": 0.1,
  "_max_half_trust": "반만 맞는 AI를 '믿고 써도 됨'으로 판정하는 비율 상한",
  "max_common_only_trust": 0.05,
  "_max_common_only_trust": "공통 이유만 말하는 AI를 '믿고 써도 됨'으로 판정하는 비율 상한",
- "max_low_same": 0.05,
- "_max_low_same": "자료 부족 칸 비율 상한. 사람 같은 AI 시나리오 칸에서 센다",
+ "max_low": 0.05,
+ "_max_low": "자료 부족 칸 비율 상한. 세 AI 시나리오(사람 같은, 반만 맞는, 공통 이유만) 중 가장 큰 값에 댄다 (사전등록 v1 1장, 11/8 변경 기록)",
  "_worst_case": "가정이 여러 개면 그중 가장 나쁜 경우에서도 넘어야 한다. 점추정 그대로 댄다"
 }

@@ -47,6 +47,7 @@ COMMON = ["C1", "C2", "C3", "C4"]
 GROUP_WEIGHTS = [0.4, 0.3, 0.2, 0.1]  # 묶음 안에서 많이 나오는 순서
 SHAPES = {"common60": 0.6, "common30": 0.3}  # 데모 견본(experiments/demo_sample)이 쓰는 이름
 AI_KINDS = ("same", "common_only", "half", "reversed")
+LOW_KINDS = ("same", "common_only", "half")  # 자료 부족을 세는 AI. 사전등록 v1 1장(11/8 변경 기록)의 세 AI 시나리오
 P_NOUSE = 1 / 3
 P_TWO_REASONS = 0.4
 P_APP = 0.7
@@ -201,12 +202,14 @@ def rates(verdicts: Counter) -> dict:
 
 def check(by_kind: dict, crit: dict) -> dict:
     """가정 하나, 인원 하나에서 합격 기준. pass_v1은 사전등록 v1 1장 기준 넷, pass는 v1.1에서 더한
-    순위 뒤집힌 AI 기준까지 (기준이나 그 AI가 없으면 pass = pass_v1)."""
+    순위 뒤집힌 AI 기준까지 (기준이나 그 AI가 없으면 pass = pass_v1).
+    자료 부족은 세 AI 시나리오(LOW_KINDS) 중 가장 큰 값으로 댄다 (사전등록 v1 1장, 11/8 변경 기록)."""
     same, half, gen = by_kind["same"], by_kind["half"], by_kind["common_only"]
+    low = max(by_kind[k]["low"] for k in LOW_KINDS)
     out = {"same_trust": same["trust"], "half_trust": half["trust"], "common_only_trust": gen["trust"],
-           "low_same": same["low"], "common_only_ask": gen["ask"]}
+           "low": low, "low_same": same["low"], "common_only_ask": gen["ask"]}
     out["pass_v1"] = (same["trust"] >= crit["min_same_trust"] and half["trust"] <= crit["max_half_trust"]
-                      and gen["trust"] <= crit["max_common_only_trust"] and same["low"] <= crit["max_low_same"])
+                      and gen["trust"] <= crit["max_common_only_trust"] and low <= crit["max_low"])
     out["pass"] = out["pass_v1"]
     if "reversed" in by_kind and "max_reversed_trust" in crit:
         out["reversed_trust"] = by_kind["reversed"]["trust"]
@@ -392,7 +395,7 @@ def main(argv=None) -> int:
 
     print("[합격 기준] 사람 같은 AI 믿음 {:.0%} 이상, 반만 맞는 AI {:.0%} 이하, 공통 이유만 AI {:.0%} 이하, "
           "자료 부족 {:.0%} 이하, 순위 뒤집힌 AI {} 이하. 가정 {}개 중 가장 나쁜 경우".format(
-              crit["min_same_trust"], crit["max_half_trust"], crit["max_common_only_trust"], crit["max_low_same"],
+              crit["min_same_trust"], crit["max_half_trust"], crit["max_common_only_trust"], crit["max_low"],
               f"{crit['max_reversed_trust']:.0%}" if "max_reversed_trust" in crit else "(기준 없음)",
               len(assumptions)))
     print("[최소 인원] 규칙 | 서비스 하나 | 두 서비스 합친 것 | (v1 기준 넷) 서비스 하나 | 합친 것")

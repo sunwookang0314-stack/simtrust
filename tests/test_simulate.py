@@ -4,6 +4,7 @@
     python -m unittest tests.test_simulate -v
 """
 
+import json
 import random
 import sys
 import unittest
@@ -16,7 +17,7 @@ import simulate as sim  # noqa: E402
 
 BASE = [{"name": "common0.60", "common": 0.6, "p_nouse": 1 / 3, "p_two": 0.4},
         {"name": "common0.30", "common": 0.3, "p_nouse": 1 / 3, "p_two": 0.4}]
-CRIT = {"min_same_trust": 0.8, "max_half_trust": 0.1, "max_common_only_trust": 0.05, "max_low_same": 0.05}
+CRIT = {"min_same_trust": 0.8, "max_half_trust": 0.1, "max_common_only_trust": 0.05, "max_low": 0.05}
 
 
 def kinds(same_trust=0.9, half_trust=0.0, gen_trust=0.0, low=0.0, gen_ask=1.0):
@@ -43,6 +44,24 @@ class TestPreregistrationRules(unittest.TestCase):
         self.assertFalse(sim.check(kinds(0.9, 0.101), CRIT)["pass"])
         self.assertFalse(sim.check(kinds(0.9, 0.0, 0.051), CRIT)["pass"])
         self.assertFalse(sim.check(kinds(0.9, 0.0, 0.0, 0.051), CRIT)["pass"])
+
+    def test_low_is_worst_of_three_ai_scenarios(self):
+        # 사전등록 v1 1장(11/8 변경 기록): 자료 부족은 세 AI 시나리오 중 가장 큰 값. 순위 뒤집힌 AI는 안 센다
+        k = kinds(0.9)
+        k["half"]["low"] = 0.051
+        out = sim.check(k, CRIT)
+        self.assertEqual((out["low"], out["low_same"], out["pass_v1"]), (0.051, 0.0, False))
+        k = kinds(0.9)
+        k["common_only"]["low"] = 0.05
+        self.assertTrue(sim.check(k, CRIT)["pass_v1"])
+        k = kinds(0.9)
+        k["reversed"] = {"trust": 0.0, "reference": 0.0, "ask": 0.0, "low": 0.3, "na": 0.0}
+        self.assertTrue(sim.check(k, {**CRIT, "max_reversed_trust": 0.1})["pass"])
+
+    def test_criteria_files_match_preregistration(self):
+        for name in ("criteria_v1.json", "criteria_v1.1.json"):
+            crit = json.loads((REPO / "experiments/sample_size_sim" / name).read_text(encoding="utf-8"))
+            self.assertEqual({k: crit[k] for k in CRIT}, CRIT, name)
 
     def test_minimum_n_must_hold_for_all_larger_sizes(self):
         self.assertEqual(sim.minimum_n([(10, False), (15, True), (20, False), (30, True), (45, True)]), 30)
