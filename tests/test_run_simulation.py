@@ -26,7 +26,10 @@ PROTOCOL = REPO / "docs/ai-protocol"
 
 # 임시 폴더에 리포 모양을 만든다: config.ini, 가짜 스냅샷(앱·웹), 가짜 화면, 프로토콜 파일, 임시 페르소나 2명
 TMP = Path(tempfile.mkdtemp(prefix="simtrust_runner_test_"))
-shutil.copyfile(REPO / "config.gemini.ini", TMP / "config.ini")
+# 사본에서만 호출 사이 대기(WAITING_TIME=2초)를 0으로 둔다. 가짜 API인데도 호출마다 2초씩 쉬어서 테스트가 몇 분 걸렸다
+(TMP / "config.ini").write_text(
+    re.sub(r"(?m)^WAITING_TIME=.*$", "WAITING_TIME=0", (REPO / "config.gemini.ini").read_text(encoding="ascii")),
+    encoding="ascii")
 shutil.copytree(REPO / "experiments/runner_dev/snapshots", TMP / "snapshots")
 shutil.copytree(REPO / "experiments/runner_dev/images", TMP / "images")
 shutil.copytree(PROTOCOL, TMP / "protocol")
@@ -109,12 +112,18 @@ class FakeAPI:
 
     def __call__(self, client_self, model, params):
         self.calls += 1
+        # 진짜 TinyTroupe _raw_model_call처럼 받은 dict에서 stream을 지운다 (응답 형식을 줄 때, openai_client.py 438행)
+        params.pop("stream", None)
         messages = params.get("messages") or []
         self.prompts.append(json.dumps(messages, ensure_ascii=False, default=str))
         users = [m for m in messages if m.get("role") == "user"]
         last = decode(message_text(users[-1])) if users else ""
         self.last_user.append(last)
         request = httpx.Request("POST", "https://example.invalid")
+        if self.mode == "timeout_once" and self.calls == 1:
+            raise openai.APITimeoutError(request=request)  # TinyTroupe가 기다리지 않고 바로 다시 부른다
+        if self.mode == "interrupt_at_2" and self.calls == 2:
+            raise KeyboardInterrupt
         if self.mode == "auth":
             raise openai.AuthenticationError("bad key", response=httpx.Response(401, request=request), body=None)
         if self.mode == "gemini_bad_key":
@@ -382,14 +391,71 @@ class TestRunSimulation(unittest.TestCase):
         # 회차마다 캐시가 따로라서 두 회차 응답이 다르다 (같이 쓰면 같아진다)
         self.assertNotEqual(first[0]["answers"], first[1]["answers"])
 
+        # 같은 원시 응답 파일로는 끝난 에피소드를 건너뛰니, 캐시만 같이 쓰는 새 출력으로 다시 돌린다
+        FAKE.reset()
+        cfg2 = write_cfg("cache_again", cache_dir="out_cache/cache")
+        code, log = run(*args(cfg2, repeat=2))
+        self.assertEqual(code, 0, log)
+        self.assertEqual(FAKE.calls, 0, "다시 돌렸는데 API를 불렀다 (캐시 재현 실패)")
+        second = read_raw("cache_again")
+        self.assertEqual([x["answers"] for x in first], [x["answers"] for x in second])
+        summary = last_summary("cache_again")
+        self.assertEqual((summary["calls_real"], summary["calls_cached"]), (0, calls_first))
+
+    def test_retry_keeps_cache_key(self):
+        # 11/9 김승하 #37 리뷰: 재시도하면 TinyTroupe가 같은 dict로 캐시 키를 다시 만드는데, 앞 시도에서 dict가
+        # 바뀌어(penalty·stream 삭제) 재시도로 받은 응답이 다른 키로 저장됐다. 다시 돌리면 API를 또 불렀다
+        FAKE.reset("timeout_once")
+        cfg = write_cfg("retrykey")
+        code, log = run(*args(cfg))
+        self.assertEqual(code, 0, log)
+        self.assertEqual(FAKE.calls, 5)  # 첫 호출이 시간 초과로 한 번 더 불렀다
+        first = read_raw("retrykey")
+        FAKE.reset()
+        cfg2 = write_cfg("retrykey_again", cache_dir="out_retrykey/cache")
+        code, log = run(*args(cfg2))
+        self.assertEqual(code, 0, log)
+        self.assertEqual(FAKE.calls, 0, "재시도로 받은 응답을 캐시에서 못 찾았다")
+        self.assertEqual(read_raw("retrykey_again")[0]["answers"], first[0]["answers"])
+
+    def test_rerun_skips_recorded_episodes(self):
+        # 11/9 김승하 #37 리뷰: 같은 명령을 다시 돌리면 같은 에피소드가 원시 응답에 두 번 쌓였다.
+        # 이제 끝난 에피소드는 건너뛰고 남은 것만 돈다 (중간에 멈춘 실행 이어 돌리기)
+        cfg = write_cfg("resume")
+        code, log = run(*args(cfg, repeat=1))
+        self.assertEqual(code, 0, log)
         FAKE.reset()
         code, log = run(*args(cfg, repeat=2))
         self.assertEqual(code, 0, log)
-        self.assertEqual(FAKE.calls, 0, "다시 돌렸는데 API를 불렀다 (캐시 재현 실패)")
-        second = read_raw("cache")[2:]
-        self.assertEqual([x["answers"] for x in first], [x["answers"] for x in second])
-        summary = last_summary("cache")
-        self.assertEqual((summary["calls_real"], summary["calls_cached"]), (0, calls_first))
+        self.assertEqual(FAKE.calls, 4)  # 2회차만 돈다
+        self.assertIn("[이어서]", log)
+        self.assertEqual([x["repeat"] for x in read_raw("resume")], [1, 2])
+        self.assertEqual(last_summary("resume")["episodes_skipped"], 1)
+        FAKE.reset()
+        code, log = run(*args(cfg, repeat=2))
+        self.assertEqual((code, FAKE.calls, len(read_raw("resume"))), (0, 0, 2))
+        # 조건이 다르면 다른 에피소드다
+        code, log = run(*args(cfg, condition=1))
+        self.assertEqual((code, len(read_raw("resume"))), (0, 3), log)
+
+    def test_ctrl_c_keeps_tokens_and_summary(self):
+        # 11/9 김승하 #37 리뷰: Ctrl-C로 멈추면 그 에피소드에서 쓴 토큰이 실행 기록에 안 남아서
+        # 다음 실행의 누적 토큰(비용 상한)을 모자라게 셌다
+        FAKE.reset("interrupt_at_2")
+        cfg = write_cfg("ctrlc", cache=False)
+        code, log = run(*args(cfg, limit=2))
+        self.assertEqual(code, rs.EXIT_INTERRUPTED, log)
+        self.assertEqual(FAKE.calls, 2)
+        metas = read_metas("ctrlc")
+        self.assertEqual(len(metas), 1)  # 두 번째 페르소나는 시작하지 않는다
+        self.assertTrue(metas[0]["status"].startswith("중단(Ctrl-C)"), metas[0]["status"])
+        self.assertEqual(metas[0]["tokens_in"] + metas[0]["tokens_out"], 1100)  # 멈추기 전 호출 1번
+        self.assertEqual(read_raw("ctrlc"), [])
+        self.assertEqual(last_summary("ctrlc")["exit_code"], rs.EXIT_INTERRUPTED)
+        FAKE.reset()
+        code, log = run(*args(cfg, limit=2))
+        self.assertEqual(code, 0, log)
+        self.assertEqual(last_summary("ctrlc")["tokens_before"], 1100)
 
     def test_platforms_use_own_snapshot_and_cache(self):
         cfg = write_cfg("platform")
@@ -479,7 +545,7 @@ class TestRunSimulation(unittest.TestCase):
 
         FAKE.reset()
         cfg = write_cfg("cumul", cache=False, token_cap=5000)
-        code, log = run(*args(cfg))
+        code, log = run(*args(cfg, repeat=2))  # 1회차는 이미 있어서 건너뛰고 2회차를 돈다
         self.assertEqual(code, 3, log)
         self.assertEqual(FAKE.calls, 1)  # 4,400에서 한 번 부르면 5,500이라 다음 호출 전에 멈춘다
         self.assertEqual(last_summary("cumul")["tokens_before"], 4400)

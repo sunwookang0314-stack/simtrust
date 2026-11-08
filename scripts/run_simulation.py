@@ -42,6 +42,11 @@ GEMINI_HOST = "generativelanguage.googleapis.com"
 PLATFORMS = ("app", "web")
 
 EXIT_OK, EXIT_USAGE, EXIT_SETTINGS, EXIT_COST, EXIT_INPUT, EXIT_API = 0, 1, 2, 3, 4, 5
+EXIT_INTERRUPTED = 130  # Ctrl-C (셸 관례 128 + SIGINT 2)
+
+# 같은 에피소드인지 가리는 칸. 원시 응답에 이 값이 모두 같은 성공 줄이 있으면 다시 돌리지 않는다
+EPISODE_KEY = ("service", "platform", "condition", "persona_id", "repeat", "provider", "model",
+               "protocol_version", "snapshot_version", "input_mode", "question_order")
 
 # NFR-04: 호출 1회 응답 토큰 상한. NFR-05: 동시 호출 상한.
 MAX_COMPLETION_LIMIT = {"openai": 2048, "gemini": 8192}
@@ -96,6 +101,13 @@ class CostCapReached(AbortRun):
 class ApiFailed(AbortRun):
     code = EXIT_API
     label = "실패(API)"
+
+
+class Interrupted(AbortRun):
+    # Ctrl-C. 그 에피소드에서 이미 쓴 토큰을 실행 기록에 남기고 멈춘다. 안 남기면 다음 실행의 누적 토큰이 모자라게 센다
+    code = EXIT_INTERRUPTED
+    label = "중단(Ctrl-C)"
+    fatal = True
 
 
 class _Parser(argparse.ArgumentParser):
@@ -382,6 +394,28 @@ def previous_tokens(meta_dir: Path, provider: str) -> int:
     return total
 
 
+def episode_key(record: dict) -> tuple:
+    return tuple(str(record.get(k)) for k in EPISODE_KEY)
+
+
+def recorded_episodes(raw_path: Path) -> set:
+    """원시 응답에 이미 있는 에피소드(성공한 것만 쓰인다). 같은 명령을 다시 돌려도 같은 에피소드가 두 번 쌓이지
+    않게 하고, 중간에 멈춘 실행은 남은 에피소드만 이어서 돌게 한다(11/9 김승하 리뷰).
+    다시 돌려서 새로 받고 싶으면 실행 설정의 raw_responses_path를 바꾼다."""
+    if not raw_path.is_file():
+        return set()
+    done = set()
+    for i, text in enumerate(raw_path.read_text(encoding="utf-8").splitlines(), 1):
+        if not text.strip():
+            continue
+        try:
+            done.add(episode_key(json.loads(text)))
+        except json.JSONDecodeError:
+            # 못 읽은 줄을 빼고 가리면 같은 에피소드가 또 쌓일 수 있다. 고친 뒤에 다시 돌린다.
+            raise Stop(EXIT_INPUT, f"원시 응답 {raw_path.name} {i}행을 읽지 못해서 이미 돈 에피소드를 가릴 수 없다")
+    return done
+
+
 # ---------------------------------------------------------------------------
 # 설정 검사 (종료 코드 2)
 # ---------------------------------------------------------------------------
@@ -565,6 +599,10 @@ def install_guards():
             raise CostCapReached(
                 f"누적 토큰 {st.tokens_used:,}(이전 실행 {st.tokens_before:,} 포함)이 상한 {st.token_cap:,} 에 닿았다"
             )
+        # 받은 dict는 그대로 두고 사본을 넘긴다. TinyTroupe send_message는 재시도할 때마다 같은 dict로 캐시 키를
+        # 다시 만드는데, 여기서 penalty를 빼거나 TinyTroupe _raw_model_call이 stream(응답 형식을 줄 때)·temperature
+        # (gpt-5 계열)를 지우면 재시도 뒤 응답이 다른 키로 저장돼서 다시 돌릴 때 캐시를 못 찾는다(11/9 김승하 리뷰)
+        chat_api_params = dict(chat_api_params)
         # Gemini 호환 주소는 frequency/presence_penalty를 400으로 거부한다 (FINDINGS 3번, run_smoke.py와 같은 처리)
         base_url = os.getenv("OPENAI_BASE_URL") or ""
         if base_url and "openai.com" not in base_url:
@@ -883,6 +921,8 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
             skip("", "없음", feature_id=fid)
     except AbortRun as e:
         abort = e
+    except KeyboardInterrupt:
+        abort = Interrupted("Ctrl-C로 멈췄다. 같은 명령으로 다시 돌리면 끝난 에피소드는 건너뛴다")
     except Exception as e:
         # TinyTroupe 안에서 예상 못 한 오류. 원인을 볼 수 있게 기록에 남기고 실패로 친다.
         abort = ApiFailed(f"예상 못 한 오류 ({type(e).__name__}: {e})")
@@ -1010,6 +1050,7 @@ def summarize(ctx: dict, episodes: list, exit_code: int) -> dict:
         "input_mode": ctx["input_mode"],
         "exit_code": exit_code,
         "episodes_planned": ctx["episodes_planned"],
+        "episodes_skipped": ctx.get("episodes_skipped", 0),  # 원시 응답에 이미 있어서 건너뛴 에피소드
         "episodes_run": len(episodes),
         "episodes_ok": len(ok),
         "calls_real": t["calls_real"],
@@ -1047,7 +1088,8 @@ def print_summary(s: dict) -> None:
 
     print("=" * 60)
     print(f"[요약] {s['batch_id']}  종료 코드 {s['exit_code']}")
-    print(f"  에피소드     : 성공 {s['episodes_ok']} / 실행 {s['episodes_run']} / 계획 {s['episodes_planned']}")
+    print(f"  에피소드     : 성공 {s['episodes_ok']} / 실행 {s['episodes_run']} / 계획 {s['episodes_planned']}"
+          f" (이미 있어서 건너뜀 {s['episodes_skipped']})")
     print(f"  호출         : 실제 {s['calls_real']}회, 캐시 {s['calls_cached']}회")
     print(f"  토큰         : 이번 {s['tokens_total']:,} (입력 {s['tokens_in']:,} + 출력 {s['tokens_out']:,})")
     print(f"  누적 토큰    : {s['tokens_cumulative']:,} / 상한 {s['token_cap']:,} (이전 실행 {s['tokens_before']:,})")
@@ -1104,6 +1146,7 @@ def run(args, root: Path) -> int:
         units = [{"persona_id": f"C0-{i:02d}"} for i in range(1, n_slots + 1)]
     else:
         units = personas
+    done = recorded_episodes(root / cfg["raw_responses_path"])
 
     # --- 설정 검사 ---
     provider, base_url = check_env(root)
@@ -1181,23 +1224,36 @@ def run(args, root: Path) -> int:
           f"{'슬롯' if args.condition == 0 else '페르소나'} {len(units)} x 반복 {args.repeat}, "
           f"캡처 {len(screens)}장({cfg['input_mode']}), 기능 {len(ctx['asked_features'])}개")
 
+    same = {"service": args.service, "platform": args.platform, "condition": args.condition, "provider": provider,
+            "model": model, "protocol_version": cfg["protocol_version"], "snapshot_version": snap["snapshot_version"],
+            "input_mode": cfg["input_mode"], "question_order": cfg["question_order"]}
+    plan = [(unit, repeat) for unit in units for repeat in range(1, args.repeat + 1)]
+    todo = [(unit, repeat) for unit, repeat in plan
+            if episode_key({**same, "persona_id": unit["persona_id"], "repeat": repeat}) not in done]
+    ctx["episodes_skipped"] = len(plan) - len(todo)
+    if ctx["episodes_skipped"]:
+        print(f"[이어서] 원시 응답에 이미 있는 에피소드 {ctx['episodes_skipped']}개는 다시 돌리지 않는다. "
+              f"남은 {len(todo)}개만 돈다")
+
     episodes, fatal = [], None
-    for unit in units:
-        for repeat in range(1, args.repeat + 1):
+    try:
+        for unit, repeat in todo:
             ep = run_episode(ctx, unit, repeat)
             episodes.append(ep)
             print(f"  {ep['run_id']}: {'성공' if ep['ok'] else ep['abort'].label} ({ep['elapsed']}초)")
             if ep["ok"]:
                 continue
             if ep["abort"].fatal:
-                # 인증, 설정, 비용 상한은 다음 에피소드도 같은 이유로 막힌다. 바로 멈춘다.
+                # 인증, 설정, 비용 상한, Ctrl-C는 다음 에피소드도 못 돈다. 바로 멈춘다.
                 fatal = ep["abort"]
                 print(f"[중단] {ep['abort']}", file=sys.stderr)
                 break
             # 그 밖의 실패는 실행 기록에 남기고 다음 에피소드로 간다. 종료 코드는 끝에서 실패율로 정한다.
             print(f"[실패] {ep['abort']} (다음 에피소드로 넘어간다)", file=sys.stderr)
-        if fatal is not None:
-            break
+    except KeyboardInterrupt:
+        # 에피소드 사이에 멈춘 경우. 끝난 에피소드 기록은 이미 써 있고, 요약만 남긴다
+        fatal = Interrupted("Ctrl-C로 멈췄다. 같은 명령으로 다시 돌리면 끝난 에피소드는 건너뛴다")
+        print(f"[중단] {fatal}", file=sys.stderr)
 
     exit_code = decide_exit_code(episodes, fatal)
     summary = summarize(ctx, episodes, exit_code)

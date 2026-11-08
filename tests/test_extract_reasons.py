@@ -109,6 +109,26 @@ class TestExtractReasons(unittest.TestCase):
         self.assertEqual(f1["reason_counts"]["why_use"], 2)
         self.assertEqual(summary["reasons_per_answer_mean"]["why_use"], 2.0)
 
+    def test_quoted_none_is_not_a_reason(self):
+        # 11/9 김승하 #37 리뷰: 따옴표나 괄호로 감싼 "없음"을 이유 한 줄로 셌다
+        for text in ["없음", '"없음"', "“없음”", "'없음'", "(없음)", "「없음」.", '"해당 없음"', "없습니다."]:
+            self.assertTrue(er.is_none(text), text)
+        for text in ["없음 대신 카톡으로 모아 둡니다", "필요 없음", '"필요 없음"']:
+            self.assertFalse(er.is_none(text), text)
+        # 안 쓸 기능이 하나면 기능 이름 없는 4-7 줄을 그 기능에 붙이는데, 감싼 "없음"이 거기 붙던 경우
+        line = episode(run_id="qnone", answers=[
+            answer("Q-AI-USE", "공고 검색·필터: 쓸 것 같다\n공고 저장: 쓸 것 같다\n마감 알림: 쓸 것 같다\n"
+                               "추천 공고 목록: 안 쓸 것 같다"),
+            answer("Q-AI-NOUSE", "추천 공고 목록: 나한테 필요 없을 것 같아서"),
+            answer("Q-4-7", "“없음”"),
+        ])
+        code, log = run("--raw", write_raw("qnone", [line]), "--options", "protocol/options_4-6.txt",
+                        "--out", "out_qnone")
+        self.assertEqual(code, 0, log)
+        records, rows, summary = outputs("qnone")
+        self.assertEqual([r["reason_counts"]["q47"] for r in records], [0] * len(records))
+        self.assertFalse([r for r in rows if r["kind"] in ("q47", "attached:Q-4-7", "review:Q-4-7")])
+
     def test_missing_feature_and_source(self):
         line = episode(run_id="miss", answers=[
             answer("Q-AI-USE", "", think="공고 검색·필터: 쓸 것 같다"),
