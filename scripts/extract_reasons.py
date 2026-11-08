@@ -56,6 +56,12 @@ STATUS = re.compile(
 
 # 폼이 "해당하는 기능이 없다면 없음이라고 적어주세요"라고 시킨 답. 이유도 검토 대상도 아니다
 NONE = re.compile(r"^(해당\s*(하는\s*기능\s*)?)?(없음|없습니다|없어요)[.!]?$")
+# '"없음"', '(없음)', '「없음」.'처럼 감싼 답도 같다. 감싼 채로 맞춰 보면 이유 한 줄로 셌다 (11/9 김승하 리뷰)
+NONE_WRAP = "\"'“”‘’「」『』()[] .!"
+
+
+def is_none(piece: str) -> bool:
+    return bool(NONE.match(piece.strip(NONE_WRAP)))
 MARKUP = re.compile(r"\*\*|__|`")
 BULLET = re.compile(r"^\s*(?:[-*\u2022\u00b7]|\d+[.)])\s+")
 
@@ -118,7 +124,7 @@ def assign(text: str, features: list, sole: str = None):
         seen_feature = seen_feature or any(features_in(p, features) for p in sentences)
         current = None
         for i, piece in enumerate(sentences):
-            if NONE.match(piece):
+            if is_none(piece):
                 continue
             hits = features_in(piece, features)
             lead = lead_feature(piece, features) if len(hits) > 1 else None
