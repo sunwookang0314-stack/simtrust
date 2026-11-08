@@ -58,6 +58,10 @@ python experiments/demo_sample/make_demo_sample.py
 | verdict | 믿고 써도 됨 / 참고용 / 사람에게 물어볼 것 / 자료 부족 / 계산 불가 |
 | human_precision_low, human_precision_high | 사람끼리 범위 |
 | floor_precision_low, floor_precision_high | 아무 기능에나 할 말 범위 |
+| dist, rank | 분포 유사도(1이면 이유별 비율이 같음), 순위 일치(1이면 많이 말한 순서가 같음). 사전등록 v1.1 추가안 |
+| perm_p_dist, perm_p_rank | AI와 사람 이유 분포가 다르다는 증거(순열 검정 p). 작을수록 다르다 |
+| coverage, coverage_need | 사람 이유를 몇 % 봤는지 추정값, 90%까지 필요한 그 칸 응답자 수. 판정에는 안 쓴다 |
+| human_equiv_n | AI 답이 사람 몇 명분인지(분포 유사도 기준). 판정에는 안 쓴다 |
 
 ## #35 화면으로 옮기는 법 [제안]
 
