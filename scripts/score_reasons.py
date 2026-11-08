@@ -4,6 +4,15 @@
 같은 데이터에서 잰 두 기준점(사람끼리, 아무 기능에나 할 말)에 맞춰 판정을 붙인다.
 설계는 docs/measurement/측정대상-판정기준.md (PR #36, #6)를 따른다.
 
+지표 (사전등록 v1.1 추가안에서 빈도 지표 둘을 더했다)
+- precision(통과율), recall(재현율): AI가 말한 이유 종류와 사람이 말한 이유 종류가 겹치는지
+- dist(분포 유사도): 1 - 젠슨-섀넌 발산(밑 2). 이유마다 몇 명이 말했는지 비율 분포가 얼마나 같은지
+- rank(순위 일치): 스피어만 상관. 많이 말한 이유 순서가 같은지
+칸마다 같이 내는 것 (판정에는 안 씀)
+- coverage: 표본 커버리지(Chao 외 2014, incidence 자료). 그 칸 사람 이유를 몇 % 봤는지와, 목표 커버리지까지
+  필요한 응답자 수
+- human_equivalent: 사람 환산 인원. AI 답 분포가 사람 몇 명을 뽑았을 때만큼 사람 분포에 가까운지
+
 입력
 - 사람 코드 CSV (--human): 정리 담당이 사람 응답을 코드북으로 정리한 것. 응답 원문은 넣지 않는다
     respondent_id, service, platform, feature_id, kind(use|nouse|nouse_quit), code, order(선택. 응답 순서)
@@ -53,7 +62,9 @@ KINDS = ("use", "nouse")  # AI 쪽
 HUMAN_KINDS = ("use", "nouse", "nouse_quit")
 PLATFORMS = ("app", "web")
 CONDITIONS = (0, 1, 2, 3)
-METRICS = ("precision", "recall")
+METRICS = ("precision", "recall")  # 이유 종류가 겹치는지
+FREQ_METRICS = ("dist", "rank")  # 이유를 얼마나 자주 말하는지 (사전등록 v1.1 추가안)
+ALL_METRICS = METRICS + FREQ_METRICS
 CELL_KEYS = ("service", "platform", "feature_id", "kind")
 HUMAN_FIELDS = ["respondent_id", "service", "platform", "feature_id", "kind", "code"]
 AI_FIELDS = ["item_id", "run_id", "service", "platform", "condition", "persona_id", "repeat", "feature_id", "kind",
@@ -70,7 +81,11 @@ CELL_CSV = ["scope", "condition", "service", "platform", "feature_id", "kind", "
             "ai_split_precision", "ai_split_recall",
             "human_precision_low", "human_precision_high", "human_recall_low", "human_recall_high",
             "floor_precision_low", "floor_precision_high", "floor_recall_low", "floor_recall_high",
-            "verdict", "stable_at", "ai_platform_short"]
+            "verdict", "stable_at", "ai_platform_short",
+            "dist", "rank", "ai_split_dist", "ai_split_rank", "human_dist_low", "human_dist_high",
+            "human_rank_low", "human_rank_high", "floor_dist_high", "floor_rank_high",
+            "perm_p_dist", "perm_p_rank", "coverage", "coverage_need", "coverage_need_reliable",
+            "human_equiv_n", "human_equiv_ai_size", "human_equiv_bound"]
 REASON_CSV = ["scope", "condition", "service", "platform", "feature_id", "kind", "type", "code", "name", "common",
               "ai_episodes_with_code", "ai_episodes", "human_count", "n_humans", "passed", "basis"]
 CODEBOOK_FIELDS = ["code", "scope"]
@@ -196,8 +211,8 @@ def load_rules(path: Path) -> dict:
     keys = rules["cell_keys"]
     if not set(keys) <= set(CELL_KEYS) or "feature_id" not in keys or "kind" not in keys:
         raise InputError(f"{path.name}: cell_keys는 {list(CELL_KEYS)} 중에서 고르고 feature_id와 kind는 꼭 넣는다")
-    if not rules["metrics"] or not set(rules["metrics"]) <= set(METRICS):
-        raise InputError(f"{path.name}: metrics는 precision, recall 중에서 고른다")
+    if not rules["metrics"] or not set(rules["metrics"]) <= set(ALL_METRICS):
+        raise InputError(f"{path.name}: metrics는 {', '.join(ALL_METRICS)} 중에서 고른다")
     if not isinstance(rules["fixed"], dict):
         raise InputError(f"{path.name}: fixed는 trust와 reference를 담은 객체")
     check_rule(merge_rule(rules, {}), path.name)
@@ -224,13 +239,19 @@ def load_rules(path: Path) -> dict:
         raise InputError(f"{path.name}: saturation 값이 이상함")
     if not isinstance(rules.get("platform_reference", True), bool):
         raise InputError(f"{path.name}: platform_reference는 true 또는 false")
+    target = rules.get("coverage_target", 0.9)
+    if not isinstance(target, (int, float)) or not 0 < target < 1:
+        raise InputError(f"{path.name}: coverage_target은 0과 1 사이")
+    he = rules.get("human_equivalent", {"draws": 0})
+    if not isinstance(he, dict) or not isinstance(he.get("draws"), int) or he["draws"] < 0:
+        raise InputError(f"{path.name}: human_equivalent는 draws(0 이상 정수)를 담은 객체")
     return rules
 
 
 def merge_rule(rules: dict, alt: dict) -> dict:
     """민감도 규칙 하나. 안 적은 값은 본 규칙을 따른다."""
     out = {"method": rules["method"], "level": rules["level"], "metrics": rules["metrics"],
-           "min_humans": rules["min_humans"], **rules["fixed"]}
+           "perm": rules.get("perm", []), "min_humans": rules["min_humans"], **rules["fixed"]}
     out.update({k: v for k, v in alt.items() if k != "name"})
     return out
 
@@ -238,6 +259,11 @@ def merge_rule(rules: dict, alt: dict) -> dict:
 def check_rule(rule: dict, where: str) -> None:
     if rule.get("method") not in ("anchors", "fixed", "gate"):
         raise InputError(f"{where}: method는 anchors, fixed, gate 중 하나")
+    if not rule.get("metrics") or not set(rule["metrics"]) <= set(ALL_METRICS):
+        raise InputError(f"{where}: metrics는 {', '.join(ALL_METRICS)} 중에서 고른다")
+    perm = rule.get("perm", [])
+    if not isinstance(perm, list) or not set(perm) <= set(FREQ_METRICS) or not set(perm) <= set(rule["metrics"]):
+        raise InputError(f"{where}: perm은 metrics에 든 {', '.join(FREQ_METRICS)} 중에서 고른다")
     if not isinstance(rule.get("level"), (int, float)) or not 0 < rule["level"] < 1:
         raise InputError(f"{where}: level은 0과 1 사이")
     t, r = rule.get("trust"), rule.get("reference")
@@ -283,6 +309,100 @@ def union(groups: dict, ids) -> set:
     for i in ids:
         out |= groups[i]
     return out
+
+
+def counts_of(groups: dict, ids) -> Counter:
+    """코드마다 그 코드를 말한 사람 수. 한 사람은 한 코드를 한 번만 센다."""
+    out = Counter()
+    for i in ids:
+        out.update(groups[i])
+    return out
+
+
+def jsd_similarity(p: Counter, q: Counter):
+    """분포 유사도 = 1 - 젠슨-섀넌 발산(밑 2라서 0~1). 코드마다 말한 횟수를 비율로 바꿔 잰다.
+    같으면 1, 겹치는 코드가 없으면 0. 한쪽이 비면 None.
+    코드 순서대로 더하고 반올림한다. 입력 순서가 달라도 같은 값이 나오게 (같은 시드 같은 결과)."""
+    tp, tq = sum(p.values()), sum(q.values())
+    if not tp or not tq:
+        return None
+    js = 0.0
+    for c in sorted(set(p) | set(q)):
+        a, b = p.get(c, 0) / tp, q.get(c, 0) / tq
+        m = (a + b) / 2
+        if a:
+            js += a * math.log2(a / m) / 2
+        if b:
+            js += b * math.log2(b / m) / 2
+    return round(min(1.0, max(0.0, 1 - js)), 12)
+
+
+def _ranks(values: list) -> list:
+    """같은 값은 평균 순위."""
+    order = sorted(range(len(values)), key=lambda i: values[i])
+    ranks = [0.0] * len(values)
+    i = 0
+    while i < len(order):
+        j = i
+        while j + 1 < len(order) and values[order[j + 1]] == values[order[i]]:
+            j += 1
+        for k in range(i, j + 1):
+            ranks[order[k]] = (i + j) / 2 + 1
+        i = j + 1
+    return ranks
+
+
+def rank_agreement(p: Counter, q: Counter):
+    """순위 일치 = 스피어만 상관(-1~1). 두 쪽 중 한 쪽이라도 말한 코드로 재고, 안 말한 쪽은 0번으로 둔다.
+    코드가 2개 미만이거나 한쪽 개수가 전부 같으면 순위가 없어서 None."""
+    codes = sorted(set(p) | set(q))
+    if len(codes) < 2 or not p or not q:
+        return None
+    x, y = _ranks([p.get(c, 0) for c in codes]), _ranks([q.get(c, 0) for c in codes])
+    mx, my = sum(x) / len(x), sum(y) / len(y)
+    sxy = sum((a - mx) * (b - my) for a, b in zip(x, y))
+    sxx = sum((a - mx) ** 2 for a in x)
+    syy = sum((b - my) ** 2 for b in y)
+    if not sxx or not syy:
+        return None
+    return round(sxy / math.sqrt(sxx * syy), 12)
+
+
+def metric_values(pred: Counter, ref: Counter) -> dict:
+    p, r = pr(set(pred), set(ref))
+    return {"precision": p, "recall": r, "dist": jsd_similarity(pred, ref), "rank": rank_agreement(pred, ref)}
+
+
+def sample_coverage(groups: dict, target: float = 0.9):
+    """표본 커버리지 (Chao 외 2014, incidence 자료). 응답자 한 명을 표본 단위 하나로 보고 코드마다 말한 사람 수를 센다.
+    T = 칸 응답자 수(코드가 없는 응답자 포함), U = 언급 수 합, Q1·Q2 = 한 명·두 명만 말한 코드 수
+    추정 커버리지 = 1 - Q1/U x A,  A = (T-1)Q1 / ((T-1)Q1 + 2Q2),  Q2가 0이면 A = (T-1)(Q1-1) / ((T-1)(Q1-1) + 2)
+    목표까지 필요한 응답자 수 = T + (log(U/Q1) + log(1 - 목표)) / log(A) - 1 을 올림 (iNEXT invChat.Sam과 같은 식)
+    응답자 수의 두 배를 넘는 외삽은 덜 정확하다(Chao 외 2014)고 need_reliable로 표시한다."""
+    t = len(groups)
+    freq = Counter(c for codes in groups.values() for c in codes)
+    u = sum(freq.values())
+    if t < 2 or not u:
+        return None
+    q1 = sum(v == 1 for v in freq.values())
+    q2 = sum(v == 2 for v in freq.values())
+    if q1 == 0:
+        a = 1.0
+    elif q2 > 0:
+        a = (t - 1) * q1 / ((t - 1) * q1 + 2 * q2)
+    elif q1 > 1:
+        a = (t - 1) * (q1 - 1) / ((t - 1) * (q1 - 1) + 2)
+    else:
+        a = 0.0
+    est = 1 - q1 / u * a
+    if est >= target:
+        need = t
+    elif 0 < a < 1:
+        need = t + max(0, math.ceil((math.log(u / q1) + math.log(1 - target)) / math.log(a) - 1))
+    else:
+        need = None
+    return {"estimate": rnd(est), "respondents": t, "incidences": u, "q1": q1, "q2": q2, "target": target,
+            "need": need, "need_reliable": need is not None and need <= 2 * t}
 
 
 # ---------------------------------------------------------------- 칸 만들기
@@ -332,19 +452,25 @@ def _persona_platform(p) -> str:
     return p[0] if isinstance(p, tuple) else ""
 
 
-def sample_ai(cell: dict, need, rng: random.Random) -> set:
-    """페르소나를 뽑고 페르소나마다 회차 하나의 코드만 합친다. 사람 A와 같은 크기로 잰다.
+def sample_ai_counts(cell: dict, need, rng: random.Random) -> Counter:
+    """페르소나를 뽑고 페르소나마다 회차 하나의 코드만 센다. 사람 A와 같은 크기로 잰다.
     need가 {플랫폼: 인원}이면 플랫폼마다 그 인원씩 뽑는다 (사람 A의 앱:웹 비율). 정수면 플랫폼을 안 가린다.
-    페르소나가 모자라면 있는 만큼 쓴다. 같은 페르소나의 반복은 서로 다른 사람으로 치지 않는다."""
+    페르소나가 모자라면 있는 만큼 쓴다. 같은 페르소나의 반복은 서로 다른 사람으로 치지 않는다.
+    반환은 코드마다 그 코드를 말한 페르소나 수다 (사람 쪽 counts_of와 같은 단위)."""
     if isinstance(need, int):
         need = {None: need}
-    out = set()
+    out = Counter()
     for plat in sorted(need, key=lambda x: x or ""):
         personas = sorted((p for p in cell["persona_eps"] if plat is None or _persona_platform(p) == plat),
                           key=str)
         for p in rng.sample(personas, min(need[plat], len(personas))):
-            out |= cell["ep_codes"][rng.choice(sorted(cell["persona_eps"][p]))]
+            out.update(cell["ep_codes"][rng.choice(sorted(cell["persona_eps"][p]))])
     return out
+
+
+def sample_ai(cell: dict, need, rng: random.Random) -> set:
+    """sample_ai_counts의 코드 종류만."""
+    return set(sample_ai_counts(cell, need, rng))
 
 
 def split_draws(cond: int, key: tuple, groups: dict, aic: dict, partners: list, rules: dict,
@@ -354,7 +480,7 @@ def split_draws(cond: int, key: tuple, groups: dict, aic: dict, partners: list, 
     비율대로 플랫폼마다 따로 뽑는다. 그 플랫폼 AI 페르소나가 모자란 뽑기 수는 ai_short_draws에 센다.
     나누기, AI 뽑기, 다른 기능 뽑기는 난수를 따로 써서 다른 칸 자료가 이 칸 나누기를 바꾸지 않게 한다."""
     ids = sorted(groups)
-    draws = {f"{who}_{m}": [] for who in ("human", "ai", "floor") for m in METRICS}
+    draws = {f"{who}_{m}": [] for who in ("human", "ai", "floor") for m in ALL_METRICS}
     draws["ai_short_draws"] = 0
     if len(ids) < 2:
         return draws
@@ -368,17 +494,114 @@ def split_draws(cond: int, key: tuple, groups: dict, aic: dict, partners: list, 
     for _ in range(rules["resamples"]):
         s = ids[:]
         rng.shuffle(s)
-        a, b = union(groups, s[:half]), union(groups, s[half:])
+        a, b = counts_of(groups, s[:half]), counts_of(groups, s[half:])
         need = dict(Counter(platform_of.get(i, "") for i in s[:half]))
         if aic["persona_eps"] and any(n > have.get(p, 0) for p, n in need.items()):
             draws["ai_short_draws"] += 1
-        ai_pred = sample_ai(aic, need, rng_ai) if aic["persona_eps"] else None
-        floor_pred = sample_ai(rng_floor.choice(partners), need, rng_floor) if partners else None
+        ai_pred = sample_ai_counts(aic, need, rng_ai) if aic["persona_eps"] else None
+        floor_pred = sample_ai_counts(rng_floor.choice(partners), need, rng_floor) if partners else None
         for who, pred in (("human", a), ("ai", ai_pred), ("floor", floor_pred)):
-            p, r = pr(pred, b) if pred is not None else (None, None)
-            draws[f"{who}_precision"].append(p)
-            draws[f"{who}_recall"].append(r)
+            vals = metric_values(pred, b) if pred is not None else dict.fromkeys(ALL_METRICS)
+            for m in ALL_METRICS:
+                draws[f"{who}_{m}"].append(vals[m])
     return draws
+
+
+def perm_test(cond: int, key: tuple, groups: dict, aic: dict, rules: dict, platform_of: dict = None) -> dict:
+    """빈도 지표의 층화 순열 검정 (사전등록 v1.1 추가안).
+    귀무가설: 플랫폼마다 AI 페르소나와 사람은 같은 이유 분포에서 나왔다. 플랫폼을 블록으로 두고 그 안에서만
+    AI·사람 꼬리표를 섞으니, 사람과 AI의 앱:웹 비율이 달라도 그 차이는 귀무분포에 그대로 들어간다.
+    사람은 칸 전원, AI는 페르소나 전원을 쓰고 페르소나마다 회차 하나를 뽑아 한 사람으로 센다.
+    매번 회차를 새로 뽑아 관측값을 재고, 같은 회차로 꼬리표를 섞은 값을 잰다. p = (1 + 섞은 값이 관측값 이하인
+    횟수) / (1 + 횟수). 값이 작을수록 덜 비슷하다는 뜻이라 p가 작으면 AI 분포가 사람과 다르다는 증거다.
+    회차가 여럿이면 관측값도 매번 달라져 검정이 조금 보수적으로 된다(덜 거른다)."""
+    out = dict.fromkeys(FREQ_METRICS)
+    ids = sorted(groups)
+    personas = sorted(aic["persona_eps"], key=str)
+    if not ids or not personas:
+        return out
+    platform_of = platform_of or {}
+    rng = random.Random(f"{rules['seed']}|perm|{cond}|{'|'.join(key)}")
+    strata = defaultdict(lambda: ([], []))  # 플랫폼 -> (사람, AI 페르소나)
+    for i in ids:
+        strata[platform_of.get(i, "")][0].append(i)
+    for p_ in personas:
+        strata[_persona_platform(p_)][1].append(p_)
+    hits = dict.fromkeys(FREQ_METRICS, 0)
+    valid = dict.fromkeys(FREQ_METRICS, 0)
+    n = rules["resamples"]
+    human_c = counts_of(groups, ids)
+    eps = {p_: sorted(aic["persona_eps"][p_]) for p_ in personas}
+    for _ in range(n):
+        ai_sets = {p_: aic["ep_codes"][rng.choice(eps[p_])] for p_ in personas}
+        ai_c = Counter()
+        for p_ in personas:
+            ai_c.update(ai_sets[p_])
+        obs = {"dist": jsd_similarity(ai_c, human_c), "rank": rank_agreement(ai_c, human_c)}
+        perm_h, perm_a = Counter(), Counter()
+        for plat in sorted(strata):
+            hs, ps = strata[plat]
+            pool = [groups[i] for i in hs] + [ai_sets[p_] for p_ in ps]
+            rng.shuffle(pool)
+            for codes in pool[:len(ps)]:
+                perm_a.update(codes)
+            for codes in pool[len(ps):]:
+                perm_h.update(codes)
+        perm = {"dist": jsd_similarity(perm_a, perm_h), "rank": rank_agreement(perm_a, perm_h)}
+        for m in FREQ_METRICS:
+            if obs[m] is None or perm[m] is None:
+                continue
+            valid[m] += 1
+            hits[m] += perm[m] <= obs[m]
+    for m in FREQ_METRICS:
+        out[m] = (1 + hits[m]) / (1 + valid[m]) if valid[m] else None
+    return out
+
+
+def human_equivalent(cond: int, key: tuple, groups: dict, aic: dict, rules: dict, platform_of: dict = None):
+    """사람 환산 인원: 사람 A와 같은 인원으로 뽑은 AI 답이, 사람 몇 명을 뽑았을 때만큼 사람 B 분포에 가까운지.
+    사람을 반씩 나눠 A에서 m명(1명부터 A 전원까지)을 뽑은 분포 유사도의 중앙값 곡선을 그리고,
+    AI 분포 유사도 중앙값이 그 곡선과 처음 만나는 m을 선형으로 메워 낸다. 판정에는 안 쓴다.
+    Huang 외(2025, "LLM은 사람 응답자 몇 명분인가")와 Broska 외(2025, 혼합 대상 설계의 유효 표본 크기)를
+    우리 설계에 맞춘 대응이다. 두 방법은 AI가 같은 응답자의 답을 예측해야(짝) 쓰는데, 우리 AI 페르소나는
+    응답자와 짝이 없어서 분포끼리 견준다."""
+    draws_n = (rules.get("human_equivalent") or {}).get("draws", 0)
+    ids = sorted(groups)
+    if not draws_n or len(ids) < 4 or not aic["persona_eps"]:
+        return None
+    platform_of = platform_of or {}
+    half = len(ids) // 2
+    rng = random.Random(f"{rules['seed']}|equiv|{cond}|{'|'.join(key)}")
+    curve = {m: [] for m in range(1, half + 1)}
+    ai_sims = []
+    for _ in range(draws_n):
+        s = ids[:]
+        rng.shuffle(s)
+        a_ids, b = s[:half], counts_of(groups, s[half:])
+        need = dict(Counter(platform_of.get(i, "") for i in a_ids))
+        ai_sims.append(jsd_similarity(sample_ai_counts(aic, need, rng), b))
+        acc = Counter()
+        for m, i in enumerate(a_ids, 1):  # a_ids는 이미 섞인 순서라 앞 m명이 무작위 m명이다
+            acc.update(groups[i])
+            curve[m].append(jsd_similarity(acc, b))
+    target = quantile(ai_sims, 0.5)
+    pts = [(m, quantile(v, 0.5)) for m, v in sorted(curve.items())]
+    pts = [(m, v) for m, v in pts if v is not None]
+    if target is None or not pts:
+        return None
+    out = {"ai_size": half, "ai_similarity": rnd(target), "draws": draws_n,
+           "curve": [[m, rnd(v)] for m, v in pts]}
+    if target < pts[0][1]:
+        return {**out, "n_equiv": None, "bound": "below"}  # 사람 1명보다 못함
+    if target >= pts[-1][1]:
+        return {**out, "n_equiv": pts[-1][0], "bound": "above"}  # A 전원 이상
+    prev_m, prev_v = pts[0]
+    for m, v in pts[1:]:
+        if v >= target:
+            frac = (target - prev_v) / (v - prev_v) if v > prev_v else 1.0
+            return {**out, "n_equiv": rnd(prev_m + frac * (m - prev_m), 2), "bound": None}
+        prev_m, prev_v = m, v
+    return {**out, "n_equiv": pts[-1][0], "bound": "above"}
 
 
 def stability(cond: int, key: tuple, groups: dict, ai_codes: set, rules: dict) -> dict:
@@ -473,10 +696,12 @@ def judge(cell: dict, rule: dict) -> str:
     if rule["method"] == "gate":
         return judge_gate(cell, rule, metrics)
     view = anchor_view(cell["draws"], rule["level"], metrics)
-    if any(view[m]["ai"] is None or view[m]["human"] is None for m in metrics):
+    perm = set(rule.get("perm", ()))
+    pvals = cell.get("perm") or {}
+    if any(view[m]["ai"] is None or (pvals.get(m) if m in perm else view[m]["human"]) is None for m in metrics):
         return NA
-    # AI가 사람 이유를 거의 못 맞히면(중앙값 0) 사람끼리 구간 아래쪽이 0이어도 믿지 않는다
-    if any(view[m]["ai"] == 0 for m in metrics):
+    # AI가 사람 이유를 거의 못 맞히면(중앙값 0, 순위 일치는 0 이하) 사람끼리 구간 아래쪽이 0이어도 믿지 않는다
+    if any(view[m]["ai"] <= 0 for m in metrics):
         return ASK
     # 아무 기능에나 할 말과 구별이 안 되면 사람 범위에 들어도 믿지 않는다 (두 기준점이 겹칠 때 보수적으로)
     if any(view[m]["floor"] is not None and view[m]["ai"] <= view[m]["floor"][1] for m in metrics):
@@ -484,7 +709,11 @@ def judge(cell: dict, rule: dict) -> str:
     # 비교할 다른 기능이 없으면 아무 기능에나 할 말인지 가릴 수 없어서 믿음 판정은 내지 않는다
     if any(view[m]["floor"] is None for m in metrics):
         return REF
-    if all(view[m]["ai"] >= view[m]["human"][0] for m in metrics):
+    # 기본 지표: AI 중앙값이 사람끼리 구간 아래쪽 끝 이상. 순열 검정 지표(사전등록 v1.1 추가안): 플랫폼 안에서
+    # 꼬리표를 섞은 검정의 p가 1 - level 이상, 곧 AI 이유 분포가 사람과 다르다는 증거가 없음
+    alpha = round(1 - rule["level"], 10)  # 1 - 0.95가 0.05보다 조금 크게 계산되는 것을 막는다
+    if all((pvals[m] >= alpha) if m in perm else (view[m]["ai"] >= view[m]["human"][0])
+           for m in metrics):
         return TRUST
     return REF
 
@@ -498,7 +727,7 @@ def judge_gate(cell: dict, rule: dict, metrics: list) -> str:
     full = [cell["full"][m] for m in metrics]
     if any(view[m]["ai"] is None for m in metrics) or any(v is None for v in full):
         return NA
-    if any(view[m]["ai"] == 0 for m in metrics):
+    if any(view[m]["ai"] <= 0 for m in metrics):
         return ASK
     if any(view[m]["floor"] is not None and view[m]["ai"] <= view[m]["floor"][1] for m in metrics):
         return ASK
@@ -536,13 +765,17 @@ def score_cells(human: list, ai: list, rules: dict, keys: list, codebook: dict =
             ai_codes = set(aic["code_eps"])
             human_count = Counter(c for codes in groups.values() for c in codes)
             p, r = pr(ai_codes, set(human_count))
+            # 전체 값의 빈도는 에피소드마다 센다 (반복 3회면 한 페르소나가 세 번까지). 다시 뽑기는 페르소나마다 한 회차
+            ai_count = Counter(c for codes in aic["ep_codes"].values() for c in codes)
             partners = floor_partners(key, cond, ai_cells, keys)
             cell = {"scope": scope, "condition": cond, **dict(zip(keys, key)), "n_humans": len(groups),
                     "n_humans_app": sum(v == "app" for v in plats.values()),
                     "n_humans_web": sum(v == "web" for v in plats.values()),
                     "ai_episodes": len(aic["episodes"]), "ai_codes": sorted(ai_codes),
                     "human_codes": len(human_count), "matched": len(ai_codes & set(human_count)),
-                    "full": {"precision": p, "recall": r}, "floor_partners": len(partners),
+                    "full": {"precision": p, "recall": r, "dist": jsd_similarity(ai_count, human_count),
+                             "rank": rank_agreement(ai_count, human_count)},
+                    "floor_partners": len(partners),
                     "draws": split_draws(cond, key, groups, aic, partners, rules, plats)}
             # 공통 코드를 뺀 값. 판정에는 안 쓰고 옆에 보여준다. 코드북이 없으면 None
             if codebook is not None:
@@ -552,6 +785,10 @@ def score_cells(human: list, ai: list, rules: dict, keys: list, codebook: dict =
             else:
                 cell["nocommon"] = None
             cell["ai_platform_short"] = cell["draws"]["ai_short_draws"]
+            cell["perm"] = perm_test(cond, key, groups, aic, rules, plats)
+            cell["coverage"] = sample_coverage(groups, rules.get("coverage_target", 0.9))
+            cell["human_equivalent"] = (human_equivalent(cond, key, groups, aic, rules, plats)
+                                        if scope == MAIN else None)
             cell["verdict"] = judge(cell, main_rule)
             cell["sensitivity"] = {name: judge(cell, rule) for name, rule in alts}
             cell["stability"] = stability(cond, key, groups, ai_codes, rules)
@@ -629,16 +866,17 @@ def summarize(cells: list, conditions: list, alts: list, keys: list, platform_re
 # ---------------------------------------------------------------- 출력
 
 def cell_json(cell: dict, rules: dict) -> dict:
-    view = anchor_view(cell["draws"], rules["level"], list(METRICS))
+    view = anchor_view(cell["draws"], rules["level"], list(ALL_METRICS))
     out = {k: v for k, v in cell.items() if k not in ("draws", "full", "nocommon")}
-    out["precision"], out["recall"] = rnd(cell["full"]["precision"]), rnd(cell["full"]["recall"])
+    for m in ALL_METRICS:
+        out[m] = rnd(cell["full"][m])
     nc = cell["nocommon"]
     out["nocommon"] = ({"precision": rnd(nc["precision"]), "recall": rnd(nc["recall"]),
                         "ai_codes": nc["ai_codes"], "human_codes": nc["human_codes"]} if nc else None)
     out["anchors"] = {m: {"ai_split_median": rnd(view[m]["ai"]),
                           "human_interval": [rnd(x) for x in view[m]["human"]] if view[m]["human"] else None,
                           "floor_interval": [rnd(x) for x in view[m]["floor"]] if view[m]["floor"] else None}
-                      for m in METRICS}
+                      for m in ALL_METRICS}
     return out
 
 
@@ -649,6 +887,8 @@ def cell_row(c: dict) -> dict:
         return a[m][who][i] if a[m][who] else None
 
     nc = c["nocommon"] or {}
+    cov = c.get("coverage") or {}
+    he = c.get("human_equivalent") or {}
     return {"scope": c["scope"], "condition": c["condition"], **{k: c.get(k, "*") for k in CELL_KEYS},
             "n_humans": c["n_humans"], "n_humans_app": c["n_humans_app"], "n_humans_web": c["n_humans_web"],
             "ai_episodes": c["ai_episodes"], "ai_codes": len(c["ai_codes"]),
@@ -666,7 +906,21 @@ def cell_row(c: dict) -> dict:
             "floor_recall_low": bound("recall", "floor_interval", 0),
             "floor_recall_high": bound("recall", "floor_interval", 1),
             "verdict": c["verdict"], "stable_at": c["stability"]["stable_at"],
-            "ai_platform_short": c["ai_platform_short"]}
+            "ai_platform_short": c["ai_platform_short"],
+            "dist": c["dist"], "rank": c["rank"],
+            "ai_split_dist": a["dist"]["ai_split_median"], "ai_split_rank": a["rank"]["ai_split_median"],
+            "human_dist_low": bound("dist", "human_interval", 0),
+            "human_dist_high": bound("dist", "human_interval", 1),
+            "human_rank_low": bound("rank", "human_interval", 0),
+            "human_rank_high": bound("rank", "human_interval", 1),
+            "floor_dist_high": bound("dist", "floor_interval", 1),
+            "floor_rank_high": bound("rank", "floor_interval", 1),
+            "perm_p_dist": rnd((c.get("perm") or {}).get("dist")),
+            "perm_p_rank": rnd((c.get("perm") or {}).get("rank")),
+            "coverage": cov.get("estimate"), "coverage_need": cov.get("need"),
+            "coverage_need_reliable": yn(cov.get("need_reliable")) if cov else "",
+            "human_equiv_n": he.get("n_equiv"), "human_equiv_ai_size": he.get("ai_size"),
+            "human_equiv_bound": he.get("bound") or ""}
 
 
 def yn(flag) -> str:
@@ -732,6 +986,12 @@ def print_summary(result: dict, rules: dict, run_id: str) -> None:
         label = "/".join(str(g[k]) for k in rules["saturation"]["group_keys"])
         print(f"  포화 {label}: 응답자 {g['respondents']}명, 이유 {g['reasons']}개, "
               f"다 모음 {g['saturated_at'] if g['saturated_at'] else '아직'}")
+    main_cells = [c for c in result["cells"] if c.get("kind") != "nouse_quit" and c.get("coverage")]
+    if main_cells:
+        target = rules.get("coverage_target", 0.9)
+        short = sum(c["coverage"]["estimate"] < target for c in main_cells)
+        print(f"  커버리지   : 사람 이유를 {target:.0%} 넘게 본 칸 {len(main_cells) - short}개, 못 미친 칸 {short}개 "
+              "(판정에는 안 씀)")
     cov = result["coverage"]
     print(f"  칸 겹침    : 사람과 AI 둘 다 {cov['both']}칸, 사람만 {cov['human_only']}칸, AI만 {cov['ai_only']}칸")
     if result["dropped_ai_rows"]:

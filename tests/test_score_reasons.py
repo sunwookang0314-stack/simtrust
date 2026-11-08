@@ -9,11 +9,13 @@ import copy
 import csv
 import io
 import json
+import math
 import random
 import shutil
 import sys
 import tempfile
 import unittest
+from collections import Counter
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -309,6 +311,109 @@ class TestJudge(unittest.TestCase):
         vals = [i / 100 for i in range(101)]
         self.assertEqual([round(x, 3) for x in sr.interval(vals, 0.95)], [0.025, 0.975])
         self.assertIsNone(sr.interval([None, None], 0.95))
+
+
+def by_count(spec, prefix):
+    """[(코드, 사람 수)] -> {사람: [코드]}. 한 사람이 코드 하나."""
+    out, i = {}, 0
+    for code, n in spec:
+        for _ in range(n):
+            out[f"{prefix}{i:02d}"] = [code]
+            i += 1
+    return out
+
+
+class TestFrequencyMetrics(unittest.TestCase):
+    """사전등록 v1.1 추가안: 분포 유사도, 순위 일치, 순열 검정, 커버리지, 사람 환산 인원."""
+
+    def test_jsd_similarity(self):
+        C = Counter
+        self.assertEqual(sr.jsd_similarity(C(A=2, B=1), C(A=4, B=2)), 1.0)  # 비율이 같으면 1
+        self.assertEqual(sr.jsd_similarity(C(A=1), C(B=3)), 0.0)  # 겹치는 코드가 없으면 0
+        # P = (1, 0), Q = (1/2, 1/2), M = (3/4, 1/4)
+        js = 0.5 * math.log2(1 / 0.75) + 0.5 * (0.5 * math.log2(0.5 / 0.75) + 0.5 * math.log2(0.5 / 0.25))
+        self.assertAlmostEqual(sr.jsd_similarity(C(A=1), C(A=1, B=1)), 1 - js)
+        self.assertIsNone(sr.jsd_similarity(C(), C(A=1)))
+
+    def test_rank_agreement(self):
+        C = Counter
+        self.assertAlmostEqual(sr.rank_agreement(C(A=3, B=2, C=1), C(A=30, B=20, C=10)), 1.0)
+        self.assertAlmostEqual(sr.rank_agreement(C(A=1, B=2, C=3), C(A=30, B=20, C=10)), -1.0)
+        # 한쪽만 말한 코드는 0번: 코드 A,B,C에서 (3,1,0)과 (2,0,1) -> 순위 (3,2,1)과 (3,1,2) -> 0.5
+        self.assertAlmostEqual(sr.rank_agreement(C(A=3, B=1), C(A=2, C=1)), 0.5)
+        self.assertIsNone(sr.rank_agreement(C(A=1, B=1), C(A=2, B=2)))  # 개수가 다 같으면 순위가 없다
+        self.assertIsNone(sr.rank_agreement(C(A=1), C(A=2)))
+
+    def test_sample_coverage_matches_chao(self):
+        # 5명(2명은 코드 없음): a 1명, b 1명, c 2명, d 3명 -> T=5, U=7, Q1=2, Q2=1, A = 4*2/(4*2+2) = 0.8
+        g = {"P1": {"a", "c", "d"}, "P2": {"b", "c", "d"}, "P3": {"d"}, "P4": set(), "P5": set()}
+        c = sr.sample_coverage(g, 0.9)
+        self.assertAlmostEqual(c["estimate"], round(1 - 2 / 7 * 0.8, 4))
+        # 90%까지: 5 + (log(7/2) + log(0.1)) / log(0.8) - 1 = 5 + 3.70 -> 올림 9명
+        self.assertEqual((c["need"], c["need_reliable"]), (9, True))
+        # Q2가 0이면 A = (T-1)(Q1-1) / ((T-1)(Q1-1) + 2): T=4, U=6, Q1=3 -> A = 0.75, 커버리지 0.625
+        g2 = {"P1": {"a", "d"}, "P2": {"b", "d"}, "P3": {"c", "d"}, "P4": set()}
+        c2 = sr.sample_coverage(g2, 0.9)
+        self.assertAlmostEqual(c2["estimate"], 0.625)
+        self.assertEqual((c2["need"], c2["need_reliable"]), (9, False))  # 4명의 두 배를 넘는 외삽
+        self.assertEqual(sr.sample_coverage({"P1": {"a"}, "P2": {"a"}})["estimate"], 1.0)  # 한 명만 말한 코드 없음
+        self.assertIsNone(sr.sample_coverage({"P1": {"a"}}))
+
+    def _reversed_case(self):
+        """F1: 사람 40명이 A 20, B 12, C 8. 같은 AI는 같은 비율, 뒤집힌 AI는 A 8, B 12, C 20.
+        F2는 아무 기능에나 할 말 기준점을 만들려고 둔다."""
+        h = human_rows("F1", by_count([("A", 20), ("B", 12), ("C", 8)], "P")) \
+            + human_rows("F2", by_count([("X", 6), ("Y", 4)], "Q"))
+        out = {}
+        for name, spec in (("same", [("A", 20), ("B", 12), ("C", 8)]), ("reversed", [("A", 8), ("B", 12), ("C", 20)])):
+            a = ai_rows("F1", by_count(spec, "e")) + ai_rows("F2", by_count([("X", 6), ("Y", 4)], "f"))
+            res = sr.score(h, a, rules(human_equivalent={"draws": 100}))
+            out[name] = find(res["cells"], feature_id="F1", condition=2)
+        return out
+
+    def test_frequency_rules_catch_reversed_ai(self):
+        # 이유 종류는 사람과 같고 많이 말하는 순서만 뒤집힌 AI. 종류만 보는 규칙은 못 거른다
+        c = self._reversed_case()
+        same, rev = c["same"], c["reversed"]
+        self.assertEqual(same["verdict"], sr.TRUST)
+        self.assertEqual(rev["verdict"], sr.TRUST)  # main은 못 거름
+        self.assertEqual((same["sensitivity"]["main_dist"], same["sensitivity"]["main_rank"]), (sr.TRUST, sr.TRUST))
+        self.assertLess(rev["perm"]["dist"], 0.05)  # 순열 검정: 분포가 다르다
+        self.assertEqual(rev["sensitivity"]["main_dist"], sr.REF)
+        self.assertEqual(rev["sensitivity"]["main_rank"], sr.ASK)  # 순위 일치 중앙값이 0 이하
+        self.assertGreater(same["perm"]["dist"], 0.05)
+
+    def test_human_equivalent(self):
+        c = self._reversed_case()
+        same, rev = c["same"]["human_equivalent"], c["reversed"]["human_equivalent"]
+        self.assertEqual(same["ai_size"], 20)
+        self.assertEqual(same["bound"], "above")  # 사람 같은 AI는 사람 A 전원(20명)만큼 이상
+        self.assertLess(rev["n_equiv"], 10)  # 뒤집힌 AI는 사람 몇 명분밖에 안 된다
+        self.assertEqual(len(same["curve"]), 20)
+
+    def test_perm_rule_needs_p(self):
+        rule = sr.merge_rule(RULES, {"metrics": ["precision", "dist"], "perm": ["dist"]})
+        base = cell(0.75, [0.6, 0.7, 0.8, 0.9], [0.1, 0.2, 0.3])
+        base["draws"].update({"ai_dist": [0.9] * 3, "human_dist": [0.8, 0.9], "floor_dist": [0.1, 0.2]})
+        self.assertEqual(sr.judge({**base, "perm": {"dist": 0.5}}, rule), sr.TRUST)
+        self.assertEqual(sr.judge({**base, "perm": {"dist": 0.049}}, rule), sr.REF)
+        self.assertEqual(sr.judge({**base, "perm": {"dist": 0.05}}, rule), sr.TRUST)  # 경계 포함
+        self.assertEqual(sr.judge({**base, "perm": {"dist": None}}, rule), sr.NA)
+
+    def test_rule_checks(self):
+        with self.assertRaises(sr.InputError):
+            sr.check_rule(sr.merge_rule(RULES, {"metrics": ["jaccard"]}), "x")
+        with self.assertRaises(sr.InputError):  # perm은 metrics에 든 빈도 지표만
+            sr.check_rule(sr.merge_rule(RULES, {"perm": ["dist"]}), "x")
+        names = {a["name"]: a for a in RULES["sensitivity"]}
+        self.assertEqual((names["main_dist"]["perm"], names["main_rank"]["perm"]), (["dist"], ["rank"]))
+
+    def test_csv_row_has_every_column(self):
+        c = self._reversed_case()["reversed"]
+        row = sr.cell_row(sr.cell_json(c, RULES))
+        self.assertEqual(set(row), set(sr.CELL_CSV))
+        self.assertIsNotNone(row["perm_p_dist"])
+        self.assertIsNotNone(row["coverage"])
 
 
 class TestStabilityAndSaturation(unittest.TestCase):
