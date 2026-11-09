@@ -619,6 +619,14 @@ class TestRunSimulation(unittest.TestCase):
         self.assertEqual((summary["episodes_run"], summary["episodes_ok"]), (20, 19))
         self.assertEqual(summary["failure_rate"], 0.05)
 
+    def test_feature_id_with_space_is_duplicate(self):
+        # 11/9 김승하 리뷰: "F1 |..."과 "F1|..."은 같은 기능인데 공백을 안 지우고 겹침을 봐서 못 잡았다
+        proto = TMP / "protocol_dupid"
+        shutil.copytree(TMP / "protocol", proto, dirs_exist_ok=True)
+        (proto / "features.txt").write_text("F1|공고 검색·필터\nF1 |공고 저장\n", encoding="utf-8")
+        _, problems = rs.load_protocol(proto)
+        self.assertIn("기능 ID가 겹친다: F1", problems)
+
     def test_input_errors(self):
         make_snapshot("noname", service_name="")
         wrong = json.loads((TMP / "snapshots/fake/web/snapshot.json").read_text(encoding="utf-8"))
@@ -708,6 +716,19 @@ class TestCheckImageInput(unittest.TestCase):
         shared = by_mode["image"]["score_talk"]["shared"]
         self.assertEqual(shared["hit"], 4)
         self.assertIn("마이", shared["missed"])
+        # 11/9 김승하 리뷰: PC 경로(임시 폴더 이름)가 모델 입력과 기록에 안 들어간다. 실행기처럼 리포 기준 상대 경로
+        self.assertNotIn(TMP.name, "".join(FAKE.prompts))
+        self.assertEqual(report["images"], [f"images/fake/app/{s}" for s in ("S1.png", "S2.png", "S3.png")])
+
+    def test_unexpected_error_still_writes_report(self):
+        # 11/9 김승하 리뷰: 예상 못 한 오류가 나도 그 회차만 실패로 남기고 기록을 쓴다
+        from unittest import mock
+        from tinytroupe.agent import TinyPerson
+        with mock.patch.object(TinyPerson, "listen_and_act", side_effect=ValueError("가짜 오류")):
+            code, log, report = self.run_check("imgerr")
+        self.assertEqual(code, rs.EXIT_API, log)
+        self.assertEqual([(x["mode"], x["ok"]) for x in report["results"]], [("image", False), ("text", False)])
+        self.assertIn("ValueError", report["results"][0]["error"])
 
     def test_bad_modes_and_recall_are_usage_errors(self):
         for argv in (["--modes", "video"], ["--recall", "0"]):

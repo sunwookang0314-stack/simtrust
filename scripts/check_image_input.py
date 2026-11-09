@@ -131,7 +131,7 @@ def run(args, root: Path) -> int:
     rs._STATE = rs.RunState(args.token_cap, 2)
 
     # 프로토콜 3번 설정
-    TinyPerson._describe_images = lambda self, image_refs, user_context=None: ""
+    TinyPerson._describe_images = rs._no_image_description
     TinyPerson.MAX_IMAGE_STIMULI_TO_RECALL = args.recall
     TinyPerson.communication_display = False
 
@@ -139,9 +139,11 @@ def run(args, root: Path) -> int:
     requests = _REQUESTS
 
     screens = snap["screens"]
-    image_paths = [str(images_dir / s["image"]) for s in screens]
+    # 경로가 글자로 모델 입력에 들어가서 PC 경로가 안 보이게 리포 기준 상대 경로로 넘긴다 (실행기와 같다, 11/9 김승하 리뷰).
+    # 위에서 os.chdir(root)를 해서 상대 경로로 파일을 찾는다
+    image_paths = [rs._rel(images_dir / s["image"], root) for s in screens]
     screen_text = "\n\n".join(f"[화면 {i}] {s['text']}" for i, s in enumerate(screens, 1))
-    model_tag = re.sub(r"[^A-Za-z0-9.-]+", "_", model)
+    model_tag = rs.model_tag(model)
     stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
     out_dir = root / args.out
     results, fatal = [], None
@@ -174,6 +176,9 @@ def run(args, root: Path) -> int:
                 error = f"{e.label}: {e}"
                 if e.fatal:
                     fatal = e
+            except Exception as e:
+                # 실행기처럼 예상 못 한 오류도 그 회차 실패로 남기고 다음으로 간다. 안 잡으면 앞 회차 결과까지 못 남긴다
+                error = f"실패(예상 못 한 오류): {type(e).__name__}: {e}"
             reqs = requests[before:]
             results.append({
                 "mode": mode,
@@ -209,7 +214,7 @@ def run(args, root: Path) -> int:
                      "see_bundled": True, "json_ensure_ascii": False, "question": QUESTION},
         "snapshot_file": rs._rel(snap_path, root),
         "snapshot_version": snap["snapshot_version"],
-        "images": [rs._rel(Path(p), root) for p in image_paths],
+        "images": image_paths,
         "results": results,
     }
     out_dir.mkdir(parents=True, exist_ok=True)
