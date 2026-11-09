@@ -73,7 +73,7 @@ function renderShell() {
   const top = document.createElement("header");
   top.className = "top";
   top.innerHTML = `<div class="in">
-    <div class="gnb"><a class="logo" href="1-1.html"><i></i>SimTrust</a><nav aria-label="단계">${nav}</nav><div class="sp"></div><span class="demo">데모 화면 · 숫자는 예시</span></div>
+    <div class="gnb"><a class="logo" href="1-1.html"><i></i>SimTrust</a><nav aria-label="단계">${nav}</nav><div class="sp"></div><span class="demo">중간발표(10월) 버전 · 숫자는 예시</span><a class="demo now" href="../concept.html">지금 기준 화면 보기 →</a></div>
     <div class="head">${subj}${headRight}</div>
     ${tabRow}</div>`;
   document.body.prepend(top);

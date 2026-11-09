@@ -1,4 +1,6 @@
-# SimTrust UI 목업 (화면 11개)
+# SimTrust UI 목업 (화면 11개) · 중간발표(10월) 버전
+
+> 11/10 김승하: 폼 B v2 전 설계(화면 5개·과제 2개) 기준이라 지금 설계와 다릅니다. 보관용으로 `mockup/midterm/`에 옮겼고, 지금 기준 화면은 `mockup/concept.html`(개념 애니메이션)입니다. 기말 화면은 `web/`(React)에서 만듭니다.
 
 앱 화면 11개를 새 디자인으로 그린 HTML 목업입니다. 숫자와 문장은 `app/demo_data.py`의 예시값 그대로이고, 화면 번호와 화면 ID도 TRD와 같습니다. 아직 Streamlit 앱에는 반영하지 않았습니다.
 
@@ -14,10 +16,10 @@
 ## 직접 눌러 보기
 
 1. 이 브랜치를 받거나(`git fetch` 후 `git switch ui-mockup`), GitHub에서 Code → Download ZIP으로 받습니다.
-2. `mockup/index.html`을 크롬이나 엣지로 엽니다. 카드를 누르면 화면이 열리고, 상단 메뉴와 다음 버튼으로 화면 사이를 오갈 수 있습니다.
+2. `mockup/midterm/index.html`을 크롬이나 엣지로 엽니다. 카드를 누르면 화면이 열리고, 상단 메뉴와 다음 버튼으로 화면 사이를 오갈 수 있습니다.
 
 - 글꼴(Pretendard)을 인터넷에서 받아 오니 인터넷이 연결돼 있어야 합니다.
-- 폴더 안 파일끼리 서로 불러 쓰니 `index.html` 하나만 따로 옮기면 깨집니다.
+- 폴더 안 파일끼리 서로 불러 쓰고 색·글꼴은 한 칸 위 `mockup/base.css`(concept.html과 같이 씀)를 쓰니, `index.html` 하나만 따로 옮기면 깨집니다.
 
 ## 디자인 규칙
 
