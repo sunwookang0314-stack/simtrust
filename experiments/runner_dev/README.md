@@ -85,7 +85,7 @@ API 키 없이 돈다. TinyTroupe의 실제 호출 함수만 가짜로 바꾸고
 python -m unittest tests.test_run_simulation tests.test_extract_reasons -v
 ```
 
-실행기 33개, 추출기 11개를 확인한다. 추출기 테스트는 TinyTroupe 없이도 돈다. 실행기 테스트는 설정 사본에서 호출 사이 대기(`WAITING_TIME`)를 0으로 둔다.
+실행기 35개, 추출기 11개를 확인한다. 추출기 테스트는 TinyTroupe 없이도 돈다. 실행기 테스트는 설정 사본에서 호출 사이 대기(`WAITING_TIME`)를 0으로 둔다.
 
 - 질문 흐름: 질문 4개가 순서대로 가고, 꼬리 질문은 필요 없으면 건너뛰고, 캡처 없는 기능은 묻지 않고 기록한다
 - 폼 문구(4-7, 4-6 보기, 기능 이름)가 그대로 가고 `{자리}`가 남지 않는다. 기능 설명은 안 들어간다
@@ -98,7 +98,8 @@ python -m unittest tests.test_run_simulation tests.test_extract_reasons -v
 - 조건 0은 슬롯 C0-01~C0-10, 조건 0·1 이름은 `참여자`, 조건 1에서 이름·거주지가 빠진다
 - 행동 잘림 횟수, 비용 상한(이전 실행 누적), 인증 오류와 모델 없음(2), 빈 응답(5), 실패 뒤 계속, 입력 오류(1, 4)
 - 실행 중 쓸/안 쓸 판별(parse_use_answers)
-- 이미지 확인 스크립트(1-b)
+- 이미지 확인 스크립트(1-b): PC 경로가 모델 입력에 안 들어가고, 예상 못 한 오류가 나도 기록을 쓴다
+- `features.txt`에서 공백만 다른 기능 ID(`F1`, `F1 `)를 겹침으로 잡는다
 
 ## 작업지시서를 따라 정한 것
 
@@ -115,6 +116,7 @@ python -m unittest tests.test_run_simulation tests.test_extract_reasons -v
 - 비용 상한은 다음 실제 호출 직전에 확인한다. 그래서 마지막 호출 하나만큼은 상한을 넘을 수 있다. 캐시 응답은 세지 않는다.
 - 누적 토큰을 셀 때 제공자가 다른 기록은 뺀다. 무료 Gemini로 돌린 개발 기록은 유료 예산에서 돈이 나가지 않기 때문이다. 이전 기록 중 하나라도 못 읽으면 누적을 셀 수 없어서 종료 코드 4로 멈춘다.
 - seed는 기록만 한다. TinyTroupe가 API에 seed를 넘기지 않는다.
+- 재시도는 두 겹이다. TinyTroupe가 API 오류마다 `MAX_ATTEMPTS`(2)번까지 다시 부르고, 그래도 빈 응답이나 실패(None)면 실행기가 캐시를 지우고 `empty_retries`(2)번 더 묻는다. 그래서 메시지 하나에 실제 호출이 최대 (1+2)x2=6번이다. 빈 응답은 TinyTroupe가 예외 없이 캐시에 저장해서 TinyTroupe 재시도로는 안 풀린다. 그래서 실행기가 한 겹 더 둔다. 요약의 빈 응답 비율에는 TinyTroupe가 끝내 실패한 호출도 들어간다(11/9 김승하 리뷰).
 - TinyTroupe에 넘기는 요청 설정은 사본이다. TinyTroupe는 재시도할 때마다 같은 설정으로 캐시 키를 다시 만드는데, 원본에서 penalty(Gemini)나 stream·temperature(TinyTroupe `_raw_model_call`)가 지워지면 재시도 뒤 응답이 다른 키로 저장됐다. 11/9 전에 재시도가 있었던 캐시는 그 응답만 다시 쓰이지 않는다(11/9 김승하 리뷰).
 - 텍스트 모드는 화면 설명을 "화면 1: …"처럼 순서 번호만 붙여 한 번에 준다. S번호는 쓰지 않는다.
 - (b)에서는 질문 하나가 기능 여럿을 묻기 때문에 질문마다 feature_id를 빈 값으로 둔다.

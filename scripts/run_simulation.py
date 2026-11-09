@@ -241,13 +241,14 @@ def load_protocol(protocol_dir: Path):
             if not line.strip():
                 continue
             fid, sep, name = line.partition("|")
-            if not sep or not re.fullmatch(r"F\d+", fid.strip()) or not name.strip():
+            fid = fid.strip()  # "F1 |..."과 "F1|..."이 겹치는 것도 잡는다 (11/9 김승하 리뷰)
+            if not sep or not re.fullmatch(r"F\d+", fid) or not name.strip():
                 problems.append(f"features.txt {n}행이 'F숫자|기능 이름' 형식이 아니다: {line!r}")
                 continue
             if fid in seen:
                 problems.append(f"기능 ID가 겹친다: {fid}")
             seen.add(fid)
-            features.append((fid.strip(), name.strip()))
+            features.append((fid, name.strip()))
         if not features and not problems:
             problems.append("features.txt 가 비어 있다")
     path = protocol_dir / "options_4-6.txt"
@@ -686,6 +687,11 @@ def _rel(path: Path, root: Path) -> str:
         return str(path.relative_to(root))
     except ValueError:
         return str(path)
+
+
+def model_tag(model: str) -> str:
+    """캐시 폴더 이름에 쓰는 모델 이름. 실행기와 이미지 확인 스크립트가 같이 쓴다."""
+    return re.sub(r"[^A-Za-z0-9.-]+", "_", model)
 
 
 def hangul_ratio(text: str) -> float:
@@ -1193,7 +1199,7 @@ def run(args, root: Path) -> int:
         "provider": provider,
         "base_url": base_url,
         "model": model,
-        "model_tag": re.sub(r"[^A-Za-z0-9.-]+", "_", model),
+        "model_tag": model_tag(model),
         "max_completion_tokens": max_completion_tokens,
         "tinytroupe_commit": tinytroupe_commit(),
         "simtrust_commit": simtrust_commit(root),
