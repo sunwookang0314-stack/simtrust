@@ -180,92 +180,81 @@ body{background:#F5F6F8;padding:20px 0 32px}
 const W = 1280, H = 720;
 const STEPS = [
   {dot: "질문", h: "대학생 서비스, 기능마다 쓸 이유와 안 쓸 이유가 궁금해요",
-   p: "실제 대학생에게 물으면 몇 주, AI 가상 사용자에게 화면 캡처를 보여 주면 몇 분이에요. 그런데 그 말을 믿어도 될까요?"},
-  {dot: "AI 가상 사용자", h: "AI 가상 사용자 30명이 화면 캡처를 보고 의견을 내요",
-   p: "위쪽은 AI 영역이에요. 기능마다 쓸 이유와 안 쓸 이유를 말하면 아래에 모이고, 같은 말이 많을수록 칩이 커요."},
-  {dot: "실제 대학생", h: "아래쪽은 실제 대학생 데이터예요",
-   p: "실제 대학생 6명의 응답으로 거름망 구멍을 만들어요. 구멍 하나가 사람이 한 말 하나예요."},
+   p: "실제 대학생에게 설문으로 모으면 몇 주, AI 가상 사용자에게 화면 캡처를 보여 주면 몇 분이에요. 그런데 그 말을 믿어도 될까요?"},
+  {dot: "AI 가상 사용자", h: "AI 가상 사용자 10명이 화면 캡처를 보고 3번씩 답해요",
+   p: "위쪽은 AI 영역이에요. 페르소나 10명 × 3번 = 답 30개에서 쓸 이유와 안 쓸 이유를 모으고, 같은 말이 많을수록 칩이 커요."},
+  {dot: "실제 대학생", h: "아래쪽은 실제 대학생 설문 데이터예요",
+   p: "설문 응답자 6명이 말한 이유로 거름망 구멍을 만들어요. 구멍 하나가 코드북 코드 하나예요."},
   {dot: "거름망", h: "AI 의견을 아래 거름망에 부어요",
-   p: "사람도 한 말만 ① 구멍을 통과해요. 걸린 말 중 AI 10명 이상이 말한 큰 칩은 ② 다수결 망에 남아요."},
-  {dot: "판정", h: "두 가지 비율을 재서 판정해요",
-   p: "AI 말이 맞은 비율(정밀도)과 사람 말을 맞힌 비율(재현율)이 둘 다 70% 넘으면 믿고 써도 됨, 둘 다 50% 넘으면 참고용이에요."},
+   p: "사람도 한 이유만 ① 구멍을 통과해요. 걸린 말 중 답 30개에서 10번 넘게 나온 큰 칩은 ② 다수결 망에 남아요."},
+  {dot: "판정", h: "통과율과 재현율을 재서 판정해요",
+   p: "통과율(AI 이유 중 사람도 한 것)과 재현율(사람 이유 중 AI가 맞힌 것)이 둘 다 70% 넘으면 믿고 써도 됨, 둘 다 50% 넘으면 참고용이에요."},
   {dot: "신뢰도 지도", h: "AI가 말한 쓸 이유는 기능 4개 중 2개에서 믿고 써도 돼요",
-   p: "기능마다 거름망을 돌리면 이 신뢰도 지도가 나와요. 믿을 칸은 바로 쓰고, 후보는 사람에게 확인해요."},
+   p: "기능마다 거름망을 돌리면 이 신뢰도 지도가 나와요. 페르소나 없는 AI(조건 0)보다 나은지도 같이 봐요."},
 ];
 
 // 무대 좌표 (px). AI 영역(캡처 · 페르소나 · 의견 바구니) → 거름망 → 통과한 이유 → 사람 / 측정판
-// experiments/personas_nemotron_korea/personas/ 의 30명 (재학생 15 → 취준생 15, manifest.json 순서)
+// experiments/personas_nemotron_korea/personas/ 에서 TRD 대상(22~25세)만 10명 (재학생 4 → 취준생 6, manifest.json 순서)
+// 조건마다 페르소나 10명 × 반복 3번 = 답 30개 (NFR-05). 원 하나 = 답 하나, 열 = 페르소나, 줄 = 회차
 // n 이름, a 나이, g 성별, r 지역, job 취준생 여부, goal 진로 목표 첫 문장, likes 좋아하는 것 3개. 전공은 원본 데이터에 없다
 const AI = [
-  {"n": "김지원", "a": 19, "g": "여", "r": "대전 유성구", "job": false, "goal": "정해진 매뉴얼과 체계가 확실한 전문직 자격증 취득을 준비하며, 오차 없이 완벽하게 업무를 처리하는 행정 전문가가 되어 안정적인 기반을 잡고자 합니다.", "likes": ["갑천변 풍경 사진 촬영", "기초 화장품 성분 분석", "유튜브 일상 브이로그 시청"]},
-  {"n": "김윤민", "a": 19, "g": "여", "r": "경기 시흥시", "job": false, "goal": "타인의 감정을 세심하게 읽는 능력을 살려, 적당한 사회적 교류가 있으면서도 자신의 전문성을 발휘할 수 있는 뷰티 큐레이터나 브랜드 콘텐츠 기획자를 꿈꿉니다.", "likes": ["시화나래 조력공원 산책", "리그 오브 레전드 랭크 게임", "틱톡 뷰티 챌린지"]},
-  {"n": "김성현", "a": 19, "g": "남", "r": "서울 은평구", "job": false, "goal": "갑작스러운 변화보다는 매일의 루틴이 어느 정도 보장되는 안정적인 환경에서 자신의 몫을 다하는 삶을 꿈꿉니다.", "likes": ["불광천 산책로 조깅", "SF 소설 및 추리 소설 독서", "지역별 특색 있는 시장 음식 탐방"]},
   {"n": "황민정", "a": 22, "g": "여", "r": "서울 노원구", "job": false, "goal": "거창한 야망보다는 매달 고정적인 수입이 보장되는 안정적인 사무직이나 서비스직 취업을 목표로 하고 있습니다.", "likes": ["양평 두물머리 풍경 출사", "나물 비빔밥 맛집 탐방", "반려견과 동네 공원 산책"]},
   {"n": "이동하", "a": 22, "g": "남", "r": "서울 성북구", "job": false, "goal": "게임 기획자가 되기 위해 매일 정해진 분량의 분석 리포트를 작성하며 포트폴리오를 체계적으로 구축하고 있습니다.", "likes": ["을지로 수제 버거 맛집 탐방", "동네 목욕탕에서 시간 보내기", "일본 만화 전권 수집 및 아카이빙"]},
-  {"n": "이가영", "a": 19, "g": "여", "r": "경상남 김해시", "job": false, "goal": "정해진 출퇴근 시간과 엄격한 위계질서가 있는 조직보다는, 자신의 감각을 온전히 발휘할 수 있는 독립적인 창작 활동이나 프리랜서 디자이너로서의 삶을 꿈꿉니다.", "likes": ["웹툰 및 일본 만화 감상", "코인 노래방 가창", "김해 지역 산책로 탐방"]},
-  {"n": "백현수", "a": 19, "g": "남", "r": "경상남 창원시 진해구", "job": false, "goal": "당장 거창한 성공을 좇기보다는 내 삶의 리듬을 깨지 않는 선에서 안정적으로 월급을 받을 수 있는 사무직이나 기술직 자리를 찾고 있습니다.", "likes": ["로파이 음악 감상", "스릴러 장르 웹툰 정주행", "지식 기반 팟캐스트 청취"]},
-  {"n": "나영석", "a": 19, "g": "남", "r": "경기 용인시 기흥구", "job": false, "goal": "명확한 기준과 절차가 정해져 있어 자신의 꼼꼼함이 성과로 이어질 수 있는 전산 세무나 행정 관련 자격증을 취득하여, 조직 내에서 실수 없이 제 몫을 다하는 안정적인 직장인이 되고자 합니다.", "likes": ["기흥구 인근 볼링장 내기 경기", "지역별 유명 길거리 음식 탐방", "마라탕 및 떡볶이 배달 음식 즐기기"]},
   {"n": "이정화", "a": 24, "g": "여", "r": "충청남 천안시 동남구", "job": false, "goal": "거창한 성공보다는 정시 퇴근이 가능하고 개인 시간이 보장되는 안정적인 일자리를 찾고 있으며, 여행이나 음식 관련 서비스직에서 실무 경력을 쌓으려 합니다.", "likes": ["국내 역사 유적지 나홀로 답사", "웹툰 정주행", "에어프라이어 간편식 만들기"]},
-  {"n": "최도윤", "a": 19, "g": "남", "r": "충청북 청주시 서원구", "job": false, "goal": "사람들과 직접 부딪히는 일보다는 모니터 뒤에서 창의적인 결과물을 만드는 게임 기획이나 디지털 콘텐츠 제작 분야에 막연한 관심을 두고 있습니다.", "likes": ["K리그 경기 시청", "맘스터치 및 동네 피자집 투어", "네이버 웹툰 정주행"]},
-  {"n": "김준희", "a": 19, "g": "여", "r": "경기 군포시", "job": false, "goal": "사람들의 반응을 즉각적으로 확인할 수 있는 SNS 마케팅이나 콘텐츠 기획 분야에서 자신의 감각을 발휘하고 싶어 합니다.", "likes": ["수리산 산책로 사진 찍기", "일식 돈카츠 맛집 탐방", "유튜브 미스터리 영상 시청"]},
-  {"n": "윤수아", "a": 19, "g": "여", "r": "부산 기장군", "job": false, "goal": "정해진 틀에 얽매이기보다", "likes": ["뉴진스 노래 가사 필사하기", "반려동물과 함께 동네 산책하기", "넷플릭스 로맨틱 코미디 정주행"]},
-  {"n": "김현진", "a": 20, "g": "여", "r": "서울 동대문구", "job": false, "goal": "거창한 사회적 성공보다는 자신이 좋아하는 음식과 사람을 연결하는 작은 가게를 운영하며 적당한 수익을 올리는 삶을 바랍니다.", "likes": ["가평 캠핑장 바비큐 파티", "동대문구 골목길 산책", "최신 유행 숏폼 영상 시청"]},
-  {"n": "공민준", "a": 19, "g": "남", "r": "부산 서구", "job": false, "goal": "당장 명확한 직업적 목표는 없지만, 사람들을 만나고 활기를 얻을 수 있는 행사 기획이나 서비스 관련 일을 막연하게 꿈꿉니다.", "likes": ["웹툰 전지적 독자 시점 감상", "뉴진스 음악 감상", "보드게임 카탄"]},
   {"n": "김민곤", "a": 25, "g": "남", "r": "경기 오산시", "job": false, "goal": "당장의 화려한 성공보다는 자신의 성실함과 꼼꼼함을 인정받을 수 있는 실무 기술직에 취업하여, 부모님께 매달 일정 금액의 생활비를 보탤 수 있는 경제적 자립을 꿈꿉니다.", "likes": ["지역별 돼지구이 노포 탐방", "LCK 경기 직관 및 분석", "전략 보드게임 모임 참여"]},
   {"n": "최예은", "a": 25, "g": "여", "r": "인천 중구", "job": true, "goal": "자신의 인문학적 소양과 세밀한 분석력을 활용해 대중이 공감할 수 있는 문화 콘텐츠를 기획하는 일을 꿈꾸고 있습니다.", "likes": ["일본식 가이세키 및 정통 라멘 맛집 탐방", "퍼스널 컬러를 활용한 메이크업 스타일링", "웹툰 및 장르 소설 정주행과 분석"]},
-  {"n": "박소영", "a": 26, "g": "여", "r": "서울 관악구", "job": true, "goal": "자신의 유연한 대처 능력을 발휘할 수 있는 기업의 운영 지원 부서에서 안정적인 커리어를 시작해, 조직 내에서 꼭 필요한 실무자로 인정받고 싶어 합니다.", "likes": ["자유형과 배영 수영", "성수동 빵집 투어", "반려견 산책"]},
   {"n": "김성준", "a": 23, "g": "남", "r": "강원 삼척시", "job": true, "goal": "강원 지역 내의 중견 제조 기업이나 건설 현장 관리직에 취업하여, 실질적인 현장 기술력을 쌓고 안정적인 월급을 받는 직장인이 되고자 합니다.", "likes": ["전통 국악 공연 관람", "넷플릭스 최신 영화 정주행", "삼척 해변 산책 및 풍경 사진 촬영"]},
-  {"n": "정민희", "a": 27, "g": "여", "r": "경기 성남시 분당구", "job": true, "goal": "노인 복지 분야의 전문 사례 관리자가 되어 정년까지 안정적으로 근무하는 것을 목표로 하며, 현재는 관련 자격증 취득을 위해 매일 정해진 분량의 문제집을 풉니다.", "likes": ["카카오웹툰 일상 장르 정주행", "정자동 일식집 투어", "아산 온천 나홀로 여행"]},
   {"n": "최하영", "a": 23, "g": "여", "r": "경상북 포항시 북구", "job": true, "goal": "단순한 정보 전달을 넘어 사회적 약자의 목소리를 대변하는 영향력 있는 미디어 종사자를 꿈꾸며, 현재는 취업 준비 기간의 불안감을 견디며 자신만의 관점이 담긴 포트폴리오를 정리하고 있습니다.", "likes": ["전국 맛집 탐방", "뷰티 영상 시청", "독립 서점 방문"]},
   {"n": "최세은", "a": 24, "g": "여", "r": "경기 화성시", "job": true, "goal": "자신이 기획한 문화 예술 프로그램이 지역 사회에 실제로 적용되어 사람들이 이용하는 모습을 보고 싶어 합니다.", "likes": ["KT 위즈 경기 직관", "동탄 지역 맛집 탐방", "인문학 전자책 읽기"]},
   {"n": "강우람", "a": 25, "g": "남", "r": "경기 안양시 만안구", "job": true, "goal": "거창한 성공보다는 적당한 수준의 급여와 정시 퇴근이 보장되는 공공기관이나 일반 사무직 자리를 원합니다.", "likes": ["안양천 산책 및 조깅", "웹툰 정주행", "리그 오브 레전드 게임"]},
-  {"n": "김주호", "a": 24, "g": "남", "r": "경기 안산시 단원구", "job": true, "goal": "판교 테크노밸리의 IT 기업 네트워크 엔지니어로 취업하여 시스템의 안정성을 책임지는 전문가가 되고 싶어 하며, 기술적 역량과 유연한 소통 능력을 모두 갖춰 팀 내 갈등을 중재하는 믿음직한 중간 관리자를 꿈꿉니다.", "likes": ["안산시립수영장 수영 강습", "리그 오브 레전드 팀 게임", "고잔동 주변 고기집 맛집 탐방"]},
-  {"n": "김유진", "a": 27, "g": "여", "r": "서울 동작구", "job": true, "goal": "아이들의 성장을 돕는 정형화된 교실을 넘어, 개인의 특성을 존중하는 교육 서비스나 상담 분야에서 자신의 가치를 증명하고 싶어 합니다.", "likes": ["전국 유명 빵집 투어 및 디저트 탐방", "지역 배드민턴 동호회 활동", "전통 사찰 및 역사 유적지 답사 여행"]},
-  {"n": "김대근", "a": 27, "g": "남", "r": "인천 연수구", "job": true, "goal": "미디어 업계의 채용 공고를 매일 확인하지만, 면접에서 느낄 압박감과 긴장감 때문에 지원서 제출 버튼 앞에서 자주 망설입니다.", "likes": ["송도 인근 일식 맛집 탐방", "빈티지 LP 수집", "유튜브 분석 영상 시청"]},
-  {"n": "이현서", "a": 24, "g": "여", "r": "부산 부산진구", "job": true, "goal": "공공기관의 행정직이나 법무 법인의 전문 사무원으로서 자신의 꼼꼼함이 조직의 안정성에 기여하는 역할을 수행하고 싶어 합니다.", "likes": ["닌텐도 스위치 게임", "퍼스널 컬러 메이크업 연구", "기장 해안가 풍경 출사"]},
-  {"n": "박수빈", "a": 25, "g": "여", "r": "서울 동대문구", "job": true, "goal": "예측 불가능한 상황에 대한 공포가 커서, 변동성이 적고 체계가 잡힌 공공기관의 사회복지직 공무원이 되어 안정적인 삶을 구축하고자 합니다.", "likes": ["반려묘 그루밍 및 돌보기", "청계천 주변 정기적 산책", "넷플릭스 장르물 정주행"]},
-  {"n": "박현주", "a": 26, "g": "여", "r": "대전 동구", "job": true, "goal": "정해진 틀의 교실보다는 아이들의 개성을 살려줄 수 있는 대안 교육이나 심리 상담 분야에서 자신만의 교육 철학을 실현하고 싶어 합니다.", "likes": ["헬스장 웨이트 트레이닝", "하이볼 맛집 탐방", "뉴진스 음악 감상"]},
-  {"n": "정재훈", "a": 26, "g": "남", "r": "광주 광산구", "job": true, "goal": "전공을 살려 안정적인 급여가 보장되는 공기업이나 중견기업의 제조 관리직으로 입사해 경제적 자립을 이루고자 합니다.", "likes": ["리그 오브 레전드", "수완지구 산책로 걷기", "네이버 웹툰 정주행"]},
-  {"n": "박다은", "a": 23, "g": "여", "r": "대전 동구", "job": true, "goal": "현재는 전공을 살려 안정적인 공공기관이나 행정직 취업을 준비하며, 매일 정해진 루틴에 따라 학습량을 채우는 것에 집중하고 있습니다.", "likes": ["올리브영 신상 화장품 탐색", "유튜브 뷰티 브이로그 시청", "대전 중앙로 소품샵 투어"]}
+  {"n": "김주호", "a": 24, "g": "남", "r": "경기 안산시 단원구", "job": true, "goal": "판교 테크노밸리의 IT 기업 네트워크 엔지니어로 취업하여 시스템의 안정성을 책임지는 전문가가 되고 싶어 하며, 기술적 역량과 유연한 소통 능력을 모두 갖춰 팀 내 갈등을 중재하는 믿음직한 중간 관리자를 꿈꿉니다.", "likes": ["안산시립수영장 수영 강습", "리그 오브 레전드 팀 게임", "고잔동 주변 고기집 맛집 탐방"]}
 ];
+const N_STU = 4, REPEATS = 3, N_ANS = AI.length * REPEATS;
 const HOLE_X = [170, 318, 466, 614, 762, 910];
-const HOLES = ["마감을 안 놓치게 됨", "캘린더 따로 볼 일이 줄어듦", "관심 분야 공고만 와서 좋음",
-               "알림이 너무 자주 옴", "에타 알림이랑 겹쳐서 끔", "알림 시간을 못 바꿔 불편"];
-// n: 이 이유를 말한 AI 수 (30명 중). hole: 같은 뜻의 사람 이유 번호
-// (null = 실제 대학생은 안 한 말 → ① 거름망에 걸림, gap = 걸려서 멈추는 자리)
+// 설문 응답자가 말한 이유를 코드북 v0.1(docs/codebook/코드북_초안.csv) 코드로 붙인 것 (예시)
+const HOLES = ["U02 놓치지 않게 됨", "U01 시간과 수고가 줄어듦", "U03 한곳에서 모아 봄",
+               "F3-01 알림이 너무 잦음", "F3-05 스크랩과 묶여 있음", "F3-02 알림 시점이 안 맞음"];
+// n: 이 이유가 나온 AI 답 수 (답 30개 중). hole: 같은 코드의 사람 이유 번호
+// (null = 설문 응답자는 안 한 말 → ① 거름망에 걸림, gap = 걸려서 멈추는 자리)
+// F3-02 시점은 아무 AI도 말하지 않는다: 캡처에 D-1 구조가 안 보여서다 (#28 안건 1)
 const CHIPS = [
-  {t: "마감 놓치지 않을 것 같음", use: 1, n: 18, hole: 0},
-  {t: "캘린더 안 봐도 됨", use: 1, n: 9, hole: 1},
-  {t: "관심 공고만 골라 줌", use: 1, n: 6, hole: 2},
-  {t: "친구한테 공유하기 좋음", use: 1, n: 2, hole: null, gap: 244},
+  {t: "놓치지 않게 됨", use: 1, n: 18, hole: 0},
+  {t: "시간과 수고가 줄어듦", use: 1, n: 9, hole: 1},
+  {t: "한곳에서 모아 봄", use: 1, n: 6, hole: 2},
+  {t: "습관처럼 씀", use: 1, n: 2, hole: null, gap: 244},
   {t: "알림이 너무 잦음", use: 0, n: 14, hole: 3},
-  {t: "에브리타임 알림과 겹침", use: 0, n: 7, hole: 4},
-  {t: "설정 메뉴를 못 찾겠음", use: 0, n: 12, hole: null, gap: 540},
-  {t: "배터리 닳을 것 같음", use: 0, n: 3, hole: null, gap: 836},
+  {t: "스크랩과 묶여 있음", use: 0, n: 7, hole: 4},
+  {t: "로그인·정보 입력 부담", use: 0, n: 12, hole: null, gap: 540},
+  {t: "알림 자체를 싫어함", use: 0, n: 3, hole: null, gap: 836},
 ];
-const MANY = 10;   // ② AI 다수결 거름망: 이 수 이상이 말하면 남는다
+const MANY = 10;   // ② AI 다수결 거름망: 답 30개 중 이 수 이상 나오면 남는다 (설계 문서에 없는 장치, #31 결정 대기)
 const tier = n => n >= MANY ? 3 : n >= 5 ? 2 : 1;
 const size = n => .84 + Math.min(n, 18) / 18 * .24;   // 칩 크기 0.84 ~ 1.08
-// 이유마다 말한 페르소나 n명 (고정 시드로 30명 중에서 고름)
+// 이유마다 그 말을 한 답 n개 (고정 시드로 답 30개 중에서 고름)
 CHIPS.forEach((c, k) => {
-  let x = 7 + k * 13; const pool = [...Array(30).keys()];
-  for (let i = 29; i > 0; i--) { x = (x * 1103515245 + 12345) % 2147483648; const j = x % (i + 1); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  let x = 7 + k * 13; const pool = [...Array(N_ANS).keys()];
+  for (let i = N_ANS - 1; i > 0; i--) { x = (x * 1103515245 + 12345) % 2147483648; const j = x % (i + 1); [pool[i], pool[j]] = [pool[j], pool[i]]; }
   c.by = pool.slice(0, c.n);
 });
 const ROW_Y = [306, 348], COL_X = [476, 691, 906, 1121];   // 바구니 안 칩 자리
 const AI_Y = 220, SIEVE_Y = 402, HOLE_Y = 442, HU_Y = 614, REST_Y = 382, S2X = 1132;
 const passY = h => h % 2 ? 556 : 520;   // 통과한 칩은 두 줄로 엇갈려 쌓는다
-const GRP_X = [640, 960];   // 재학생 묶음, 취준생 묶음의 가운데
-const aiX = i => GRP_X[i < 15 ? 0 : 1] + (i % 5 - 2) * 34;
-const aiY = i => AI_Y + (Math.floor(i % 15 / 5) - 1) * 32;
+const GRP_X = [596, 924];   // 재학생 묶음, 취준생 묶음의 가운데
+const personaOf = i => i % AI.length, repOf = i => Math.floor(i / AI.length);
+const aiX = i => { const p = personaOf(i), k = p < N_STU ? p - (N_STU - 1) / 2 : p - N_STU - (AI.length - N_STU - 1) / 2;
+                   return GRP_X[p < N_STU ? 0 : 1] + k * 34; };
+const aiY = i => AI_Y + (repOf(i) - 1) * 32;
 const VERDICT = {trust: "믿고 써도 됨", ref: "참고용", ask: "사람에게 물어볼 것", none: "자료 부족"};
 // 신뢰도 지도 (예시). use/no = [판정, 맞은 AI 말, AI 말 수, 맞힌 사람 말, 사람 말 수], cand = AI만 많이 말함 [이유, AI 수], miss = 사람만 말함
 const MAP = [
-  {f: "마감일 알림", now: true, use: ["trust", 3, 4, 3, 3], no: ["ref", 2, 4, 2, 3], cand: [["설정 메뉴 못 찾음", 12]], miss: ["알림 시간 못 바꿈"]},
-  {f: "공고 검색·분야 필터", use: ["ref", 3, 5, 3, 4], no: ["trust", 4, 5, 4, 5], cand: [["검색 결과가 너무 많음", 11], ["필터 저장이 안 됨", 10]], miss: []},
-  {f: "공모전 상금·마감 정렬", use: ["trust", 4, 5, 3, 4], no: ["none", 1, 2, 1, 1], cand: [], miss: ["상금 표기가 제각각"]},
-  {f: "첫 화면 배너", use: ["ask", 1, 4, 1, 2], no: ["ref", 3, 5, 3, 5], cand: [["배너가 광고 같음", 15], ["로딩이 느림", 13], ["색이 너무 많음", 10]], miss: []},
+  {f: "공고 검색·필터", use: ["ref", 3, 5, 3, 4], no: ["trust", 4, 5, 4, 5], cand: [["검색·필터 결과가 안 맞음", 11]], miss: []},
+  {f: "공고 저장", use: ["trust", 4, 5, 3, 4], no: ["none", 1, 2, 1, 1], cand: [], miss: ["저장 목록 관리가 어려움"]},
+  {f: "마감 알림", now: true, use: ["trust", 3, 4, 3, 3], no: ["ref", 2, 4, 2, 3], cand: [["로그인·정보 입력 부담", 12]], miss: ["알림 시점이 안 맞음"]},
+  {f: "추천 공고 목록", use: ["ask", 1, 4, 1, 2], no: ["ref", 3, 5, 3, 5], cand: [["광고 같아서 안 믿음", 15], ["늘 같거나 비슷한 것만 뜸", 13]], miss: []},
 ];
+const NOW_ROW = MAP.findIndex(m => m.now);
+// 조건 0(페르소나 없는 AI)으로 같은 칸을 잰 결과 (예시). 측정대상-판정기준.md의 세 번째 기준점
+const COND0_TRUST = 1;
 // 열 폭: 기능, 쓸 이유, 안 쓸 이유, (펼치면) 확인할 것. 접으면 지도 3열이 가운데, 펼치면 왼쪽으로 비켜서고 4열이 나온다
 const MW = [240, 300, 300, 288], MGAP = 12, MAP_Y = 238, ROW_H = 80, ROW_GAP = 92;
 const MAP_W = MW[0] + MW[1] + MW[2] + MGAP * 2;
@@ -295,32 +284,34 @@ const tabs = {a: add("ztab a", "AI 가상 사용자", 28, 214), h: add("ztab h",
 const links = add("links", `<svg width="${W}" height="${H}" aria-hidden="true">${HOLE_X.map(x =>
   `<line x1="${x}" y1="${HOLE_Y + 26}" x2="${x}" y2="${HU_Y - 28}"/>`).join("")}</svg>`, W, H);
 const cap = add("cap", "", 1150, 0); cap.style.transition = "opacity .4s";
-add("ex", "예시 데이터 · 설명하려고 개수를 줄였어요", 0, 0).style.transform = "none";
-const shot = add("shot", `<div class="bar2"><i></i><i></i><i></i><span>링커리어 · 공고 상세 화면 캡처</span></div>
-  <div class="bd"><b>2026 대학생 서포터즈 모집</b><div class="ln" style="width:85%"></div><div class="ln" style="width:60%"></div>
-  <div class="hl">마감 3일 전 알림 받기<s></s></div><div class="ln" style="width:75%"></div><div class="ln" style="width:45%"></div></div>`, 260, 180);
-const shotLab = add("shotlab", "이 화면을 보여 주고 '마감일 알림'을 물어요", 260, 18);
+add("ex", "예시 데이터 · 설명하려고 개수를 줄였어요 · 판정 문턱(70%·50%)은 11/12 확정 전 예시", 0, 0).style.transform = "none";
+const shot = add("shot", `<div class="bar2"><i></i><i></i><i></i><span>링커리어 앱 · 알림 설정 화면 캡처</span></div>
+  <div class="bd"><b>알림 설정</b><div class="ln" style="width:85%"></div><div class="ln" style="width:60%"></div>
+  <div class="hl">스크랩 공고 마감 알림 · D-1<s></s></div><div class="ln" style="width:75%"></div><div class="ln" style="width:45%"></div></div>`, 260, 180);
+const shotLab = add("shotlab", "이 화면을 보여 주고 '마감 알림'을 물어요", 260, 18);
 const look = add("look", `보고<br>답해요<svg width="44" height="12" viewBox="0 0 44 12" aria-hidden="true"><path d="M0 6h40M34 1l6 5-6 5" fill="none" stroke="#3182F6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`, 70, 44);
-const sideL = add("side", "<b>실제 대학생 인터뷰</b>모집하고 묻고 정리하는 데<br>몇 주가 걸려요", 340, 110);
+const sideL = add("side", "<b>실제 대학생 설문</b>응답을 모으고 정리하는 데<br>몇 주가 걸려요", 340, 110);
 const sideR = add("side", "<b>AI 가상 사용자</b>화면 캡처를 보여 주면 몇 분이면<br>답이 나와요. 그런데 믿어도 될까요?", 340, 110);
-const ais = AI.map((p, i) => {
+const ais = Array.from({length: N_ANS}, (_, i) => {
+  const p = AI[personaOf(i)];
   const d = add("ai" + (p.job ? " jo" : ""), "", 26, 26);
-  d.setAttribute("role", "button"); d.setAttribute("aria-label", `${p.n} 프로필 보기`);
+  d.setAttribute("role", "button"); d.setAttribute("aria-label", `${p.n} ${repOf(i) + 1}회차 답 · 프로필 보기`);
   d.onclick = e => { e.stopPropagation(); showCard(i); };
   return d;
 });
-const grps = [add("grp l", "재학생 15명<small>대학 재학 중</small>", 120, 40), add("grp", "취준생 15명<small>4년제 졸업 후 준비 중</small>", 120, 40)];
+const grps = [add("grp l", `재학생 ${N_STU}명<small>× ${REPEATS}번씩 답함</small>`, 120, 40),
+              add("grp", `취준생 ${AI.length - N_STU}명<small>× ${REPEATS}번씩 답함</small>`, 120, 40)];
 const basket = add("basket", "", 880, 100);
 basket.style.width = "880px"; basket.style.height = "100px";
-const btag = add("btag", "AI 의견<small>+ 쓸 이유 · − 안 쓸 이유 · 클수록 많이 말함</small>", 300, 24);
+const btag = add("btag", "AI 의견<small>+ 쓸 이유 · − 안 쓸 이유 · 클수록 많이 나온 말</small>", 300, 24);
 const sieve = add("sieve", "", 896, 80);
 const sieve2 = add("sieve sieve2", "", 220, 80);
-const sieveLab = add("sievelab", "▲ <b>① 실제 대학생 거름망</b> · 참가자 6명이 말한 이유", 420, 18);
-const sieve2Lab = add("sievelab", `▲ <b>② AI 다수결 거름망</b><br>AI ${MANY}명 이상이 말한 것만 남아요`, 220, 36);
+const sieveLab = add("sievelab", "▲ <b>① 실제 대학생 거름망</b> · 설문 응답자 6명이 말한 이유", 420, 18);
+const sieve2Lab = add("sievelab", `▲ <b>② AI 다수결 거름망</b><br>답 ${N_ANS}개 중 ${MANY}개 이상 나온 것만`, 220, 36);
 const candLab = add("candlab", "사람에게 확인할 후보", 220, 18);
 const holes = HOLES.map(t => add("hole", t, 150, 50));
-const hus = HOLES.map((_, i) => add("hu", `<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" fill="#fff"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" fill="#fff"/></svg><i>참가자 ${i + 1}</i>`, 48, 48));
-const chips = CHIPS.map(c => add(`chip t${tier(c.n)}`, `<em>${c.use ? "+" : "−"}</em>${c.t}<small>${c.n}명</small>`, 200, 34));
+const hus = HOLES.map((_, i) => add("hu", `<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" fill="#fff"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" fill="#fff"/></svg><i>응답자 ${i + 1}</i>`, 48, 48));
+const chips = CHIPS.map(c => add(`chip t${tier(c.n)}`, `<em>${c.use ? "+" : "−"}</em>${c.t}<small>${c.n}개</small>`, 200, 34));
 const miss = add("miss", "AI가 놓친 이유<small>사람만 말했어요</small>", 136, 34);
 // 판정 카드: 정밀도(AI 말 중 사람도 한 말)와 재현율(사람 말 중 AI가 맞힌 말) 두 막대. 점선 = 50%, 70%
 const pct = (a, b) => Math.round(a / b * 100);
@@ -330,7 +321,7 @@ function measRow(label, a, b) {
 }
 function measHtml(name, v, pm, pn, rm, rn, missed = 0) {
   return `<div class="t"><b>${name}</b><span>${missed ? `<em>놓친 이유 ${missed}개</em>` : ""}</span><span class="verd v-${v}">${VERDICT[v]}</span></div>
-    ${measRow(`AI 말이 맞은 비율 ${pm}/${pn}`, pm, pn)}${measRow(`사람 말을 맞힌 비율 ${rm}/${rn}`, rm, rn)}`;
+    ${measRow(`통과율 ${pm}/${pn}`, pm, pn)}${measRow(`재현율 ${rm}/${rn}`, rm, rn)}`;
 }
 // 쓸 이유 = 구멍 0~2, 안 쓸 이유 = 구멍 3~5 (HOLES 순서)
 const side = use => {
@@ -339,7 +330,7 @@ const side = use => {
 };
 const cand = CHIPS.filter(c => c.hole === null && c.n >= MANY);
 const meas = [add("meas", measHtml("쓸 이유", "trust", ...side(true)), 440, 110), add("meas", measHtml("안 쓸 이유", "ref", ...side(false), 1), 440, 110),
-  add("meas cand", `<b>확인할 후보 ${cand.length}개</b>${cand.map(c => `${c.t} (AI ${c.n}명)`).join("<br>")}<small>점수에는 안 넣어요</small>`, 220, 110)];
+  add("meas cand", `<b>확인할 후보 ${cand.length}개</b>${cand.map(c => `${c.t} (답 ${c.n}개)`).join("<br>")}<small>점수에는 안 넣어요</small>`, 220, 110)];
 function verdCell(v, pm, pn, rm, rn) {
   if (v === "none") return `<div class="vr"><span class="vn">${VERDICT[v]}</span></div><div class="det">건수가 적어 판정 안 함 (AI 말 ${pn}개 · 사람 말 ${rn}개)</div>`;
   return `<div class="vr"><span class="vn">${VERDICT[v]}</span><span class="vp">${pct(pm, pn)}<small>·</small>${pct(rm, rn)}</span></div>
@@ -366,6 +357,8 @@ mbtn.setAttribute("role", "button");
 mbtn.onclick = () => { mapOpen = !mapOpen; layoutMap(false); };
 const LEG_V = Object.entries(VERDICT).map(([k, v]) => `<span><i class="v-${k}"></i>${v}</span>`).join("");
 const mapLeg = add("legend", "", 1168, 20);
+const nTrust = MAP.reduce((a, m) => a + (m.use[0] === "trust") + (m.no[0] === "trust"), 0);
+const mapCond0 = add("mnote", `페르소나 없는 AI(조건 0)로 같은 칸을 재면 '믿고 써도 됨'이 ${COND0_TRUST}칸, 페르소나 10명을 주면 ${nTrust}칸이에요 (예시)`, 1168, 20);
 
 // 신뢰도 지도 배치. enter = 6단계에 막 들어와서 줄마다 차례로 나타나는 중
 function layoutMap(enter) {
@@ -373,7 +366,7 @@ function layoutMap(enter) {
   // 범례: 접으면 판정 색과 % 뜻, 펼치면 점선 칩 두 종류의 뜻을 더한다
   mapLeg.innerHTML = LEG_V + (mapOpen
     ? `<span class="pc c">파란 점선</span>AI만 많이 말함 <span class="pc m">빨간 점선</span>AI가 놓침`
-    : `<span class="mnote">숫자 = AI 말이 맞은 비율 · 사람 말을 맞힌 비율 (%) · 칸을 누르면 근거</span>`);
+    : `<span class="mnote">숫자 = 통과율 · 재현율 (%) · 칸을 누르면 근거</span>`);
   mbtn.textContent = mapOpen ? "‹ 접기" : `사람에게 확인할 것 ${nCand + nMiss}개 펼치기 ›`;
   mapHeads.forEach(({el, c}) => {
     const on = last && (c < 3 || mapOpen);
@@ -387,6 +380,7 @@ function layoutMap(enter) {
   });
   put(mbtn, (mapOpen ? colX(3) + MW[3] : colX(2) + MW[2]) - 125, MAP_Y - 52, {o: last ? 1 : 0, d: enter ? 2900 : 0});
   put(mapLeg, colX(0) + mapLeg._w / 2, MAP_Y + 4 * ROW_GAP + 14, {o: last ? 1 : 0, d: enter ? 2900 : 0});
+  put(mapCond0, colX(0) + mapCond0._w / 2, MAP_Y + 4 * ROW_GAP + 44, {o: last ? 1 : 0, d: enter ? 3200 : 0});
 }
 
 // 페르소나 카드 (무대 맨 위에 하나만 두고 내용만 바꾼다)
@@ -397,9 +391,9 @@ function hideCard() { pcard.classList.remove("on"); ais[cardOf]?.classList.remov
 function showCard(i) {
   if (cardOf === i) return hideCard();
   hideCard();
-  const p = AI[i];
+  const p = AI[personaOf(i)];
   pcard.innerHTML = `<div class="hd"><div class="av${p.job ? " jo" : ""}">${p.n[0]}</div><div class="nm">${p.n}<span>${p.a}세 · ${p.g}</span></div><button class="x" aria-label="닫기">×</button></div>
-    <div class="tags"><span class="st">${p.job ? "취준생 · 4년제 졸업" : "재학생 · 대학 재학 중"}</span><span>${p.r}</span></div>
+    <div class="tags"><span class="st">${p.job ? "취준생 · 4년제 졸업" : "재학생 · 대학 재학 중"}</span><span>${p.r}</span><span>${repOf(i) + 1}회차 답</span></div>
     <dl><dt>진로 목표</dt><dd>${p.goal}</dd><dt>좋아하는 것</dt><dd>${p.likes.join(" · ")}</dd></dl>`;
   pcard.querySelector(".x").onclick = hideCard;
   // 원 바로 아래에 띄우되 무대 밖으로 나가지 않게
@@ -448,7 +442,7 @@ function go(n) {
   ais.forEach((el, i) => { el.classList.remove("talk"); step >= 1 && !last
     ? put(el, aiX(i), aiY(i), {d: step === 1 ? i * 25 : 0})
     : put(el, aiX(i), aiY(i) - 20, {s: .4, o: 0}); });
-  grps.forEach((el, k) => put(el, k ? GRP_X[1] + 160 : GRP_X[0] - 160, AI_Y, {o: step >= 1 && !last ? 1 : 0, d: step === 1 ? 500 : 0}));
+  grps.forEach((el, k) => put(el, k ? GRP_X[1] + 182 : GRP_X[0] - 148, AI_Y, {o: step >= 1 && !last ? 1 : 0, d: step === 1 ? 500 : 0}));
 
   // 거름망과 구멍 (사람 이유)
   const showSieve = step >= 2 && !last;
@@ -520,7 +514,7 @@ function go(n) {
     const fs = el.querySelectorAll(".f");
     if (last && prev === 4) {   // 판정 카드가 줄어들며 지도 첫 줄 칸으로 날아 들어간다
       // 확인할 후보 카드는 펼치기 버튼으로 들어간다
-      const t = k < 2 ? cellAt(0, k + 1, false) : {x: colX(2, false) + MW[2] - 125, y: MAP_Y - 52, w: 250}, sc = t.w / el._w;
+      const t = k < 2 ? cellAt(NOW_ROW, k + 1, false) : {x: colX(2, false) + MW[2] - 125, y: MAP_Y - 52, w: 250}, sc = t.w / el._w;
       put(el, t.x, t.y, {s: sc});
       later(750, () => put(el, t.x, t.y, {s: sc, o: 0}));
       return;
