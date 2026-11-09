@@ -541,7 +541,9 @@ class TestCLI(unittest.TestCase):
         self.assertIn("코드북에 없는 AI 코드 1개", log)  # X
         out = TMP / "out_book"
         record = json.loads(next(out.glob("metrics_all_*.json")).read_text(encoding="utf-8"))
-        self.assertEqual(record["codebook"], {"codes": 5, "common": 1, "ai_codes_not_in_codebook": 1})
+        empty = {"human": {}, "ai": {}}
+        self.assertEqual(record["codebook"], {"codes": 5, "common": 1, "ai_codes_not_in_codebook": 1,
+                                              "excluded_codes": empty, "other_codes": empty})
         self.assertIn("codebook", record["inputs"])
         with next(out.glob("cells_all_*.csv")).open(encoding="utf-8-sig") as f:
             f1 = [r for r in csv.DictReader(f) if r["scope"] == "main" and r["condition"] == "2"
@@ -566,6 +568,31 @@ class TestCLI(unittest.TestCase):
                                 "--codebook", name, "--allow-draft")
                 self.assertEqual(code, 1 if name == "nothing.csv" else 4, log)
         self.assertFalse((TMP / "out_bad_book").exists())
+
+    def test_codebook_other_and_exclude(self):
+        # 코딩 규칙 v0.1: 기타(98)끼리는 맞았다고 세지 않고, 제외(C07·U05)는 판정에서 빼서 따로 센다 (R2)
+        (TMP / "book_scope2.csv").write_text("code,scope,name\nA,기능,\nO,기타,기타\nX7,제외,지금은 쓸 일이 없음\n",
+                                             encoding="utf-8")
+        h = write("human_scope2.csv", HUMAN_HEAD,
+                  human_rows("F1", {"P1": ["O"], "P2": ["A"], "P3": ["X7"], "P4": ["A"], "P5": []}))
+        a = write("ai_scope2.csv", sr.AI_FIELDS, ai_rows("F1", {"e1": ["O", "A"], "e2": ["X7"]}))
+        code, log = run("--human", h, "--ai", a, "--rules", "rules.json", "--out", "out_scope2",
+                        "--codebook", "book_scope2.csv", "--allow-draft")
+        self.assertEqual(code, 0, log)
+        self.assertIn("제외 코드", log)
+        out = TMP / "out_scope2"
+        record = json.loads(next(out.glob("metrics_all_*.json")).read_text(encoding="utf-8"))
+        self.assertEqual(record["codebook"]["excluded_codes"], {"human": {"X7": 1}, "ai": {"X7": 1}})
+        self.assertEqual(record["codebook"]["other_codes"], {"human": {"O": 1}, "ai": {"O": 1}})
+        with next(out.glob("cells_all_*.csv")).open(encoding="utf-8-sig") as f:
+            f1 = [r for r in csv.DictReader(f) if r["scope"] == "main" and r["feature_id"] == "F1"][0]
+        # 제외 코드만 말한 P3도 사람 수에는 든다. AI {O, A} 중 A만, 사람 {O, A} 중 A만 맞음 (O끼리는 안 맞음)
+        self.assertEqual((f1["n_humans"], f1["precision"], f1["recall"]), ("5", "0.5", "0.5"))
+        with next(out.glob("reasons_all_*.csv")).open(encoding="utf-8-sig") as f:
+            rows = [r for r in csv.DictReader(f) if r["scope"] == "main" and r["feature_id"] == "F1"]
+        self.assertEqual({(r["type"], r["code"], r["passed"]) for r in rows},
+                         {("ai_reason", "A", "Y"), ("ai_reason", "O", "N"), ("missed", "O@사람", "")})
+        self.assertEqual([r["name"] for r in rows if r["type"] == "missed"], ["기타"])
 
     def test_respondent_with_two_platforms_stops(self):
         rows = human_rows("F1", {"P1": ["A"]}) + human_rows("F2", {"P1": ["B"]}, platform="web")

@@ -9,6 +9,8 @@
     params  파일럿 사본 폼 응답과 코드북 작성자가 코드를 붙인 파일럿 사람 코드로 사전등록 3장 값을 낸다:
             안 써본 비율, 공통 이유 비율, 이유 2개 비율. 사람 수 시뮬레이션 --pilot에 그대로 넣는다
     make    정리 시트를 만든다. 응답자 x 기능마다 한 줄, 정리 담당 두 사람이 코드를 채운다
+            서술을 이유 단위로 쪼갠 것(코딩 규칙 0장)은 code 칸에 ';'로 이어 적는다. 대체 수단·세부 유형(F4)은
+            alt_means, subtype 칸에 코딩 규칙 v0.1 4장 값으로 적는다 (판정에는 안 쓰고 사람 코드 CSV에 같이 남긴다)
     import  다 채운 정리 시트를 판정 계산기가 읽는 사람 코드 CSV로 바꾼다
 
     python scripts/form_to_sheet.py count --responses <응답 CSV> --service-map "링커리어=linkareer,에브리커리어(캠퍼스픽)=campuspick"
@@ -60,8 +62,9 @@ QUIT_OPTIONS = ["써보니 불편해서", "나한테 필요 없어서", "다른 
 KIND_LABEL = {"use": "계속 씀 (4-4)", "nouse": "안 써봄 (4-6, 4-7)", "nouse_quit": "그만둠 (4-5, 4-7)"}
 
 SHEET_FIELDS = ["row_id", "respondent_id", "order", "service", "platform", "feature_id", "feature_name", "kind",
-                "kind_label", "options", "text_feature", "text_all", "code_1", "code_2", "code_final", "note"]
-HUMAN_FIELDS = ["respondent_id", "service", "platform", "feature_id", "kind", "code", "order"]
+                "kind_label", "options", "text_feature", "text_all", "code_1", "code_2", "code_final",
+                *rsh.EXTRA_COLS, "note"]
+HUMAN_FIELDS = ["respondent_id", "service", "platform", "feature_id", "kind", "code", "order", *rsh.EXTRA_COLS]
 NONE_TEXT = re.compile(r"^\s*(없음|없어요|없습니다)\.?\s*$")
 
 
@@ -263,7 +266,8 @@ def build_sheet(people: list) -> list:
                          "feature_name": f["feature_name"], "kind": f["kind"], "kind_label": KIND_LABEL[f["kind"]],
                          "options": " / ".join(f["options"]), "text_feature": split[g].get(f["feature_id"], ""),
                          "text_all": "" if NONE_TEXT.match(text_all or "") else text_all,
-                         "code_1": "", "code_2": "", "code_final": "", "note": ""})
+                         "code_1": "", "code_2": "", "code_final": "", **dict.fromkeys(rsh.EXTRA_COLS, ""),
+                         "note": ""})
     return rows
 
 
@@ -377,7 +381,7 @@ def cmd_import(args, root: Path) -> int:
     if not sheet_path.is_file():
         raise FileNotFoundError("--sheet")
     fields, sheet = read_csv(sheet_path)
-    missing = [c for c in SHEET_FIELDS if c not in fields]
+    missing = [c for c in SHEET_FIELDS if c not in fields and c not in rsh.EXTRA_COLS]  # 옛 시트도 받는다
     if missing:
         raise InputError(f"정리 시트에 칸이 없음 {missing}")
     codebook = sr.load_codebook(root / args.codebook) if args.codebook else None
@@ -392,6 +396,7 @@ def cmd_import(args, root: Path) -> int:
         comma = sum("," in unicodedata.normalize("NFKC", r[col]) for r in sheet)
         if comma:
             problems.append(f"{col}에 쉼표 {comma}개 (코드가 여럿이면 ;로 나눈다)")
+    problems += rsh.check_extras(sheet, lambda r: r["feature_id"])
     if codebook is not None:
         unknown = {c for r in sheet for c in rsh.norm_codes(r["code_final"]) if c != "-" and c not in codebook}
         if unknown:
@@ -408,6 +413,7 @@ def cmd_import(args, root: Path) -> int:
     rows = []
     for r in sorted(sheet, key=lambda x: (int(x["order"] or 0), x["row_id"])):
         base = {k: r[k] for k in ("respondent_id", "service", "platform", "feature_id", "kind", "order")}
+        base.update({c: ";".join(rsh.norm_extra(r.get(c))) for c in rsh.EXTRA_COLS})
         codes = [c for c in rsh.norm_codes(r["code_final"]) if c != "-"]
         # 붙일 코드가 없으면 code가 빈 줄 하나. 그 칸에 답한 사람 수에는 들어간다 (판정계산기.md 2장)
         for code in codes or [""]:

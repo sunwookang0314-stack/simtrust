@@ -6,6 +6,8 @@ make: 추출 결과(extract_reasons.py의 extracted_*.jsonl)에서 AI 이유를 
   - 판정자 둘이 따로 code_1, code_2를 채우고, 맞춰 본 뒤 code_final을 채운다
   - 코드는 코드북(#28) 코드를 쓴다. 이유가 아닌 줄은 '-', 한 줄에 이유가 여럿이면 ';'로 나눈다
   - 코드북에 없는 이유는 판정자가 새 코드를 붙인다(같은 이유면 같은 새 코드). 사람 코드와 안 겹치면 통과 못 한 이유로 센다
+  - alt_means(대체 수단), subtype(세부 유형, F4만)은 코딩 규칙 v0.1 4장 값으로 채운다. 판정에는 안 쓰고 결과에 같이 남긴다.
+    여럿이면 ';'로 나누고 없으면 비운다. 사람 정리 시트(form_to_sheet.py)와 같은 칸이다
 import: 채운 시트와 대응표를 합쳐 score_reasons.py가 읽는 AI 코드 CSV를 만든다
   - 빈칸이 하나라도 있거나 두 판정자 칸이 덜 찼으면 아무것도 쓰지 않고 멈춘다 (TRD IF 공통 규칙)
   - 두 판정자의 일치율과 Cohen's kappa를 남긴다
@@ -35,12 +37,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EXIT_OK, EXIT_USAGE, EXIT_INPUT = 0, 1, 4
 
+# 코딩 규칙 v0.1 4장. 코드 하나에 뜻 하나를 지키려고 같은 이유 안의 세부 정보는 코드가 아니라 칸으로 적는다 (R6)
+ALT_MEANS = ("같은 서비스 다른 기능", "다른 공고 서비스", "범용 앱", "사람·학교")
+SUBTYPES = ("맞춤", "인기", "광고", "구분 불가")
+EXTRA_COLS = ("alt_means", "subtype")  # 없는 옛 시트도 받는다
 SHEET_FIELDS = ["item_id", "service", "platform", "feature_name", "kind", "source", "text", "options_found",
-                "code_1", "code_2", "code_final", "note"]
+                "code_1", "code_2", "code_final", *EXTRA_COLS, "note"]
 KEY_FIELDS = ["item_id", "run_id", "service", "platform", "condition", "persona_id", "repeat", "feature_id",
               "kind", "source", "input_mode", "model"]
 AI_CODE_FIELDS = ["item_id", "run_id", "service", "platform", "condition", "persona_id", "repeat", "feature_id",
-                  "kind", "input_mode", "model", "code"]
+                  "kind", "input_mode", "model", "code", *EXTRA_COLS]
 REQUIRED = ["run_id", "service", "platform", "condition", "persona_id", "repeat", "feature_id", "asked"]
 JUDGE_COLS = ("code_1", "code_2", "code_final")
 KAPPA_MIN = 0.6  # TRD NFR-07. 못 미치면 판정 기준을 다듬고 다시 판정한다
@@ -120,6 +126,26 @@ def norm_codes(cell: str) -> list:
     return sorted({c.strip().upper() for c in cell.split(";") if c.strip()})
 
 
+def norm_extra(cell: str) -> list:
+    """'다른 공고 서비스; 범용 앱' -> 두 값. 빈칸이면 빈 목록."""
+    return [v.strip() for v in unicodedata.normalize("NFKC", cell or "").split(";") if v.strip()]
+
+
+def check_extras(rows: list, feature_of) -> list:
+    """alt_means, subtype 값 검사. feature_of(행) -> 기능 번호. 문제를 글로 돌려준다."""
+    allowed = {"alt_means": {unicodedata.normalize("NFKC", v) for v in ALT_MEANS},
+               "subtype": {unicodedata.normalize("NFKC", v) for v in SUBTYPES}}
+    problems = []
+    for col, names in (("alt_means", ALT_MEANS), ("subtype", SUBTYPES)):
+        bad = sum(any(v not in allowed[col] for v in norm_extra(r.get(col))) for r in rows)
+        if bad:
+            problems.append(f"{col}에 정해진 값이 아닌 칸 {bad}개 ({' / '.join(names)})")
+    not_f4 = sum(bool(norm_extra(r.get("subtype"))) and feature_of(r) != "F4" for r in rows)
+    if not_f4:
+        problems.append(f"subtype은 F4(추천 공고 목록)에만 적는다: 다른 기능에 {not_f4}칸")
+    return problems
+
+
 def kappa(a: list, b: list):
     """Cohen's kappa. 두 판정자가 붙인 코드 묶음을 한 라벨로 보고 잰다."""
     n = len(a)
@@ -169,7 +195,8 @@ def cmd_make(args, root: Path) -> int:
     stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
     out = root / args.out
     out.mkdir(parents=True, exist_ok=True)
-    sheet = [{**i, "code_1": "", "code_2": "", "code_final": "", "note": ""} for i in items]
+    sheet = [{**i, "code_1": "", "code_2": "", "code_final": "", **dict.fromkeys(EXTRA_COLS, ""), "note": ""}
+             for i in items]
     write_csv(out / f"sheet_{stamp}.csv", SHEET_FIELDS, sheet)
     write_csv(out / f"key_{stamp}.csv", KEY_FIELDS, sorted(items, key=lambda i: i["item_id"]))
     kinds = Counter(i["kind"] for i in items)
@@ -211,6 +238,7 @@ def cmd_import(args, root: Path) -> int:
         comma = sum("," in unicodedata.normalize("NFKC", r[col]) for r in sheet)
         if comma:
             problems.append(f"{col}에 쉼표 {comma}개 (코드가 여럿이면 ;로 나눈다)")
+    problems += check_extras(sheet, lambda r: key.get(r["item_id"], {}).get("feature_id"))
     if problems:
         print("[입력 오류] 시트를 다 채우지 않았음: " + ", ".join(problems), file=sys.stderr)
         return EXIT_INPUT
@@ -227,8 +255,10 @@ def cmd_import(args, root: Path) -> int:
     rows = []
     for r in sorted(sheet, key=lambda x: x["item_id"]):
         k = key[r["item_id"]]
+        extra = {c: ";".join(norm_extra(r.get(c))) for c in EXTRA_COLS}
         for code in norm_codes(r["code_final"]):
-            rows.append({**{f: k[f] for f in AI_CODE_FIELDS if f != "code"}, "code": code})
+            rows.append({**{f: k[f] for f in AI_CODE_FIELDS if f != "code" and f not in EXTRA_COLS}, "code": code,
+                         **extra})
     stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
     out = root / args.out
     out.mkdir(parents=True, exist_ok=True)

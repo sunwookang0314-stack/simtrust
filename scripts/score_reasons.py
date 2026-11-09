@@ -22,8 +22,10 @@
     item_id, run_id, service, platform, condition, persona_id, repeat, feature_id, kind, code
     (input_mode, model 칸이 있으면 한 조건 안에 다른 값이 섞였을 때 멈춘다)
 - 판정 규칙 JSON (--rules): 기준값을 코드에 박지 않는다 (FR-08-01). 동결 전 규칙은 --allow-draft를 붙여야 돈다
-- 코드북 CSV (--codebook, 선택): code, scope(common|feature, 공통|기능). 주면 공통 코드를 뺀 통과율·재현율을
-  같이 낸다. 판정에는 안 쓰고 옆에 보여준다 (11/6 강선우 제안: AI가 기능을 보고 답했는지 숫자로 보이게)
+- 코드북 CSV (--codebook, 선택): code, scope(common|feature|other|exclude, 공통|기능|기타|제외). 주면 공통 코드를 뺀
+  통과율·재현율을 같이 낸다. 판정에는 안 쓰고 옆에 보여준다 (11/6 강선우 제안: AI가 기능을 보고 답했는지 숫자로 보이게)
+    기타(C98, U98): 내용이 제각각이라 사람 기타와 AI 기타를 같은 이유로 맞았다고 세지 않는다 (코딩 규칙 v0.1)
+    제외(C07, U05): 기능과 상관없는 이유. 그 사람은 칸 인원에 넣고 이유는 판정에서 빼서 따로 센다 (코딩 규칙 R2)
 - 코드는 양쪽 다 같은 표기로 맞춘다 (전각 글자, 엑셀이 바꾼 대시, 대소문자)
 
 판정 칸은 규칙 cell_keys로 정한다. 11/6 D4 결정으로 서비스 x 기능 x 쓸/안 쓸이고 앱·웹을 합친다.
@@ -89,7 +91,9 @@ CELL_CSV = ["scope", "condition", "service", "platform", "feature_id", "kind", "
 REASON_CSV = ["scope", "condition", "service", "platform", "feature_id", "kind", "type", "code", "name", "common",
               "ai_episodes_with_code", "ai_episodes", "human_count", "n_humans", "passed", "basis"]
 CODEBOOK_FIELDS = ["code", "scope"]
-SCOPE_WORDS = {"common": "common", "공통": "common", "feature": "feature", "기능": "feature"}
+SCOPE_WORDS = {"common": "common", "공통": "common", "feature": "feature", "기능": "feature",
+               "other": "other", "기타": "other", "exclude": "exclude", "제외": "exclude"}
+HUMAN_OTHER = "@사람"  # 사람 쪽 기타 코드에 붙여서 AI 기타와 겹치지 않게 한다
 MAIN, PLATFORM_REF = "main", "platform_ref"
 
 
@@ -150,7 +154,7 @@ def load_human(path: Path) -> list:
 
 
 def load_codebook(path: Path) -> dict:
-    """코드 -> common/feature. 화면에는 코드를 안 찍고 행 번호만 알린다."""
+    """코드 -> common/feature/other/exclude. 화면에는 코드를 안 찍고 행 번호만 알린다."""
     book = {}
     for i, r in enumerate(read_csv(path, CODEBOOK_FIELDS), 2):
         code = norm_code(r["code"])
@@ -158,13 +162,35 @@ def load_codebook(path: Path) -> dict:
         if not code:
             raise InputError(f"{path.name} {i}행: code가 비었음")
         if scope is None:
-            raise InputError(f"{path.name} {i}행: scope는 common(공통) 또는 feature(기능)")
+            raise InputError(f"{path.name} {i}행: scope는 common(공통), feature(기능), other(기타), exclude(제외) 중 하나")
         if code in book:
             raise InputError(f"{path.name} {i}행: 앞에 나온 코드가 또 나옴")
         book[code] = scope
     if not book:
         raise InputError(f"{path.name}: 코드가 하나도 없음")
     return book
+
+
+def apply_scopes(human: list, ai: list, codebook: dict) -> dict:
+    """코드북의 기타·제외 코드를 계산 전에 바꾼다. 줄 수는 그대로 두고 바뀐 개수를 돌려준다.
+
+    - 제외: 사람 줄은 코드를 비운다(그 칸에 답한 사람 수에는 들어간다). AI 줄은 이유 아님('-')으로 바꾼다
+    - 기타: 사람 줄에만 HUMAN_OTHER를 붙인다. AI 기타는 통과 못 한 이유로, 사람 기타는 놓친 이유로 남는다
+    """
+    exclude = {c for c, s in codebook.items() if s == "exclude"}
+    other = {c for c, s in codebook.items() if s == "other"}
+    counts = {"excluded": {"human": Counter(), "ai": Counter()}, "other": {"human": Counter(), "ai": Counter()}}
+    for side, rows in (("human", human), ("ai", ai)):
+        for r in rows:
+            code = r["code"]
+            if code in exclude:
+                counts["excluded"][side][code] += 1
+                r["code"] = "" if side == "human" else "-"
+            elif code in other:
+                counts["other"][side][code] += 1
+                if side == "human":
+                    r["code"] = code + HUMAN_OTHER
+    return {k: {side: dict(sorted(c.items())) for side, c in v.items()} for k, v in counts.items()}
 
 
 def codebook_names(path: Path) -> dict:
@@ -940,7 +966,8 @@ def reason_rows(c: dict, names: dict = None) -> list:
                      "ai_episodes_with_code": r["ai_episodes_with_code"], "human_count": r["human_count"],
                      "passed": "Y" if r["passed"] else "N", "basis": basis})
     for r in c["missed"]:
-        rows.append({**common, "type": "missed", "code": r["code"], "name": names.get(r["code"], ""),
+        rows.append({**common, "type": "missed", "code": r["code"],
+                     "name": names.get(r["code"].removesuffix(HUMAN_OTHER), ""),
                      "common": yn(r["common"]),
                      "ai_episodes_with_code": 0, "human_count": r["human_count"], "passed": "",
                      "basis": f"응답자 {c['n_humans']}명 중 {r['human_count']}명이 말했는데 AI는 안 말함"})
@@ -1030,6 +1057,7 @@ def main(argv=None, root: Path = ROOT) -> int:
             unknown = {r["code"] for r in human if r["code"] and r["code"] not in codebook}
             if unknown:
                 raise InputError(f"사람 코드 중 코드북에 없는 코드가 {len(unknown)}개 있음")
+            scope_counts = apply_scopes(human, ai, codebook)
     except (InputError, UnicodeDecodeError) as e:
         print(f"[입력 오류] {e}", file=sys.stderr)
         return EXIT_INPUT
@@ -1070,7 +1098,10 @@ def main(argv=None, root: Path = ROOT) -> int:
         "dropped_ai_rows": result["dropped_ai_rows"],
         "coverage": result["coverage"],
         "codebook": ({"codes": len(codebook), "common": sum(s == "common" for s in codebook.values()),
-                      "ai_codes_not_in_codebook": ai_not_in_book} if codebook is not None else None),
+                      "ai_codes_not_in_codebook": ai_not_in_book,
+                      # 제외 코드(R2)는 판정에서 빼고 여기서만 센다. 기타 코드는 서로 맞았다고 세지 않는다
+                      "excluded_codes": scope_counts["excluded"], "other_codes": scope_counts["other"]}
+                     if codebook is not None else None),
         "summary": result["summary"],
         "saturation": result["saturation"],
         "cells": cells,
@@ -1087,6 +1118,11 @@ def main(argv=None, root: Path = ROOT) -> int:
     print_summary(result, rules, run_id)
     if ai_not_in_book:
         print(f"  코드북에 없는 AI 코드 {ai_not_in_book}개는 기능별 코드로 셌다")
+    if codebook is not None:
+        ex = scope_counts["excluded"]
+        if ex["human"] or ex["ai"]:
+            print(f"  기능과 상관없는 이유(제외 코드)로 판정에서 뺀 줄: 사람 {sum(ex['human'].values())}, "
+                  f"AI {sum(ex['ai'].values())} (metrics의 codebook.excluded_codes)")
     print(f"  출력: {args.out}/metrics_{tag}.json, cells_{tag}.csv, reasons_{tag}.csv")
     return EXIT_OK
 
