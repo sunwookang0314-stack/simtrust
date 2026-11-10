@@ -212,6 +212,21 @@ class TestPilotParams(unittest.TestCase):
             self.assertNotIn(text, log)
 
 
+    def test_params_drop_exclude_codes(self):
+        # 제외 코드(C07)는 판정 계산기처럼 공통 이유 비율·이유 2개 비율에서 뺀다 (#43)
+        book = {"C01": "common", "C07": "exclude", "F2-01": "feature"}
+        rows = [{"kind": "nouse", "service": "s", "respondent_id": rid, "feature_id": fid, "code": code}
+                for rid, fid, code in (("R1", "F1", "C01"), ("R1", "F1", "C07"),
+                                       ("R2", "F1", "C07"), ("R3", "F2", "F2-01"))]
+        rows.append({"kind": "use", "service": "s", "respondent_id": "R4", "feature_id": "F1", "code": "C07"})
+        c = fts.pilot_code_params(rows, book)
+        self.assertEqual(c["nouse_cells"], 3)  # R2 칸도 안 써본 칸으로는 센다
+        self.assertEqual(c["coded_cells"], 2)  # R2는 제외 코드만 있어서 코드 없는 칸
+        self.assertEqual(c["codes"], 2)
+        self.assertEqual(c["common"], 0.5)
+        self.assertEqual(c["p_two"], 0.0)  # R1은 C07을 빼면 1개
+        self.assertEqual(c["excluded_codes"], 2)
+
 class TestImport(unittest.TestCase):
     def setUp(self):
         src = write_responses("responses_i.csv", [R1, R6])

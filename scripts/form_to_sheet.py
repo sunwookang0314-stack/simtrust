@@ -307,13 +307,18 @@ def cmd_count(args, root: Path) -> int:
 def pilot_code_params(rows: list, codebook: dict) -> dict:
     """사전등록 3장: 응답자 x 기능 칸마다 4-6 보기와 4-7 코드를 합친 서로 다른 코드 묶음(nouse)으로 잰다.
     공통 이유 비율 = 칸 묶음 안 코드 중 공통 코드 비율. 이유 2개 비율 = 코드가 있는 칸 중 2개 이상인 칸 비율
-    (3개 이상은 2개로 묶는다. 시뮬레이션이 1개나 2개만 뽑아서다)."""
+    (3개 이상은 2개로 묶는다. 시뮬레이션이 1개나 2개만 뽑아서다).
+    제외 코드(scope 제외, 예: C07)는 판정 계산기처럼 묶음에서 뺀다(코딩규칙 R2). 그 칸은 안 써본 칸으로는 세고,
+    제외 코드만 있으면 코드가 없는 칸이 된다 (#43 강선우 지적)."""
     cells = {}
+    excluded = 0
     for r in rows:
         if r["kind"] != "nouse":
             continue
         codes = cells.setdefault((r["service"], r["respondent_id"], r["feature_id"]), set())
-        if r["code"]:
+        if r["code"] and codebook.get(r["code"]) == "exclude":
+            excluded += 1
+        elif r["code"]:
             codes.add(r["code"])
     coded = [c for c in cells.values() if c]
     total = sum(len(c) for c in coded)
@@ -321,7 +326,7 @@ def pilot_code_params(rows: list, codebook: dict) -> dict:
     return {"nouse_cells": len(cells), "coded_cells": len(coded), "codes": total, "common_codes": common,
             "common": round(common / total, 3) if total else None,
             "p_two": round(sum(len(c) >= 2 for c in coded) / len(coded), 3) if coded else None,
-            "three_or_more": sum(len(c) >= 3 for c in coded)}
+            "three_or_more": sum(len(c) >= 3 for c in coded), "excluded_codes": excluded}
 
 
 def cmd_params(args, root: Path) -> int:
@@ -342,6 +347,7 @@ def cmd_params(args, root: Path) -> int:
     print(f"  안 써본 비율 (4-3 \"안 써봤다\"만): {d['nouse_rate']}")
     print(f"  공통 이유 비율: {c['common']} = 공통 코드 {c['common_codes']}개 / 코드 {c['codes']}개")
     print(f"  이유 2개 비율: {c['p_two']} (3개 이상인 칸 {c['three_or_more']}개는 2개로 셌다)")
+    print(f"  제외 코드: {c['excluded_codes']}개 (판정 계산기처럼 위 두 비율에서 뺐다)")
     parts = [f"{k}={v}" for k, v in (("p_nouse", d["nouse_rate"]), ("common", c["common"]), ("p_two", c["p_two"]))
              if v is not None]
     print(f"  시뮬레이션에 넣는 값: --pilot \"{','.join(parts)}\"  (사전등록 3장 규칙대로 가정을 더한다)")
