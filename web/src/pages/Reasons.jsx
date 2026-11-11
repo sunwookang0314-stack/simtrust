@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { CellPicker, MetricBar, ReasonChip, SampleTag, VerdictBadge } from "../components/ui.jsx";
 import { useCellParams } from "../lib/params.js";
+import SieveStage from "../components/SieveStage.jsx";
 import { FEATURES, KINDS, SERVICES, cellOf, loadAll, reasonsOf } from "../lib/data.js";
 import { VERDICT_STYLE } from "../lib/verdict.js";
 
@@ -74,6 +75,7 @@ export default function Reasons() {
       </div>
       <CellPicker params={params} />
       {err && <p className="err">{err}</p>}
+      {models && <SieveStage models={models} params={params} />}
       {models && <div className="mcols">{models.map(m => <ModelColumn key={m.id} model={m} params={params} />)}</div>}
       <p className="foot">칩 위에 마우스를 올리면 근거 문장이 보여요. <em className="cm">공통</em>은 어느 기능에나 할 말(필요 없음 등)이에요.</p>
     </div>
