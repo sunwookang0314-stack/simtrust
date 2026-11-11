@@ -1,21 +1,49 @@
-// 화면 3. 답 → 이유 추출 (틀). 추출기 scripts/extract_reasons.py 출력(extracted_*.jsonl)을 보여줄 자리
-import Frame from "../components/Frame.jsx";
+// 화면 3. 이유 뽑기: 화면 2의 답 원문에서 추출기(scripts/extract_reasons.py)가 이유 줄만 뽑는다
+// 쓸 이유는 Q-AI-WHY-USE 서술, 안 쓸 이유는 Q-AI-NOUSE에서 고른 보기. 머리말 같은 줄은 가린다
+import { Link } from "react-router-dom";
+import { EVERYONE, allLines, fname } from "../lib/examples.js";
 
-// 지어낸 예시 답. 실제 AI 답이나 응답 원문이 아니다
-const ANSWER = "마감 알림은 안 쓸 것 같아요. 알림이 하루에도 여러 번 오면 귀찮을 것 같고, 스크랩을 해야만 알림이 온다면 저는 스크랩을 잘 안 해서 받을 일이 없을 것 같아요.";
-const LINES = ["알림이 하루에도 여러 번 오면 귀찮을 것 같음", "스크랩을 해야만 알림이 와서 받을 일이 없음"];
+function Row({ ai }) {
+  const lines = allLines(ai);
+  return (
+    <section className="xrow">
+      <div className="xraw">
+        <header><b>{ai.name}</b><small>{ai.who ?? ai.sub}</small></header>
+        {ai.masked.map(m => <p key={m} className="xmask" title="추출기가 이유가 아니라고 가린 줄">{m}</p>)}
+        <p><span className="qb">Q-AI-WHY-USE</span>{ai.why.text}</p>
+        {Object.entries(ai.nouse).map(([f, os]) => (
+          <p key={f}><span className="qb">Q-AI-NOUSE</span>{fname(f)}: {os.map(o => `☑ ${o}`).join("  ")}</p>
+        ))}
+      </div>
+      <div className="xarrow" aria-hidden="true">→</div>
+      <ol className="xlines">
+        {lines.map((l, i) => (
+          <li key={l.id} style={{ animationDelay: `${i * 120}ms` }}>
+            <span className={`kd ${l.kind}`}>{l.kind === "use" ? "쓸 이유" : "안 쓸 이유"}</span>
+            <span className="ft">{fname(l.feature)}</span>
+            <span className="tx">{l.text}{l.option && <em>보기</em>}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
 
 export default function Extract() {
+  const n = EVERYONE.reduce((a, ai) => a + allLines(ai).length, 0);
+  const masked = EVERYONE.reduce((a, ai) => a + ai.masked.length, 0);
   return (
-    <Frame no={3} title="AI 답에서 이유만 뽑아요"
-           lead="추출기가 답 원문을 이유 단위로 나눠요. 못 가린 줄은 2차 검토표로 보내요."
-           blocks={["extracted_*.jsonl (질문마다 쓸/안 쓸 판별과 이유 줄)", "2차 검토표 CSV (김승하)"]}
-           waits={["원시 응답 형식 합의 날짜 (김민우·김승하)"]}>
-      <div className="extract">
-        <div className="raw"><span className="tag">AI A 답 원문 · 마감 알림 (예시)</span><p>{ANSWER}</p></div>
-        <div className="arrow" aria-hidden="true">→</div>
-        <ul className="lines">{LINES.map((l, i) => <li key={l}><b>이유 {i + 1}</b>{l}</li>)}</ul>
+    <div className="page">
+      <div className="phead">
+        <span className="no">3 · 이유 뽑기</span><span className="sample">화면 2의 예시 답</span>
+        <h1>AI 답에서 이유만 {n}줄 뽑았어요</h1>
+        <p>추출기가 답을 기능과 쓸/안 쓸로 나누고, 이유 하나에 한 줄로 쪼개요. 머리말처럼 이유가 아닌 줄 {masked}개는 가렸어요. 규칙으로 못 가린 줄은 2차 검토표로 보내요.</p>
       </div>
-    </Frame>
+      <div className="xrows">{EVERYONE.map(ai => <Row key={ai.id} ai={ai} />)}</div>
+      <div className="next">
+        <span className="basis">다음 단계에서 이 줄마다 코드북 코드를 붙여요</span>
+        <Link className="btn pri" to="/coding">코드 붙이러 가기 →</Link>
+      </div>
+    </div>
   );
 }

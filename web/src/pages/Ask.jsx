@@ -8,26 +8,14 @@ import { CellPicker } from "../components/ui.jsx";
 import { FEATURES, SERVICES } from "../lib/data.js";
 import { useCellParams } from "../lib/params.js";
 import { PERSONAS, REPEATS } from "../lib/personas.js";
+import { AIS, OPTIONS_46, PERSONA_EXAMPLE, fname } from "../lib/examples.js";
 
-const OPTIONS_46 = ["쓰기 번거로워 보여서", "나한테 필요 없을 것 같아서", "다른 앱이나 방법으로 해결해서", "딱히 써볼 생각을 안 해봐서", "기타"];
 const QUESTIONS = [
   { id: "Q-AI-USE", text: `아래 기능 각각에 대해 "쓸 것 같다" 또는 "안 쓸 것 같다" 중 하나로 답해주세요.\n${FEATURES.map(f => `- ${f.name}`).join("\n")}` },
   { id: "Q-AI-WHY-USE", text: "쓸 것 같다고 고른 기능마다 줄을 바꿔서 적어주세요.\n- 기능 이름\n- 그 기능을 쓴다면 뭘 하려고 쓸 것 같은지\n- 그 기능 덕분에 뭐가 편할 것 같은지" },
   { id: "Q-AI-NOUSE", text: `안 쓸 것 같다고 고른 기능마다, 안 쓸 것 같은 이유에 가까운 것을 골라주세요. 여러 개 골라도 됩니다.\n${OPTIONS_46.map(o => `- ${o}`).join("\n")}` },
 ];
 
-// 예시 답 (지어낸 것). use = 쓸 것 같다고 한 기능
-const AIS = [
-  { id: "gpt", name: "GPT", sub: "페르소나 없음 · 조건 0", use: ["F1", "F2", "F3"],
-    why: "마감 알림: 지원할 공고 마감을 놓치지 않으려고 쓸 것 같아요. 따로 달력을 안 봐도 돼서 편할 것 같아요.",
-    nouse: ["나한테 필요 없을 것 같아서"] },
-  { id: "claude", name: "Claude", sub: "페르소나 없음 · 조건 0", use: ["F1", "F3"],
-    why: "공고 검색·필터: 인턴 공고만 분야별로 보려고 쓸 것 같아요. 필요 없는 공고를 안 봐도 돼요.",
-    nouse: ["쓰기 번거로워 보여서", "다른 앱이나 방법으로 해결해서"] },
-  { id: "gemini", name: "Gemini", sub: "페르소나 없음 · 조건 0", use: ["F1", "F2", "F4"],
-    why: "공고 저장: 괜찮은 공고를 모아 두고 주말에 비교하려고 쓸 것 같아요.",
-    nouse: ["딱히 써볼 생각을 안 해봐서"] },
-];
 const PERSONA_USE = { F1: 24, F2: 18, F3: 21, F4: 9 };   // 답 30개 중 쓸 것 같다 (예시)
 const N_ANS = PERSONAS.length * REPEATS;
 
@@ -55,8 +43,8 @@ function Answer({ ai, phase }) {
           return <span key={f.id} className={u ? "u" : "n"}>{f.name} <b>{u ? "쓸 것 같다" : "안 쓸 것 같다"}</b></span>;
         })}</div>
       )}
-      {phase >= 4 && <p className="abub">{ai.why}</p>}
-      {phase >= 6 && <div className="aopt">{ai.nouse.map(o => <span key={o}>☑ {o}</span>)}</div>}
+      {phase >= 4 && <p className="abub">{ai.why.text}</p>}
+      {phase >= 6 && <div className="aopt">{Object.entries(ai.nouse).flatMap(([f, os]) => os.map(o => <span key={f + o}>{fname(f)} ☑ {o}</span>))}</div>}
     </div>
   );
 }
@@ -117,7 +105,7 @@ export default function Ask() {
                 <span key={f.id} className="u">{f.name} <b>쓸 것 같다 {PERSONA_USE[f.id]}/{N_ANS}</b></span>
               ))}</div>
             )}
-            {phase >= 4 && <p className="abub">{PERSONAS[0].n}({PERSONAS[0].a}세): 마감 알림 — 스크랩한 인턴 공고를 놓치지 않으려고 쓸 것 같아요.</p>}
+            {phase >= 4 && <p className="abub">{PERSONA_EXAMPLE.who}: {PERSONA_EXAMPLE.why.text}</p>}
           </div>
         </div>
       </div>
