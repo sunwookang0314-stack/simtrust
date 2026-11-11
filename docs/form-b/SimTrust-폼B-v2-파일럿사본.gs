@@ -39,7 +39,9 @@ function createPilotCopy() {
   // ── 1. 본 폼 읽기 (읽기만 한다) ──
   const main = FormApp.openById(mainId);
   const mainTitle = main.getTitle();
-  if (mainTitle.indexOf(PREFIX) === 0) {
+  // 응답자 화면 맨 위 제목. 폼 제목 칸이 비어 있으면 문서 이름이 뜬다(11/12 대조에서 본 폼이 이 경우였다)
+  const mainShown = mainTitle || DriveApp.getFileById(mainId).getName();
+  if (mainShown.indexOf(PREFIX) === 0) {
     throw new Error('멈춤: 이 링크는 이미 파일럿 사본이다. 본 폼 편집 링크를 넣어라.');
   }
   const mainItems = describeForm(main);
@@ -47,7 +49,7 @@ function createPilotCopy() {
   const mainDest = destinationOf(main);
   // 응답 내용은 안 쓰고 건수만 센다. 0건이면 응답을 받고 있는 본 폼이 아니다(시험용으로 만든 다른 v2 폼 등)
   const mainResponseCount = main.getResponses().length;
-  Logger.log('본 폼: ' + mainTitle + ' / 문항·페이지 ' + mainItems.length + '개 / 응답 ' + mainResponseCount + '건');
+  Logger.log('본 폼: ' + mainShown + ' / 문항·페이지 ' + mainItems.length + '개 / 응답 ' + mainResponseCount + '건');
   if (mainResponseCount === 0) {
     throw new Error('멈춤: 이 폼은 응답이 0건이다. 지금 응답을 받고 있는 본 폼의 편집 링크인지 확인한다. ' +
       '(폼 편집 화면에서 응답을 지우고 응답 시트에만 남겨 둔 경우도 0건으로 나온다.) 사본은 안 만들었다.');
@@ -85,7 +87,9 @@ function createPilotCopy() {
   const pilotId = mainFile.makeCopy(copyName).getId();
   if (pilotId === mainId) throw new Error('멈춤: 사본 ID가 본 폼과 같다. 아무것도 고치지 않았다.');
   const pilot = FormApp.openById(pilotId);
-  pilot.setTitle(PREFIX + mainTitle);
+  // 본 폼 제목 칸이 비어 있으면 사본도 비워 둔다. 그래야 응답자 화면 제목이 사본 문서 이름(PREFIX + 본 폼 문서 이름)으로 뜬다.
+  // 빈 칸에 PREFIX만 넣으면 화면 제목이 "[파일럿] "로만 보인다(11/12 대조에서 찾음)
+  if (mainTitle) pilot.setTitle(PREFIX + mainTitle);
   // 여기서부터 생기는 문제는 전부 모아서 마지막에 "검사 통과" 여부를 정한다
   const problems = [];
 
@@ -122,7 +126,9 @@ function createPilotCopy() {
   diffItems(mainItems, describeForm(pilot)).forEach(function (d) { problems.push('사본 문항이 본 폼과 다름: ' + d); });
   const pilotSettings = describeSettings(pilot);
   diffSettings(mainSettings, pilotSettings, Object.keys(mainSettings)).forEach(function (d) { problems.push('사본 설정이 본 폼과 다름: ' + d); });
-  if (pilot.getTitle() !== PREFIX + mainTitle) problems.push('사본 제목이 이상하다: ' + pilot.getTitle());
+  // 제목 칸끼리가 아니라 응답자 화면에 보이는 제목끼리 비교한다(둘 다 빈 칸이면 칸끼리는 같아 보인다)
+  const pilotShown = pilot.getTitle() || DriveApp.getFileById(pilotId).getName();
+  if (pilotShown !== PREFIX + mainShown) problems.push('사본 화면 제목이 "' + PREFIX + '" + 본 폼 화면 제목이 아니다: ' + pilotShown);
   if (pilot.getResponses().length !== 0) problems.push('사본 응답이 0건이 아니다');
   if (destinationOf(pilot)) problems.push('사본에 응답 시트가 아직 연결돼 있다');
   if (!pilot.isPublished() || !pilot.isAcceptingResponses()) problems.push('사본이 게시되지 않았거나 응답을 안 받는다');
