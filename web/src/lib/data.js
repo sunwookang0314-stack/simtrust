@@ -84,6 +84,12 @@ export function loadAll() {
   return cache;
 }
 
+// ② AI 다수결 망 (11/11 확정): 사람이 안 말한 이유 중 AI 답의 이 비율 이상에서 나온 것은
+// "사람에게 확인할 후보"로 따로 보여준다. 판정 점수에는 안 넣는다. 값은 개념 애니메이션(답 30개 중 10개)과 같다
+export const MAJORITY_SHARE = 1 / 3;
+export const isCandidate = r =>
+  r.type === "ai_reason" && r.passed !== "Y" && r.ai_episodes_with_code / r.ai_episodes >= MAJORITY_SHARE;
+
 export const cellOf = (model, service, feature, kind) =>
   model.cells.find(c => c.service === service && c.feature_id === feature && c.kind === kind);
 

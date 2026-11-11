@@ -22,10 +22,10 @@ export function MetricBar({ label, value, sub }) {
 }
 
 /** 이유 칩. passed = 사람도 말함(거름망 통과), missed = 사람만 말함(AI가 놓침) */
-export function ReasonChip({ reason }) {
+export function ReasonChip({ reason, cand = false }) {
   const missed = reason.type === "missed";
   const passed = reason.passed === "Y";
-  const cls = missed ? "missed" : passed ? "pass" : "stuck";
+  const cls = missed ? "missed" : passed ? "pass" : cand ? "cand" : "stuck";
   return (
     <li className={`rchip ${cls}`} title={reason.basis}>
       <span className="nm">

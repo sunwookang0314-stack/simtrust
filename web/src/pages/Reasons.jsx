@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { CellPicker, MetricBar, ReasonChip, SampleTag, VerdictBadge } from "../components/ui.jsx";
 import { useCellParams } from "../lib/params.js";
 import SieveStage from "../components/SieveStage.jsx";
-import { FEATURES, KINDS, SERVICES, cellOf, loadAll, reasonsOf } from "../lib/data.js";
+import { FEATURES, KINDS, SERVICES, cellOf, isCandidate, loadAll, reasonsOf } from "../lib/data.js";
 import { VERDICT_STYLE } from "../lib/verdict.js";
 
 const byCount = (a, b) => b.ai_episodes_with_code - a.ai_episodes_with_code || b.human_count - a.human_count;
@@ -12,7 +12,8 @@ function ModelColumn({ model, params }) {
   const cell = cellOf(model, params.service, params.feature, params.kind);
   const rs = reasonsOf(model, params.service, params.feature, params.kind);
   const passed = rs.filter(r => r.type === "ai_reason" && r.passed === "Y").sort(byCount);
-  const stuck = rs.filter(r => r.type === "ai_reason" && r.passed !== "Y").sort(byCount);
+  const cand = rs.filter(isCandidate).sort(byCount);
+  const stuck = rs.filter(r => r.type === "ai_reason" && r.passed !== "Y" && !isCandidate(r)).sort(byCount);
   const missed = rs.filter(r => r.type === "missed").sort((a, b) => b.human_count - a.human_count);
   if (!cell) return <section className="mcol empty"><h3>{model.name}</h3><p>이 칸에는 결과가 없어요</p></section>;
   return (
@@ -29,14 +30,18 @@ function ModelColumn({ model, params }) {
       <p className="basis">AI 답 {cell.ai_episodes}개 · 응답자 {cell.n_humans}명과 비교</p>
 
       <div className="sieve-flow">
-        <h4>AI가 말한 이유 {passed.length + stuck.length}개</h4>
+        <h4>AI가 말한 이유 {passed.length + cand.length + stuck.length}개</h4>
         <div className="group">
           <span className="glab pass">사람도 말함 · 통과 {passed.length}</span>
           <ul>{passed.map(r => <ReasonChip key={r.code} reason={r} />)}</ul>
         </div>
         <div className="mesh" aria-hidden="true" />
         <div className="group">
-          <span className="glab stuck">사람은 안 말함 · 걸림 {stuck.length}</span>
+          <span className="glab cand">② 다수결 · 사람에게 확인할 후보 {cand.length}</span>
+          {cand.length ? <ul>{cand.map(r => <ReasonChip key={r.code} reason={r} cand />)}</ul> : <p className="none">없음</p>}
+        </div>
+        <div className="group">
+          <span className="glab stuck">사람도 안 말하고 적게 나옴 · 버림 {stuck.length}</span>
           {stuck.length ? <ul>{stuck.map(r => <ReasonChip key={r.code} reason={r} />)}</ul> : <p className="none">없음</p>}
         </div>
         <div className="group">
