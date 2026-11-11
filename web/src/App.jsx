@@ -1,6 +1,7 @@
 import { NavLink, Outlet, Route, Routes } from "react-router-dom";
 import Home from "./pages/Home.jsx";
-import Input from "./pages/Input.jsx";
+import Service from "./pages/Service.jsx";
+import Mvp from "./pages/Mvp.jsx";
 import Ask from "./pages/Ask.jsx";
 import Extract from "./pages/Extract.jsx";
 import Coding from "./pages/Coding.jsx";
@@ -9,7 +10,7 @@ import TrustMap from "./pages/TrustMap.jsx";
 
 import { STEPS } from "./lib/steps.js";
 
-const PAGES = { input: <Input />, ask: <Ask />, extract: <Extract />, coding: <Coding />, reasons: <Reasons />, map: <TrustMap /> };
+const PAGES = { service: <Service />, mvp: <Mvp />, ask: <Ask />, extract: <Extract />, coding: <Coding />, reasons: <Reasons />, map: <TrustMap /> };
 
 function Layout() {
   return (
@@ -20,7 +21,7 @@ function Layout() {
           <nav aria-label="단계">
             {STEPS.map(s => (
               <NavLink key={s.path} to={s.path} className={({ isActive }) => (isActive ? "on" : "")}>
-                <b>{s.no}</b>{s.name}{!s.ready && <small>틀</small>}
+                <b>{s.no}</b>{s.name}{s.preview ? <small>미리보기</small> : !s.ready && <small>틀</small>}
               </NavLink>
             ))}
           </nav>

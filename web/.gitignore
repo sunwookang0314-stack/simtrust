@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# 링커리어·캠퍼스픽 실제 캡처는 비공개 (TRD SEC-12). 발표 때 이 폴더에만 넣고 커밋하지 않는다
+public/captures/

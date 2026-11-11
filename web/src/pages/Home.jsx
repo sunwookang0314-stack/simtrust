@@ -13,7 +13,7 @@ export default function Home() {
         <h1>AI 가상 사용자가 말한 이유,<br />믿어도 될까요?</h1>
         <p>서비스 화면을 AI에게 보여 주고 기능마다 쓸 이유와 안 쓸 이유를 물어요. 그 답을 실제 대학생 설문과 비교해서, 어떤 이유를 믿어도 되는지 판정해 드려요.</p>
         <div className="cta">
-          <Link className="btn pri" to="/input">검사 시작</Link>
+          <Link className="btn pri" to="/service">벤치마크 검증 시작</Link>
           <Link className="btn" to="/map">결과 예시 보기</Link>
           <a className="btn ghost" href={CONCEPT_URL} target="_blank" rel="noreferrer">어떻게 판정하나요? ↗</a>
         </div>
@@ -23,7 +23,7 @@ export default function Home() {
           <li key={s.path}>
             <Link to={`/${s.path}`}>
               <b>{s.no}</b><span>{s.name}</span>
-              <small>{s.ready ? "가짜 견본 데이터로 동작" : "화면 틀"}</small>
+              <small>{s.preview ? "다음 학기 · 미리보기" : s.ready ? "동작 (견본·예시)" : "화면 틀"}</small>
             </Link>
           </li>
         ))}

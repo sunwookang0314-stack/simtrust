@@ -104,7 +104,7 @@ button{font:inherit;cursor:pointer}
 .btn{height:46px;padding:0 20px;border-radius:12px;display:inline-flex;align-items:center;font-weight:700;background:#fff;box-shadow:0 0 0 1px var(--g200)}
 .btn.pri{background:var(--b500);color:#fff;box-shadow:none}
 .btn.ghost{background:transparent;box-shadow:none;color:var(--b600)}
-.flow{list-style:none;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-top:40px}
+.flow{list-style:none;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;margin-top:40px}
 .flow a{display:block;padding:16px;border-radius:14px;background:#fff;box-shadow:0 0 0 1px var(--g200);height:100%}
 .flow b{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--b50);color:var(--b600);font-size:13px}
 .flow span{display:block;margin-top:10px;font-weight:700}
@@ -200,3 +200,79 @@ button{font:inherit;cursor:pointer}
 .rchip.cand{background:#fff;color:var(--b700);outline:1.5px dashed var(--b500);outline-offset:-1.5px}
 .glab.cand{color:var(--b700)}
 .c-cand{color:var(--b700)}
+
+/* 화면 1: 서비스 고르기 */
+.svc-info{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:14px;color:var(--g700)}
+.svc-info .sample{margin-left:0}
+.shots{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:18px}
+.shots figure{margin:0}
+.shots figcaption{margin-top:10px;font-size:14px;font-weight:700;display:flex;gap:6px}
+.shots figcaption b{color:var(--b600)}
+.next{display:flex;justify-content:flex-end;align-items:center;gap:14px;margin-top:22px}
+code{font-size:12px;background:var(--g100);padding:1px 5px;border-radius:4px}
+
+/* 기능 화면 한 장 (실제 캡처 또는 그린 화면) */
+.shotbox{border-radius:16px;background:#fff;box-shadow:0 0 0 1px var(--g200),0 8px 22px rgba(0,0,0,.06);overflow:hidden;aspect-ratio:9/14}
+.shotbox img{width:100%;height:calc(100% - 26px);object-fit:cover;object-position:top;display:block}
+.sbar{height:26px;background:var(--g100);display:flex;align-items:center;gap:5px;padding:0 10px;font-size:11px;color:var(--g600)}
+.sbar i{width:7px;height:7px;border-radius:50%;background:var(--g300)}
+.sbar span{margin-left:6px}
+.wire{padding:14px;display:flex;flex-direction:column;gap:9px;font-size:12px}
+.wire>b{font-size:15px;padding-bottom:6px;border-bottom:3px solid var(--svc)}
+.wl{height:8px;border-radius:4px;background:var(--g100)}
+.wsearch{height:34px;border-radius:10px;background:var(--g100);display:flex;align-items:center;padding:0 12px;color:var(--g500)}
+.wchips{display:flex;flex-wrap:wrap;gap:5px}
+.wchips span{padding:4px 8px;border-radius:12px;box-shadow:inset 0 0 0 1px var(--g300);color:var(--g700);font-size:11px}
+.wcard{padding:10px;border-radius:10px;background:var(--g50);display:flex;flex-direction:column;gap:6px}
+.wcard.row{flex-direction:row;justify-content:space-between;align-items:center;font-weight:600;color:var(--g800)}
+.bm{font-style:normal;color:var(--svc)}
+.whl{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px;border-radius:12px;box-shadow:0 0 0 2px var(--svc);font-weight:700}
+.whl small{display:block;font-weight:500;color:var(--g600);margin-top:3px}
+.tg{flex:none;width:34px;height:20px;border-radius:10px;background:var(--svc);position:relative}
+.tg:after{content:"";position:absolute;right:3px;top:3px;width:14px;height:14px;border-radius:50%;background:#fff}
+.wcar{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.wcar div{height:70px;border-radius:10px;background:var(--g50);padding:8px;display:flex;flex-direction:column;justify-content:flex-end;gap:5px;box-shadow:inset 0 3px 0 var(--svc)}
+.shotbox.small{aspect-ratio:auto;height:118px}
+.shotbox.small .wire{transform:scale(.62);transform-origin:0 0;width:161%}
+
+/* 화면 2: AI에게 묻기 */
+.ask-top{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap}
+.askflow{display:grid;grid-template-columns:140px minmax(0,.9fr) minmax(0,2.1fr);gap:18px;margin-top:18px;align-items:start}
+.askflow h4{font-size:13px;color:var(--g600);margin-bottom:8px}
+.acaps{display:flex;flex-direction:column;gap:8px}
+.acaps.send .shotbox{box-shadow:0 0 0 2px var(--b500),0 8px 22px rgba(49,130,246,.25);transition:box-shadow .3s}
+.aq{position:sticky;top:80px;background:#fff;border-radius:16px;padding:16px;box-shadow:0 0 0 1px var(--g200)}
+.qsteps{list-style:none;display:flex;gap:6px;margin-bottom:10px}
+.qsteps li{font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;background:var(--g100);color:var(--g500)}
+.qsteps li.on{background:var(--b500);color:#fff}
+.qsteps li.done{background:var(--b50);color:var(--b700)}
+.qtext{white-space:pre-wrap;font-family:inherit;font-size:13px;line-height:1.6;color:var(--g500);background:var(--g50);border-radius:10px;padding:12px;min-height:150px;transition:color .3s}
+.qtext.on{color:var(--g900)}
+.pipe{display:flex;gap:10px;justify-content:flex-end;margin-top:12px;height:10px}
+.pipe i{width:10px;height:10px;border-radius:50%;background:var(--g200)}
+.pipe.go i{animation:flow 1s infinite;background:var(--b500)}
+.pipe.go i:nth-child(2){animation-delay:.15s}.pipe.go i:nth-child(3){animation-delay:.3s}.pipe.go i:nth-child(4){animation-delay:.45s}
+@keyframes flow{0%{opacity:.2;transform:translateX(-8px)}50%{opacity:1}100%{opacity:.2;transform:translateX(8px)}}
+.aais{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.aicard{background:#fff;border-radius:16px;padding:14px;box-shadow:0 0 0 1px var(--g200);min-height:150px;transition:box-shadow .3s}
+.aicard.think{box-shadow:0 0 0 2px var(--b300)}
+.aicard header{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px;margin-bottom:8px}
+.aicard header b{font-size:17px}
+.aicard header small{font-size:11px;color:var(--g600)}
+.aicard header em{margin-left:auto;font-style:normal;font-size:11px;color:var(--b600);animation:blinkt 1s infinite}
+@keyframes blinkt{50%{opacity:.3}}
+.ausel{display:flex;flex-direction:column;gap:4px;animation:pop .4s}
+.ausel span{display:flex;justify-content:space-between;font-size:12px;padding:4px 8px;border-radius:8px}
+.ausel .u{background:var(--b50);color:var(--b700)}
+.ausel .n{background:var(--g100);color:var(--g600)}
+.abub{margin-top:8px;font-size:12px;line-height:1.55;padding:8px 10px;border-radius:12px 12px 12px 4px;background:var(--g50);box-shadow:0 0 0 1px var(--g200);animation:pop .4s}
+.aopt{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;animation:pop .4s}
+.aopt span{font-size:11px;padding:3px 7px;border-radius:6px;background:var(--g100);color:var(--g700)}
+@keyframes pop{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.aicard.persona{grid-column:1/-1}
+.pdots{display:grid;grid-template-columns:repeat(10,18px);gap:6px;margin:4px 0 10px}
+.pdots i{width:18px;height:18px;border-radius:50%;background:var(--b50);box-shadow:inset 0 0 0 1.5px var(--b300);transition:background .3s}
+.pdots i.jo{box-shadow:inset 0 0 0 1.5px var(--b500)}
+.pdots i.on{background:var(--b500)}
+@media (max-width:1000px){.askflow{grid-template-columns:1fr}.acaps{flex-direction:row;overflow-x:auto}.acaps .shotbox{min-width:110px}.aq{position:static}.shots{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (prefers-reduced-motion:reduce){.pipe.go i,.aicard header em,.ausel,.abub,.aopt{animation:none}}

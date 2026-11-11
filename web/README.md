@@ -11,15 +11,18 @@ npm run build    # dist/ (상대 경로라 GitHub Pages 하위 폴더에서도 �
 ```
 
 ## 화면
+1~6은 벤치마크 검증(이번 학기 본편), 7은 새 MVP 점검(학기 범위 밖, 미리보기)이다.
+
 | 주소 | 화면 | 상태 |
 |---|---|---|
 | `#/` | 0 메인 | 디자인 |
-| `#/input` | 1 검사할 화면 넣기 | 틀 (#32 입력 방식 대기) |
-| `#/ask` | 2 AI 셋에게 묻기 | 틀 |
-| `#/extract` | 3 답 → 이유 추출 | 틀 |
-| `#/coding` | 4 코드 붙이기 | 틀 (데모 방식 대기) |
-| `#/reasons?service=&feature=&kind=` | 5 이유별 판정 (AI 셋 나란히) | 가짜 견본으로 동작 |
+| `#/service?service=&platform=` | 1 서비스 고르기 (링커리어·캠퍼스픽, 앱·웹, 기능 4개 화면) | 그린 화면. `public/captures/`에 실제 캡처를 넣으면 그걸 띄움 (비공개, 커밋 안 됨) |
+| `#/ask?service=&platform=` | 2 AI에게 묻기 (GPT·Claude·Gemini + AI+페르소나) | 장면 동작, 답은 지어낸 예시 |
+| `#/extract` | 3 이유 뽑기 | 틀 |
+| `#/coding` | 4 코드 붙이기 | 틀 |
+| `#/reasons?service=&feature=&kind=&ai=` | 5 거름망 (① 사람 설문, ② 다수결) | 가짜 견본으로 동작 |
 | `#/map?service=&kind=` | 6 신뢰도 지도 | 가짜 견본으로 동작 |
+| `#/mvp` | 7 새 MVP 점검 | 미리보기 틀 (#32 대기) |
 
 ## 데이터
 - `public/data/sample/`: 판정 계산기(`scripts/score_reasons.py`) 출력 형식의 가짜 견본 (`experiments/demo_sample/out/`, 김민우)
