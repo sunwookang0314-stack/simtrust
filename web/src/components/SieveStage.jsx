@@ -6,10 +6,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { cellOf, isCandidate, reasonsOf } from "../lib/data.js";
+import { PERSONAS, REPEATS } from "../lib/personas.js";
 import { VerdictBadge } from "./ui.jsx";
 
 const W = 1200, H = 470;              // 무대 좌표. 화면 폭에 맞춰 줄이고 키운다
-const AI_ROWS = [64, 118], MESH_Y = 250, REST_Y = 204;
+const AI_ROWS = [86, 134], MESH_Y = 250, REST_Y = 204;
 const SIEVE1_R = 900, S2X = 1050;      // ① 사람 거름망은 왼쪽(40~900), ② 다수결 망은 오른쪽 가운데 S2X
 const passY = i => (i % 2 ? 386 : 340);   // 통과한 칩은 두 줄로 엇갈려 겹치지 않게
 // 단계: 0 칩 등장 → 1 통과할 칩이 구멍 위로 → 2 통과 → 3 나머지가 ① 망에 걸림
@@ -94,7 +95,7 @@ export default function SieveStage({ models, params }) {
         <div className="seg" role="group" aria-label="AI 고르기">
           {models.map(m => (
             <button key={m.id} className={m.id === pick ? "on" : ""} aria-pressed={m.id === pick}
-                    onClick={() => setPick(m.id)}>{m.name}<small> {m.seat}</small></button>
+                    onClick={() => setPick(m.id)}>{m.name}<small> {m.persona ? "본실험" : "페르소나 없음"}</small></button>
           ))}
         </div>
         <div className={`stage-sum${phase >= LAST ? " on" : ""}`} aria-live="polite">
@@ -107,8 +108,18 @@ export default function SieveStage({ models, params }) {
       <div className="stage-box" ref={box} style={{ height: H * scale }}>
         <div className="stage" style={{ width: W, height: H, transform: `scale(${scale})` }}>
           <div className="zone za" style={{ left: 0, top: 0, width: W, height: 170 }}>
-            <span className="ztag a">AI 답 {cell.ai_episodes}개에서 나온 이유 {ai.length}개</span>
+            <span className="ztag a">{model.name} 답 {cell.ai_episodes}개에서 나온 이유 {ai.length}개</span>
           </div>
+          {model.persona && (
+            <div className="pstrip" style={{ left: 1004, top: 8 }} aria-label="페르소나 10명 × 3번">
+              {Array.from({ length: PERSONAS.length * REPEATS }, (_, i) => {
+                const p = PERSONAS[i % PERSONAS.length];
+                return <i key={i} className={`${p.job ? "jo" : ""}${phase >= 0 ? " on" : ""}`} style={{ transitionDelay: `${i * 20}ms` }}
+                          title={`${p.n} ${p.a}세 · ${p.job ? "취준생" : "재학생"} · ${Math.floor(i / PERSONAS.length) + 1}회차`} />;
+              })}
+              <small>페르소나 {PERSONAS.length}명 × {REPEATS}번</small>
+            </div>
+          )}
           <div className="zone zh" style={{ left: 0, top: 184, width: SIEVE1_R + 16, height: H - 184 }}>
             <span className="ztag h bottom">① 응답자 {cell.n_humans}명이 말한 이유 {holes.length}개 = 거름망 구멍</span>
           </div>

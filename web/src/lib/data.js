@@ -3,12 +3,17 @@
 
 const DATA_DIR = `${import.meta.env.BASE_URL}data/sample/`;
 
-// 기말 데모(#35)의 세 AI 자리. 견본은 model_a/b/c라 이름만 붙여 둔다
+// 검증받는 AI 4개 (11/11 구조 확정)
+// - GPT·Claude·Gemini: 페르소나 없이 같은 질문 (조건 0, #35)
+// - 페르소나 AI: 바탕 모델(셋 중 하나, 팀 결정 대기)에 페르소나 10명 × 3번 (본실험)
+// 넷 다 같은 추출·코드북·사람 데이터로 판정한다. 견본은 model_a/b/c와 페르소나 자리표시(model_a 복사)
 export const MODELS = [
-  { id: "model_a", name: "AI A", seat: "GPT 자리", note: "사람 같은 모델 (가짜)" },
-  { id: "model_b", name: "AI B", seat: "Claude 자리", note: "반만 맞는 모델 (가짜)" },
-  { id: "model_c", name: "AI C", seat: "Gemini 자리", note: "공통 이유만 말하는 모델 (가짜)" },
+  { id: "model_a", name: "GPT", seat: "페르소나 없음", note: "가짜 견본 (사람 같은 모델)" },
+  { id: "model_b", name: "Claude", seat: "페르소나 없음", note: "가짜 견본 (반만 맞는 모델)" },
+  { id: "model_c", name: "Gemini", seat: "페르소나 없음", note: "가짜 견본 (공통 이유만 말하는 모델)" },
+  { id: "persona", name: "페르소나 AI", seat: "바탕 모델 + 페르소나 10명 × 3번", note: "자리표시 견본 (model_a 복사)", persona: true },
 ];
+export const BASE_MODELS = MODELS.filter(m => !m.persona);
 
 // 폼 B v2 4-3 행 (docs/ai-protocol/features.txt)
 export const FEATURES = [

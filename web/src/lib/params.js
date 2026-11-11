@@ -1,5 +1,5 @@
 import { useSearchParams } from "react-router-dom";
-import { FEATURES, KINDS, SERVICES } from "./data.js";
+import { BASE_MODELS, FEATURES, KINDS, SERVICES } from "./data.js";
 import { PLATFORMS } from "./services.js";
 
 export const PARAMS = {
@@ -8,6 +8,14 @@ export const PARAMS = {
   kind: { list: KINDS, def: "nouse", label: "이유" },
   platform: { list: PLATFORMS, def: "app", label: "플랫폼" },
 };
+
+/** 페르소나를 씌울 바탕 모델 (팀 결정 대기). 주소 ?base=model_a 에 남긴다 */
+export function useBaseModel() {
+  const [sp, setSp] = useSearchParams();
+  const base = BASE_MODELS.some(m => m.id === sp.get("base")) ? sp.get("base") : BASE_MODELS[0].id;
+  const set = id => { const n = new URLSearchParams(sp); n.set("base", id); setSp(n, { replace: true }); };
+  return [base, set];
+}
 
 /** 서비스·기능·이유 종류를 주소(?service=…)에 담는다. 화면 6에서 칸을 누르면 그대로 화면 5로 넘어온다 */
 export function useCellParams() {

@@ -17,7 +17,7 @@ function ModelColumn({ model, params }) {
   const missed = rs.filter(r => r.type === "missed").sort((a, b) => b.human_count - a.human_count);
   if (!cell) return <section className="mcol empty"><h3>{model.name}</h3><p>이 칸에는 결과가 없어요</p></section>;
   return (
-    <section className="mcol">
+    <section className={`mcol${model.persona ? " persona" : ""}`}>
       <header>
         <div>
           <h3>{model.name}</h3>
@@ -65,7 +65,7 @@ export default function Reasons() {
     const vs = models.map(m => [m.name, cellOf(m, params.service, params.feature, params.kind)?.verdict]).filter(x => x[1]);
     const best = Math.min(...vs.map(([, v]) => VERDICT_STYLE[v]?.rank ?? 9));
     const top = vs.filter(([, v]) => (VERDICT_STYLE[v]?.rank ?? 9) === best);
-    const who = top.length === vs.length ? "AI 셋 모두" : top.map(x => x[0]).join("·");
+    const who = top.length === vs.length ? "AI 넷 모두" : top.map(x => x[0]).join("·");
     headline = best === 0 ? `${label("feature")}의 ${label("kind")}는 ${who} 말을 믿고 써도 돼요`
       : best === 1 ? `${label("feature")}의 ${label("kind")}는 ${who} 말을 참고할 만해요`
       : `${label("feature")}의 ${label("kind")}는 ${who} 아직 사람에게 물어봐야 해요`;
@@ -74,9 +74,9 @@ export default function Reasons() {
   return (
     <div className="page">
       <div className="phead">
-        <span className="no">5 · 이유별 판정</span><SampleTag />
+        <span className="no">5 · 거름망</span><SampleTag />
         <h1>{headline || "불러오는 중"}</h1>
-        <p>같은 캡처와 질문에 AI 셋이 답한 이유를 {label("service")} 응답자 데이터로 걸렀어요. 통과율·재현율이 높아도, 사람끼리 잰 범위에 못 들거나 "아무 기능에나 할 말"과 구별이 안 되면 사람에게 물어봐요.</p>
+        <p>같은 캡처와 질문에 AI 넷(페르소나 없는 모델 3개와 페르소나 AI)이 답한 이유를 {label("service")} 응답자 데이터로 걸렀어요. 통과율·재현율이 높아도, 사람끼리 잰 범위에 못 들거나 "아무 기능에나 할 말"과 구별이 안 되면 사람에게 물어봐요.</p>
       </div>
       <CellPicker params={params} />
       {err && <p className="err">{err}</p>}

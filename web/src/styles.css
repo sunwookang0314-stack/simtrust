@@ -58,7 +58,7 @@ button{font:inherit;cursor:pointer}
 .mbar.lo strong{color:var(--g600)}
 
 /* 화면 5: AI 셋 나란히 */
-.mcols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:20px}
+.mcols{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:20px}
 .mcol{background:var(--card);border-radius:18px;padding:20px;box-shadow:0 0 0 1px var(--g200)}
 .mcol.empty{color:var(--g600)}
 .mcol header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:6px}
@@ -314,3 +314,22 @@ code{font-size:12px;background:var(--g100);padding:1px 5px;border-radius:4px}
 .cb p{font-size:12px;color:var(--g600);margin-top:4px;line-height:1.5}
 @media (max-width:1000px){.xrow{grid-template-columns:1fr}.xarrow{transform:rotate(90deg)}.cgrid{grid-template-columns:1fr}.cbook{position:static}}
 @media (prefers-reduced-motion:reduce){.xlines li{animation:none}}
+
+/* 페르소나 AI: 거름망 AI 영역의 원 30개 */
+.pstrip{display:grid;grid-template-columns:repeat(10,14px);gap:4px}
+.pstrip i{width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:inset 0 0 0 1.5px var(--b300);transition:background .3s}
+.pstrip i.jo{box-shadow:inset 0 0 0 1.5px var(--b500)}
+.pstrip i.on{background:var(--b200)}
+.pstrip small{grid-column:1/-1;font-size:11px;color:var(--b700);font-weight:600;text-align:right}
+.mcol.persona{box-shadow:0 0 0 2px var(--b300)}
+
+/* 화면 2: 두 묶음 */
+.aais>.agrp{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:14px;color:var(--g900);margin:4px 0 -2px}
+.aais>.agrp small{font-size:12px;font-weight:500;color:var(--g600)}
+.aais>.agrp:not(:first-child){margin-top:10px;padding-top:12px;border-top:1px dashed var(--g300)}
+.seg.base button{height:28px;padding:0 10px;font-size:12px}
+/* 화면 6: 바탕 모델 열과 페르소나 열 표시 */
+.map .mh.bz{color:var(--g900)}
+.map .mh.pz{color:var(--b700)}
+.effect{margin-top:10px!important;font-size:15px!important;color:var(--g800)!important}
+.effect b{color:var(--b600)}

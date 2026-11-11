@@ -53,7 +53,7 @@ export const AIS = [
 
 // AI + 페르소나 (본실험 조건 2)는 답 30개 중 한 개만 예시로 보여준다
 export const PERSONA_EXAMPLE = {
-  id: "persona", name: "AI + 페르소나", sub: "조건 2 · 답 30개 중 1개", who: "황민정(22세, 재학생) 1회차",
+  id: "persona", name: "페르소나 AI", sub: "바탕 모델 + 페르소나 · 답 30개 중 1개", who: "황민정(22세, 재학생) 1회차",
   why: { feature: "F3", text: "마감 알림: 스크랩한 인턴 공고를 놓치지 않으려고 쓸 것 같아요." },
   nouse: { F4: ["다른 앱이나 방법으로 해결해서"] },
   masked: [],

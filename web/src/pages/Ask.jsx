@@ -6,7 +6,8 @@ import { Link } from "react-router-dom";
 import Shot from "../components/Shot.jsx";
 import { CellPicker } from "../components/ui.jsx";
 import { FEATURES, SERVICES } from "../lib/data.js";
-import { useCellParams } from "../lib/params.js";
+import { useBaseModel, useCellParams } from "../lib/params.js";
+import { BASE_MODELS } from "../lib/data.js";
 import { PERSONAS, REPEATS } from "../lib/personas.js";
 import { AIS, OPTIONS_46, PERSONA_EXAMPLE, fname } from "../lib/examples.js";
 
@@ -51,6 +52,8 @@ function Answer({ ai, phase }) {
 
 export default function Ask() {
   const params = useCellParams();
+  const [base, setBase] = useBaseModel();
+  const baseName = BASE_MODELS.find(m => m.id === base).name;
   const [run, setRun] = useState(0);
   const phase = useTimeline([params.service, params.platform, run]);
   const q = phase < 1 ? -1 : Math.min(Math.floor((phase - 1) / 2), QUESTIONS.length - 1);
@@ -85,14 +88,22 @@ export default function Ask() {
         </div>
 
         <div className="aais">
+          <h4 className="agrp">① 페르소나 없이 묻기 <small>모델 3개 · 조건 0 · 기말 데모 #35</small></h4>
           {AIS.map(ai => (
             <div key={ai.id} className={`aicard${thinking ? " think" : ""}`}>
               <header><b>{ai.name}</b><small>{ai.sub}</small>{thinking && <em>읽는 중…</em>}</header>
               <Answer ai={ai} phase={phase} />
             </div>
           ))}
+          <h4 className="agrp">② 페르소나를 씌워 묻기 <small>본실험 · 조건 2</small>
+            <span className="seg base" role="group" aria-label="바탕 모델">
+              {BASE_MODELS.map(m => <button key={m.id} className={m.id === base ? "on" : ""} aria-pressed={m.id === base}
+                                            onClick={() => setBase(m.id)}>{m.name}</button>)}
+            </span>
+            <small>바탕 모델 (팀 결정 대기)</small>
+          </h4>
           <div className={`aicard persona${thinking ? " think" : ""}`}>
-            <header><b>AI + 페르소나</b><small>본실험 · 조건 2 · {PERSONAS.length}명 × {REPEATS}번</small>{thinking && <em>읽는 중…</em>}</header>
+            <header><b>{baseName} + 페르소나</b><small>가상 대학생 {PERSONAS.length}명 × {REPEATS}번 = 답 {N_ANS}개</small>{thinking && <em>읽는 중…</em>}</header>
             <div className="pdots">
               {Array.from({ length: N_ANS }, (_, i) => {
                 const p = PERSONAS[i % PERSONAS.length];
@@ -111,7 +122,7 @@ export default function Ask() {
       </div>
 
       <div className="next">
-        <span className="basis">다음 단계에서 이 답들에서 이유만 뽑아요</span>
+        <span className="basis">①과 ② 답 모두 같은 기준으로 이유를 뽑아요. {baseName} 그냥(①)과 {baseName}+페르소나(②)를 나중에 견줘서 페르소나 효과를 봐요</span>
         <Link className="btn pri" to="/extract">이유 뽑으러 가기 →</Link>
       </div>
     </div>
