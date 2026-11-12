@@ -156,8 +156,15 @@ class FakeAPI:
         return ChatCompletion.model_validate({
             "id": f"fake-{self.calls}", "object": "chat.completion", "created": 0, "model": model,
             "choices": [{"index": 0, "finish_reason": finish, "message": {"role": "assistant", "content": content}}],
-            "usage": {"prompt_tokens": 1000, "completion_tokens": 100, "total_tokens": 1100},
+            "usage": self.usage(),
         })
+
+    def usage(self):
+        u = {"prompt_tokens": 1000, "completion_tokens": 100, "total_tokens": 1100}
+        if self.mode == "prompt_cache" and self.calls > 1:
+            # OpenAI처럼 두 번째 요청부터 앞부분이 API 쪽 캐시에 걸렸다고 친다
+            u["prompt_tokens_details"] = {"cached_tokens": 600}
+        return u
 
 
 FAKE = FakeAPI()
@@ -401,6 +408,25 @@ class TestRunSimulation(unittest.TestCase):
         self.assertEqual([x["answers"] for x in first], [x["answers"] for x in second])
         summary = last_summary("cache_again")
         self.assertEqual((summary["calls_real"], summary["calls_cached"]), (0, calls_first))
+
+    def test_provider_prompt_cache_tokens_are_recorded(self):
+        # API 쪽 프롬프트 캐시로 싸게 매겨진 입력 토큰을 에피소드 기록과 요약에 남긴다. 비용을 실제로 재려고 넣었다
+        FAKE.reset("prompt_cache")
+        cfg = write_cfg("pcache")
+        code, log = run(*args(cfg))
+        self.assertEqual(code, 0, log)
+        calls = FAKE.calls
+        meta = read_metas("pcache")[0]
+        self.assertEqual((meta["tokens_in"], meta["tokens_in_cached"]), (1000 * calls, 600 * (calls - 1)))
+        summary = last_summary("pcache")
+        self.assertEqual(summary["tokens_in_cached"], 600 * (calls - 1))
+        self.assertIn("입력 중 캐시", log)
+        # 캐시 정보가 없는 응답은 0으로 센다
+        FAKE.reset()
+        cfg2 = write_cfg("pcache_none")
+        code, log = run(*args(cfg2))
+        self.assertEqual(code, 0, log)
+        self.assertEqual(read_metas("pcache_none")[0]["tokens_in_cached"], 0)
 
     def test_retry_keeps_cache_key(self):
         # 11/9 김승하 #37 리뷰: 재시도하면 TinyTroupe가 같은 dict로 캐시 키를 다시 만드는데, 앞 시도에서 dict가
