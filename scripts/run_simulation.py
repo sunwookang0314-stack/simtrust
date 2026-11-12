@@ -517,6 +517,7 @@ def _new_counts():
         "calls_real": 0,  # 실제 API 호출 (돈이 드는 것)
         "calls_cached": 0,  # 캐시에서 나온 응답
         "tokens_in": 0,
+        "tokens_in_cached": 0,  # 입력 중 API 쪽 프롬프트 캐시로 싸게 매겨진 토큰 (usage.prompt_tokens_details)
         "tokens_out": 0,
         "messages": 0,  # send_message 결과 수 (재시도 포함)
         "empty": 0,  # 그중 빈 응답 또는 실패(None)
@@ -544,6 +545,17 @@ class RunState:
 
 _STATE = None
 _GUARDS_INSTALLED = False
+
+
+def provider_cached_tokens(usage) -> int:
+    """입력 중 API 쪽 프롬프트 캐시에서 나온 토큰. OpenAI와 Gemini 호환 주소는 usage.prompt_tokens_details.cached_tokens에
+    준다. 값이 없으면 0. TinyTroupe의 로컬 캐시(calls_cached)와는 다른 것이다. 이쪽은 API를 부르지만 입력값이 싸진다"""
+    details = getattr(usage, "prompt_tokens_details", None)
+    if isinstance(details, dict):
+        value = details.get("cached_tokens")
+    else:
+        value = getattr(details, "cached_tokens", None)
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
 
 
 def count_images(messages) -> int:
@@ -629,11 +641,13 @@ def install_guards():
         usage = getattr(response, "usage", None)
         tokens_in = getattr(usage, "prompt_tokens", 0) or 0
         tokens_out = getattr(usage, "completion_tokens", 0) or 0
+        tokens_cached = provider_cached_tokens(usage)
         if was_cached:
             st.add("calls_cached")
         else:
             st.add("calls_real")
             st.add("tokens_in", tokens_in)
+            st.add("tokens_in_cached", tokens_cached)
             st.add("tokens_out", tokens_out)
             st.tokens_used += tokens_in + tokens_out
         try:
@@ -956,6 +970,7 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
         "cache_file": _rel(cache_file, ctx["root"]) if cache_file else None,
         "max_completion_tokens": ctx["max_completion_tokens"],
         "tokens_in": st.episode["tokens_in"],
+        "tokens_in_cached": st.episode["tokens_in_cached"],
         "tokens_out": st.episode["tokens_out"],
         "elapsed_sec": elapsed,
         "status": status,
@@ -1062,6 +1077,7 @@ def summarize(ctx: dict, episodes: list, exit_code: int) -> dict:
         "calls_real": t["calls_real"],
         "calls_cached": t["calls_cached"],
         "tokens_in": t["tokens_in"],
+        "tokens_in_cached": t["tokens_in_cached"],
         "tokens_out": t["tokens_out"],
         "tokens_total": t["tokens_in"] + t["tokens_out"],
         "tokens_before": st.tokens_before,
@@ -1098,6 +1114,8 @@ def print_summary(s: dict) -> None:
           f" (이미 있어서 건너뜀 {s['episodes_skipped']})")
     print(f"  호출         : 실제 {s['calls_real']}회, 캐시 {s['calls_cached']}회")
     print(f"  토큰         : 이번 {s['tokens_total']:,} (입력 {s['tokens_in']:,} + 출력 {s['tokens_out']:,})")
+    cached_share = pct(s["tokens_in_cached"] / s["tokens_in"]) if s["tokens_in"] else "-"
+    print(f"  입력 중 캐시 : {s['tokens_in_cached']:,} ({cached_share}). API 쪽 프롬프트 캐시라 입력값이 싸게 매겨진다")
     print(f"  누적 토큰    : {s['tokens_cumulative']:,} / 상한 {s['token_cap']:,} (이전 실행 {s['tokens_before']:,})")
     print(f"  실패 비율    : {pct(s['failure_rate'])} (NFR-06 문턱 {FAILURE_RATE_LIMIT * 100:.0f}%)")
     print(f"  빈 응답 비율 : {pct(s['empty_rate'])}")
