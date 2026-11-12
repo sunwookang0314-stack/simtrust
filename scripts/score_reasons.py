@@ -36,6 +36,7 @@
 - metrics_{범위}_{시각}.json: 실행 기록, 규칙, 칸별 숫자와 판정, 요약
 - cells_{범위}_{시각}.csv: 칸 x 조건마다 한 줄
 - reasons_{범위}_{시각}.csv: AI가 말한 이유마다 "응답자 n명 중 m명" (기말 데모 거름망), 놓친 이유
+  ai_personas, ai_persona_ids는 그 이유를 말한 AI 사람 수와 번호(플랫폼:페르소나, 반복은 한 사람). 판정에는 안 쓴다
 
 화면에는 숫자만 찍는다.
 종료 코드: 0 정상, 1 입력 파일 없음·사용법, 4 입력 검증 실패 (이때는 아무것도 쓰지 않는다)
@@ -89,7 +90,8 @@ CELL_CSV = ["scope", "condition", "service", "platform", "feature_id", "kind", "
             "perm_p_dist", "perm_p_rank", "coverage", "coverage_need", "coverage_need_reliable",
             "human_equiv_n", "human_equiv_ai_size", "human_equiv_bound"]
 REASON_CSV = ["scope", "condition", "service", "platform", "feature_id", "kind", "type", "code", "name", "common",
-              "ai_episodes_with_code", "ai_episodes", "human_count", "n_humans", "passed", "basis"]
+              "ai_episodes_with_code", "ai_episodes", "human_count", "n_humans", "passed", "basis",
+              "ai_personas", "ai_persona_ids"]
 CODEBOOK_FIELDS = ["code", "scope"]
 SCOPE_WORDS = {"common": "common", "공통": "common", "feature": "feature", "기능": "feature",
                "other": "other", "기타": "other", "exclude": "exclude", "제외": "exclude"}
@@ -819,6 +821,7 @@ def score_cells(human: list, ai: list, rules: dict, keys: list, codebook: dict =
             cell["sensitivity"] = {name: judge(cell, rule) for name, rule in alts}
             cell["stability"] = stability(cond, key, groups, ai_codes, rules)
             cell["reasons"] = [{"code": c, "ai_episodes_with_code": len(aic["code_eps"][c]),
+                                "ai_personas": personas_with(aic, c),
                                 "human_count": human_count.get(c, 0),
                                 "common": (c in common) if codebook is not None else None,
                                 "passed": human_count.get(c, 0) >= rules["reason_min_humans"]}
@@ -949,6 +952,12 @@ def cell_row(c: dict) -> dict:
             "human_equiv_bound": he.get("bound") or ""}
 
 
+def personas_with(aic: dict, code: str) -> list:
+    """그 이유를 한 번이라도 말한 AI 사람 (플랫폼:페르소나). 반복 3회는 한 사람으로 센다. 화면에서 누가 말했는지 보여 주는 용도다"""
+    eps = aic["code_eps"][code]
+    return sorted(f"{plat}:{pid}" for (plat, _service, pid), runs in aic["persona_eps"].items() if runs & eps)
+
+
 def yn(flag) -> str:
     return "" if flag is None else ("Y" if flag else "N")
 
@@ -964,13 +973,15 @@ def reason_rows(c: dict, names: dict = None) -> list:
         rows.append({**common, "type": "ai_reason", "code": r["code"], "name": names.get(r["code"], ""),
                      "common": yn(r["common"]),
                      "ai_episodes_with_code": r["ai_episodes_with_code"], "human_count": r["human_count"],
-                     "passed": "Y" if r["passed"] else "N", "basis": basis})
+                     "passed": "Y" if r["passed"] else "N", "basis": basis,
+                     "ai_personas": len(r["ai_personas"]), "ai_persona_ids": ";".join(r["ai_personas"])})
     for r in c["missed"]:
         rows.append({**common, "type": "missed", "code": r["code"],
                      "name": names.get(r["code"].removesuffix(HUMAN_OTHER), ""),
                      "common": yn(r["common"]),
                      "ai_episodes_with_code": 0, "human_count": r["human_count"], "passed": "",
-                     "basis": f"응답자 {c['n_humans']}명 중 {r['human_count']}명이 말했는데 AI는 안 말함"})
+                     "basis": f"응답자 {c['n_humans']}명 중 {r['human_count']}명이 말했는데 AI는 안 말함",
+                     "ai_personas": 0, "ai_persona_ids": ""})
     return rows
 
 

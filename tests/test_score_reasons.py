@@ -469,6 +469,22 @@ class TestCLI(unittest.TestCase):
         self.assertIn("동결 전", log)
         self.assertNotIn("X", log.replace("x ", ""))  # 화면에는 코드를 안 찍는다
 
+    def test_reason_rows_list_ai_personas(self):
+        # 이유마다 그 이유를 말한 AI 사람(플랫폼:페르소나)을 적는다. 반복은 한 사람, 같은 번호라도 앱·웹은 다른 사람 (#44)
+        h = write("human_p.csv", HUMAN_HEAD, human_rows("F1", {f"H{i}": ["A"] for i in range(5)}))
+        ai = []
+        for run_id, plat, pid, codes in (("r1", "app", "P01", ["A"]), ("r2", "app", "P01", ["A"]),
+                                         ("r3", "web", "P01", ["A"]), ("r4", "app", "P02", ["B"])):
+            ai += [{**row, "persona_id": pid} for row in ai_rows("F1", {run_id: codes}, platform=plat)]
+        a = write("ai_p.csv", sr.AI_FIELDS, ai)
+        code, log = run("--human", h, "--ai", a, "--rules", "rules.json", "--out", "out_p", "--allow-draft")
+        self.assertEqual(code, 0, log)
+        with next((TMP / "out_p").glob("reasons_all_*.csv")).open(encoding="utf-8-sig") as f:
+            rows = {r["code"]: r for r in csv.DictReader(f) if r["scope"] == "main"}
+        self.assertEqual((rows["A"]["ai_episodes_with_code"], rows["A"]["ai_personas"], rows["A"]["ai_persona_ids"]),
+                         ("3", "2", "app:P01;web:P01"))
+        self.assertEqual((rows["B"]["ai_personas"], rows["B"]["ai_persona_ids"]), ("1", "app:P02"))
+
     def test_service_filter(self):
         code, log = run("--human", self.h, "--ai", self.a, "--rules", "rules.json", "--out", "out_f",
                         "--service", "svc", "--allow-draft")
