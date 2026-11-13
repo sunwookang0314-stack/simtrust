@@ -151,6 +151,20 @@ class TestPreregistrationV11(unittest.TestCase):
         self.assertEqual(sorted(names), sorted(sim.RULE_ORDER))
         self.assertEqual(r["human_equivalent"], {"draws": 0})
 
+    def test_ladder_candidate_in_simulation(self):
+        # 사전등록 v1.2 추가안: 가짜 뽑기 500번(다시 뽑기가 더 적으면 그 수), 보고용 사다리는 끈다
+        self.assertEqual(sim.sim_rules(REPO / "configs/rules.draft.json", 1000, "single")["ladder"],
+                         {"decoy_draws": 500, "rungs": False})
+        r = sim.sim_rules(REPO / "configs/rules.draft.json", 200, "single")
+        self.assertEqual(r["ladder"]["decoy_draws"], 200)
+        self.assertEqual(sim.RULE_ORDER[-1], "ladder_50")  # 동점 순서 맨 뒤
+        self.assertEqual({c for c, scope in sim.CODEBOOK.items() if scope == "common"}, set(sim.COMMON))
+        job = ("single", "common60", {"common": 0.6, "p_nouse": 1 / 3, "p_two": 0.4}, "same", 30, "t|0",
+               {**r, "resamples": 60, "ladder": {"decoy_draws": 60, "rungs": False}})
+        _, verdicts, _, _, _ = sim.run_job(job)
+        self.assertEqual(sum(verdicts["ladder_50"].values()), 4)  # 칸 넷 모두 판정이 붙는다
+        self.assertNotIn(sim.sr.NA, verdicts["ladder_50"])  # 코드북을 넘겨서 계산 불가가 아니다
+
 
 if __name__ == "__main__":
     unittest.main()

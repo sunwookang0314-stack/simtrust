@@ -416,6 +416,130 @@ class TestFrequencyMetrics(unittest.TestCase):
         self.assertIsNotNone(row["coverage"])
 
 
+class TestLadder(unittest.TestCase):
+    """가짜 AI 사다리 규칙 (사전등록 v1.2 추가안). 손으로 만든 예는 experiments/rule_lab/toy_check.py와 같다."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(REPO / "experiments/rule_lab"))
+        import toy_check
+        cls.toy = toy_check
+
+    def _cell(self, n, name, **over):
+        return self.toy.run(n, name, resamples=300, **over)
+
+    def test_handmade_example(self):
+        # 사람 40명. 사람 같은 AI만 믿고, 나쁜 AI는 닮은 가짜 이름이 나온다
+        want = {"사람 같은 AI": (sr.TRUST, None), "순위 뒤집힌 AI": (sr.ASK, "reversed"),
+                "공통 이유만 AI": (sr.ASK, "common_only"), "반만 맞는 AI": (sr.ASK, "wrong50"),
+                "기능 안 가리는 AI": (sr.ASK, "floor")}
+        for name, (verdict, lost) in want.items():
+            c = self._cell(40, name)
+            self.assertEqual(c["sensitivity"]["ladder_50"], verdict, name)
+            if lost:
+                self.assertIn(lost, c["ladder_view"]["lost"], name)
+            else:
+                self.assertEqual(c["ladder_view"]["lost"], [], name)
+        # 이유 종류만 보는 main은 순위 뒤집힌 AI를 믿는다
+        self.assertEqual(self._cell(40, "순위 뒤집힌 AI")["verdict"], sr.TRUST)
+        # 30% 틀린 AI: 50% 틀린 가짜는 이기지만 사람과 다르다
+        c = self._cell(40, "30% 틀린 AI")
+        self.assertEqual((c["sensitivity"]["ladder_50"], c["ladder_view"]["why"]), (sr.REF, sr.WHY_DIFF))
+
+    def test_report_rungs_do_not_change_verdict(self):
+        on = self._cell(40, "반만 맞는 AI")
+        off = self._cell(40, "반만 맞는 AI", ladder={"decoy_draws": 500, "rungs": False})
+        self.assertEqual(on["sensitivity"]["ladder_50"], off["sensitivity"]["ladder_50"])
+        self.assertEqual(on["ladder"]["decoys"]["wrong50"], off["ladder"]["decoys"]["wrong50"])
+        self.assertNotIn("wrong25", off["ladder"]["decoys"])
+        self.assertEqual(on["ladder_view"]["wrong_below"], 75)  # 75% 틀린 가짜만 이겼다
+
+    def test_needs_codebook_and_other_feature(self):
+        human, ai = self.toy.rows(40, self.toy.AIS["사람 같은 AI"])
+        r = rules(resamples=300, platform_reference=False, human_equivalent={"draws": 0})
+        no_book = find(sr.score(human, ai, r)["cells"], feature_id="F1")
+        self.assertEqual(no_book["sensitivity"]["ladder_50"], sr.NA)  # 공통 이유만 가짜를 못 만든다
+        self.assertEqual(no_book["verdict"], sr.TRUST)  # 다른 규칙은 그대로
+        only_f1 = sr.score([x for x in human if x["feature_id"] == "F1"], [x for x in ai if x["feature_id"] == "F1"],
+                           r, self.toy.CODEBOOK)["cells"][0]
+        self.assertEqual(only_f1["sensitivity"]["ladder_50"], sr.REF)
+        self.assertEqual(only_f1["ladder_view"]["why"], sr.WHY_NO_FLOOR)
+
+    def test_skipped_when_no_ladder_rule(self):
+        human, ai = self.toy.rows(40, self.toy.AIS["사람 같은 AI"])
+        r = rules(resamples=100, human_equivalent={"draws": 0})
+        r["sensitivity"] = [a for a in r["sensitivity"] if a["method"] != "ladder"]
+        c = find(sr.score(human, ai, r, self.toy.CODEBOOK)["cells"], feature_id="F1")
+        self.assertIsNone(c["ladder"])
+        row = sr.cell_row(sr.cell_json(c, r))
+        self.assertEqual((row["ladder_p_human"], row["ladder_lost"], row["ladder_why"]), (None, "", ""))
+
+    def test_repeats_count_as_one_persona(self):
+        human, ai = self.toy.rows(40, self.toy.AIS["사람 같은 AI"])
+        more = [{**x, "run_id": f"{x['run_id']}-r{k}", "repeat": str(k)} for x in ai for k in (2, 3)]
+        c = find(sr.score(human, ai + more, rules(resamples=300, human_equivalent={"draws": 0}),
+                          self.toy.CODEBOOK)["cells"], feature_id="F1")
+        self.assertEqual(c["ai_episodes"], 60)
+        self.assertEqual(c["sensitivity"]["ladder_50"], sr.TRUST)  # 같은 답 3번이 60명분으로 세지지 않는다
+        self.assertEqual(c["ladder"]["obs"]["dist"], self._cell(40, "사람 같은 AI")["ladder"]["obs"]["dist"])
+
+    def test_minp(self):
+        ref = [{"precision": v / 100, "recall": None, "dist": None, "rank": None} for v in range(99)]
+        obs = {"precision": 0.0, "recall": 0.5, "dist": None, "rank": None}
+        self.assertAlmostEqual(sr.minp_test(ref, obs, upper=False), 0.02)  # 0 이하는 기준 99개 중 1개
+        self.assertAlmostEqual(sr.minp_test(ref, {**obs, "precision": 0.98}, upper=True), 0.02)
+        self.assertAlmostEqual(sr.minp_test(ref, {**obs, "precision": 0.98}, upper=False), 1.0)
+        self.assertIsNone(sr.minp_test(ref[:19], obs, upper=False))  # 기준 값이 20개 미만
+        self.assertIsNone(sr.minp_test(ref, {**obs, "precision": None}, upper=False))
+        # 지표 둘을 묶어도 기준 뽑기 자신에게 대면 p가 고르게 나온다 (가장 작은 p의 분포로 보정)
+        rng = random.Random(1)
+        two = [{"precision": rng.random(), "recall": rng.random(), "dist": None, "rank": None} for _ in range(400)]
+        low = sum(sr.minp_test(two, x, upper=False) <= 0.05 for x in two) / len(two)
+        self.assertLessEqual(low, 0.07)
+
+    def test_judge_table(self):
+        rule = sr.merge_rule(RULES, next(a for a in RULES["sensitivity"] if a["name"] == "ladder_50"))
+
+        def lad(p_human, **decoys):
+            base = dict.fromkeys(rule["must_beat"], 0.01)
+            return {"n_humans": 10, "ai_codes": ["A"],
+                    "ladder": {"p_human": p_human, "decoys": {**base, **decoys}, "codebook": True, "obs": {}}}
+
+        self.assertEqual(sr.judge(lad(0.05), rule), sr.TRUST)  # 경계 포함: p_human >= 0.05
+        self.assertEqual(sr.judge_ladder(lad(0.5, wrong50=0.05), rule), (sr.REF, ["wrong50"], sr.WHY_POWER))
+        self.assertEqual(sr.judge_ladder(lad(0.049), rule), (sr.REF, [], sr.WHY_DIFF))
+        self.assertEqual(sr.judge_ladder(lad(0.01, reversed=0.3, wrong50=0.9), rule),
+                         (sr.ASK, ["wrong50", "reversed"], ""))  # 가장 닮은 가짜부터
+        self.assertEqual(sr.judge_ladder(lad(0.5, reversed=None), rule)[0], sr.TRUST)  # 못 만든 가짜는 건너뛴다
+        self.assertEqual(sr.judge_ladder(lad(0.5, floor=None), rule), (sr.REF, [], sr.WHY_NO_FLOOR))
+        self.assertEqual(sr.judge({**lad(0.5), "n_humans": 4}, rule), sr.LOW)
+        self.assertEqual(sr.judge({**lad(0.5), "ladder": None}, rule), sr.NA)
+
+    def test_decoys(self):
+        base = [{"C01"}, {"F1-01", "C02"}]
+        hc = Counter({"C01": 5, "F1-01": 3, "C02": 1})
+        rng = random.Random(0)
+        self.assertEqual(sr.make_decoy("wrong100", base, hc, set(), rng), [{sr.WRONG_CODE}, {sr.WRONG_CODE}])
+        self.assertEqual(sr.make_decoy("wrong0", base, hc, set(), rng), base)
+        only = sr.make_decoy("common_only", base, hc, {"C01", "C02"}, rng)
+        self.assertTrue(all(x <= {"C01", "C02"} for x in only) and only[0] == {"C01"})
+        self.assertIsNone(sr.make_decoy("common_only", base, hc, set(), rng))  # 그 칸에 공통 이유가 없다
+        self.assertEqual(sr.make_decoy("reversed", base, hc, set(), rng), [{"C02"}, {"F1-01", "C01"}])
+        self.assertIsNone(sr.make_decoy("reversed", base, Counter({"A": 2, "B": 2}), set(), rng))
+
+    def test_rule_checks(self):
+        with self.assertRaises(sr.InputError):
+            sr.check_rule(sr.merge_rule(RULES, {"method": "ladder", "must_beat": ["wrong40"]}), "x")
+        with self.assertRaises(sr.InputError):
+            sr.check_rule(sr.merge_rule(RULES, {"method": "ladder"}), "x")
+        bad = copy.deepcopy(RULES)
+        bad["ladder"] = {"decoy_draws": 5}
+        path = TMP / "bad_ladder.json"
+        path.write_text(json.dumps(bad), encoding="utf-8")
+        with self.assertRaises(sr.InputError):
+            sr.load_rules(path)
+
+
 class TestStabilityAndSaturation(unittest.TestCase):
     def test_stable_when_everyone_says_the_same(self):
         h = human_rows("F1", {f"P{i}": ["A", "B"] for i in range(9)})

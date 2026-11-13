@@ -1,4 +1,5 @@
-"""사람 수 시뮬레이션 v2 (사전등록 v1과 v1.1 추가안, docs/measurement/사전등록_v1.md, 사전등록_v1.1_추가.md).
+"""사람 수 시뮬레이션 v2 (사전등록 v1과 v1.1·v1.2 추가안, docs/measurement/사전등록_v1.md, 사전등록_v1.1_추가.md,
+사전등록_v1.2_추가.md).
 
 가짜 데이터로 판정 계산기(scripts/score_reasons.py)를 그대로 돌려서, 판정 규칙마다 합격 기준(1장)을 넘는 최소 인원을
 찾고 2장의 고르는 법대로 규칙을 고른다. 실제 응답은 쓰지 않고 외부 API도 부르지 않는다.
@@ -54,7 +55,9 @@ P_APP = 0.7
 AI_PERSONAS_PER_PLATFORM = 10  # 본실험: 서비스·플랫폼·조건마다 페르소나 10명. 반복 3회는 계산기가 한 사람으로 묶는다
 SIZES = {"single": [10, 15, 20, 30, 35, 40, 45, 60, 90], "merged": [30, 40, 50, 60, 80, 90, 120]}
 RULE_ORDER = ["main", "anchors_90", "gate_fixed_70", "fixed_80", "fixed_70", "fixed_60",
-              "main_dist", "main_rank"]  # 사전등록 2장 동점 순서, v1.1 추가 후보는 뒤에 붙인다
+              "main_dist", "main_rank", "ladder_50"]  # 사전등록 2장 동점 순서, v1.1·v1.2 추가 후보는 뒤에 붙인다
+# 가짜 AI 사다리(v1.2)의 공통 이유만 가짜를 만들 때 쓰는 코드북. 이 시뮬레이션의 공통 코드는 COMMON 넷이다
+CODEBOOK = {c: "common" for c in COMMON}
 TARGET_TOTAL = 60  # 사전등록 5장 1차 목표 (두 서비스 합). v1.1 1단계는 합친 구성 최소 인원이 이 안이어야 한다
 
 
@@ -134,6 +137,10 @@ def sim_rules(path: Path, resamples: int, config: str) -> dict:
     rules["stability"] = {**rules["stability"], "step": 10 ** 6}
     rules["platform_reference"] = False
     rules["human_equivalent"] = {"draws": 0}  # 판정에 안 쓰고 오래 걸린다
+    # 가짜 뽑기는 500번, 다시 뽑기가 그보다 적으면(가정이 4개를 넘을 때 200번) 그 수에 맞춘다 (사전등록 v1.2 추가안)
+    lad = rules.get("ladder", {"decoy_draws": 500})
+    # 틀린 비율 사다리 세 단(25·50·75%)은 보고용이라 끈다. 판정에 쓰는 가짜는 그대로 만들어서 판정은 같다
+    rules["ladder"] = {**lad, "decoy_draws": min(lad["decoy_draws"], resamples), "rungs": False}
     rules["cell_keys"] = ["feature_id", "kind"] if config == "merged" else ["service", "feature_id", "kind"]
     return rules
 
@@ -143,7 +150,7 @@ def run_job(job: tuple) -> tuple:
     사람 같은 AI 작업에서는 칸마다 (추정 커버리지, 실제 커버리지, 90%까지 필요한 전체 응답자 수)도 돌려준다."""
     config, a_name, a, kind, n, seed, rules = job
     human, ai = make_data(n, a, kind, random.Random(seed), config)
-    res = sr.score(human, ai, {**rules, "seed": seed})
+    res = sr.score(human, ai, {**rules, "seed": seed}, CODEBOOK)
     verdicts = {name: Counter() for name in ["main"] + [x["name"] for x in rules["sensitivity"]]}
     widths, n_cells, cov = [], [], []
     for c in res["cells"]:
@@ -378,7 +385,8 @@ def main(argv=None) -> int:
         "width_mean": round(v["width_sum"] / v["width_n"], 4) if v["width_n"] else None,
         "median_n_cell": sorted(v["n_cells"].elements())[sum(v["n_cells"].values()) // 2]} for k, v in agg.items()}
     record = {"version": "v2", "preregistration": ["docs/measurement/사전등록_v1.md",
-                                                    "docs/measurement/사전등록_v1.1_추가.md"],
+                                                    "docs/measurement/사전등록_v1.1_추가.md",
+                                                    "docs/measurement/사전등록_v1.2_추가.md"],
               "command": "python " + " ".join([Path(sys.argv[0]).as_posix()] + (argv if argv is not None else sys.argv[1:])),
               "code_commit": git_commit(), "criteria": crit, "assumptions": assumptions, "pilot": pilot or None,
               "settings": {"configs": configs, "sizes": {c: SIZES[c] for c in configs}, "reps": args.reps,

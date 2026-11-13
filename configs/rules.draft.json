@@ -23,11 +23,15 @@
   {"name": "fixed_80", "method": "fixed", "trust": 0.8, "reference": 0.6},
   {"name": "gate_fixed_70", "method": "gate", "trust": 0.7, "reference": 0.5},
   {"name": "main_dist", "method": "anchors", "level": 0.95, "metrics": ["precision", "recall", "dist"], "perm": ["dist"]},
-  {"name": "main_rank", "method": "anchors", "level": 0.95, "metrics": ["precision", "recall", "rank"], "perm": ["rank"]}
+  {"name": "main_rank", "method": "anchors", "level": 0.95, "metrics": ["precision", "recall", "rank"], "perm": ["rank"]},
+  {"name": "ladder_50", "method": "ladder", "level": 0.95, "must_beat": ["wrong50", "common_only", "reversed", "floor"]}
  ],
  "_gate_fixed_70": "Floor check first, then fixed 70%/50% on pooled values. Definition fixed in docs/measurement/사전등록_v1.md section 2.",
  "_main_dist": "main plus distribution similarity (1 - Jensen-Shannon divergence, base 2) on reason counts. Stratified permutation test (platform as block, all humans vs all AI personas): p >= 0.05 for dist. Added in docs/measurement/사전등록_v1.1_추가.md.",
  "_main_rank": "main plus rank agreement (Spearman, average ranks for ties) on reason counts. Same permutation test with rank as the statistic. Added in docs/measurement/사전등록_v1.1_추가.md.",
+ "_ladder_50": "Decoy ladder. Decoy AIs are built from the cell's own human answers (50% wrong reasons, common reasons only, reversed order) plus the same AI's answers to other features. Trust needs both: no evidence the AI differs from humans (stratified permutation, min-p over four metrics, p >= 0.05) and the AI clearly beats every must_beat decoy (p < 0.05). Needs the codebook for common codes. Added in docs/measurement/사전등록_v1.2_추가.md.",
+ "ladder": {"decoy_draws": 500, "rungs": true},
+ "_ladder": "Draws per decoy kind (permutations use resamples). rungs: also report the 25/50/75% wrong-reason decoys. Report only, verdicts do not change.",
  "coverage_target": 0.9,
  "_coverage_target": "Report only. Sample coverage per cell (Chao et al. 2014, incidence data) and respondents needed to reach this coverage.",
  "human_equivalent": {"draws": 200},

@@ -8,6 +8,10 @@
 - precision(통과율), recall(재현율): AI가 말한 이유 종류와 사람이 말한 이유 종류가 겹치는지
 - dist(분포 유사도): 1 - 젠슨-섀넌 발산(밑 2). 이유마다 몇 명이 말했는지 비율 분포가 얼마나 같은지
 - rank(순위 일치): 스피어만 상관. 많이 말한 이유 순서가 같은지
+가짜 AI 사다리 규칙 (method ladder, 사전등록 v1.2 추가안)
+- 그 칸 사람 답으로 일부러 나쁜 AI(가짜)를 만들어 기준 분포로 쓴다. 사람은 반으로 나누지 않고 전원을 쓴다
+- 사람 같음 검정(순열)과 가짜마다 "가짜보다 확실히 나은가" 검정을 하고, 지표 넷은 min-p로 검정 하나에 묶는다
+- 못 이긴 가짜 이름을 같이 낸다 (ladder_lost). 공통 이유만 가짜를 만들려면 코드북이 있어야 한다
 칸마다 같이 내는 것 (판정에는 안 씀)
 - coverage: 표본 커버리지(Chao 외 2014, incidence 자료). 그 칸 사람 이유를 몇 % 봤는지와, 목표 커버리지까지
   필요한 응답자 수
@@ -43,6 +47,7 @@
 """
 
 import argparse
+import bisect
 import csv
 import hashlib
 import json
@@ -88,7 +93,8 @@ CELL_CSV = ["scope", "condition", "service", "platform", "feature_id", "kind", "
             "dist", "rank", "ai_split_dist", "ai_split_rank", "human_dist_low", "human_dist_high",
             "human_rank_low", "human_rank_high", "floor_dist_high", "floor_rank_high",
             "perm_p_dist", "perm_p_rank", "coverage", "coverage_need", "coverage_need_reliable",
-            "human_equiv_n", "human_equiv_ai_size", "human_equiv_bound"]
+            "human_equiv_n", "human_equiv_ai_size", "human_equiv_bound",
+            "ladder_p_human", "ladder_lost", "ladder_wrong_below", "ladder_why"]
 REASON_CSV = ["scope", "condition", "service", "platform", "feature_id", "kind", "type", "code", "name", "common",
               "ai_episodes_with_code", "ai_episodes", "human_count", "n_humans", "passed", "basis",
               "ai_personas", "ai_persona_ids"]
@@ -97,6 +103,12 @@ SCOPE_WORDS = {"common": "common", "공통": "common", "feature": "feature", "�
                "other": "other", "기타": "other", "exclude": "exclude", "제외": "exclude"}
 HUMAN_OTHER = "@사람"  # 사람 쪽 기타 코드에 붙여서 AI 기타와 겹치지 않게 한다
 MAIN, PLATFORM_REF = "main", "platform_ref"
+# 가짜 AI 사다리 (사전등록 v1.2 추가안)
+WRONG_RUNGS = (25, 50, 75)  # 이유의 몇 %를 사람이 안 말한 이유로 바꾼 가짜
+DECOYS = tuple(f"wrong{q}" for q in WRONG_RUNGS) + ("common_only", "reversed", "floor")
+WRONG_CODE = "~wrong~"  # 가짜가 대는 틀린 이유. 코드북 코드와 겹치지 않는다
+LADDER_MIN_REF = 20  # 기준 분포에 값이 이만큼은 있어야 그 지표를 쓴다
+WHY_POWER, WHY_DIFF, WHY_NO_FLOOR = "판정력 부족", "가짜보다 낫지만 사람과 다름", "비교할 다른 기능 없음"
 
 
 class InputError(Exception):
@@ -270,6 +282,10 @@ def load_rules(path: Path) -> dict:
     target = rules.get("coverage_target", 0.9)
     if not isinstance(target, (int, float)) or not 0 < target < 1:
         raise InputError(f"{path.name}: coverage_target은 0과 1 사이")
+    lad = rules.get("ladder", {"decoy_draws": 500})
+    if (not isinstance(lad, dict) or not isinstance(lad.get("decoy_draws"), int) or isinstance(lad["decoy_draws"], bool)
+            or lad["decoy_draws"] < LADDER_MIN_REF or not isinstance(lad.get("rungs", True), bool)):
+        raise InputError(f"{path.name}: ladder는 decoy_draws({LADDER_MIN_REF} 이상 정수)와 rungs(true/false)를 담은 객체")
     he = rules.get("human_equivalent", {"draws": 0})
     if not isinstance(he, dict) or not isinstance(he.get("draws"), int) or he["draws"] < 0:
         raise InputError(f"{path.name}: human_equivalent는 draws(0 이상 정수)를 담은 객체")
@@ -285,8 +301,12 @@ def merge_rule(rules: dict, alt: dict) -> dict:
 
 
 def check_rule(rule: dict, where: str) -> None:
-    if rule.get("method") not in ("anchors", "fixed", "gate"):
-        raise InputError(f"{where}: method는 anchors, fixed, gate 중 하나")
+    if rule.get("method") not in ("anchors", "fixed", "gate", "ladder"):
+        raise InputError(f"{where}: method는 anchors, fixed, gate, ladder 중 하나")
+    if rule["method"] == "ladder":
+        beat = rule.get("must_beat")
+        if not isinstance(beat, list) or not beat or not set(beat) <= set(DECOYS):
+            raise InputError(f"{where}: ladder 규칙의 must_beat는 {', '.join(DECOYS)} 중에서 고른다")
     if not rule.get("metrics") or not set(rule["metrics"]) <= set(ALL_METRICS):
         raise InputError(f"{where}: metrics는 {', '.join(ALL_METRICS)} 중에서 고른다")
     perm = rule.get("perm", [])
@@ -698,6 +718,176 @@ def saturation(human: list, rules: dict) -> list:
 
 # ---------------------------------------------------------------- 판정
 
+# ---------------------------------------------------------------- 가짜 AI 사다리 (사전등록 v1.2 추가안)
+
+def _tail(sorted_ref: list, x: float, upper: bool) -> float:
+    """기준 분포에서 x 쪽 꼬리 비율 (1 + 개수) / (1 + 전체). upper면 x 이상, 아니면 x 이하. 같은 값은 센다."""
+    n = len(sorted_ref)
+    if upper:
+        k = n - bisect.bisect_left(sorted_ref, x - 1e-12)
+    else:
+        k = bisect.bisect_right(sorted_ref, x + 1e-12)
+    return (1 + k) / (1 + n)
+
+
+def minp_test(ref: list, obs: dict, upper: bool):
+    """지표 여럿을 검정 하나로 묶는다 (Westfall-Young min-p). ref는 기준 분포에서 뽑은 지표 묶음들, obs는 AI 값.
+    지표마다 꼬리 p를 내고 가장 작은 것을 쓰되, 기준 뽑기 하나하나에도 같은 계산을 해서 "가장 작은 p"의 분포에
+    댄다. 그래서 지표를 넷 본다고 잘못 거를 확률이 늘지 않는다.
+    AI 값이 없거나 기준 값이 LADDER_MIN_REF개 미만인 지표는 뺀다. 쓸 지표가 없으면 None."""
+    cols = {m: sorted(r[m] for r in ref if r[m] is not None) for m in ALL_METRICS}
+    use = [m for m in ALL_METRICS if obs.get(m) is not None and len(cols[m]) >= LADDER_MIN_REF]
+    if not use:
+        return None
+    obs_min = min(_tail(cols[m], obs[m], upper) for m in use)
+    ref_min = []
+    for r in ref:
+        tails = [_tail(cols[m], r[m], upper) for m in use if r[m] is not None]
+        if tails:
+            ref_min.append(min(tails))
+    return (1 + sum(v <= obs_min + 1e-12 for v in ref_min)) / (1 + len(ref_min))
+
+
+def make_decoy(kind: str, base: list, human_c: Counter, common: set, rng: random.Random):
+    """가짜 AI 한 벌. base는 AI 페르소나마다 뽑아 온 사람 한 명의 코드 집합이다. 만들 수 없으면 None.
+    wrongNN: 코드마다 NN% 확률로 틀린 이유 하나(WRONG_CODE)로 바꾼다. 틀린 이유를 한 종류로 두는 것은 가짜를
+      가장 유리하게 두는 쪽이다(통과율이 가장 높다). 분포 유사도는 틀린 이유를 몇 종류로 나누든 같다
+    common_only: 공통 코드가 아닌 코드를, 그 칸 사람들이 말한 공통 코드 중 하나로 바꾼다 (말한 사람 수 비율로)
+    reversed: 사람이 많이 말한 순서를 뒤집어 1등 코드를 꼴찌 코드로 바꿔 단다 (같은 수는 코드 순서)"""
+    if kind.startswith("wrong"):
+        q = int(kind[5:]) / 100
+        return [{(WRONG_CODE if rng.random() < q else c) for c in sorted(s)} for s in base]
+    if kind == "common_only":
+        pool = sorted(c for c in human_c if c in common)
+        if not pool:
+            return None
+        weights = [human_c[c] for c in pool]
+        return [{(c if c in common else rng.choices(pool, weights)[0]) for c in sorted(s)} for s in base]
+    if kind == "reversed":
+        if len(set(human_c.values())) < 2:
+            return None
+        ranked = sorted(human_c, key=lambda c: (-human_c[c], c))
+        swap = dict(zip(ranked, reversed(ranked)))
+        return [{swap[c] for c in s} for s in base]
+    raise ValueError(kind)
+
+
+def _tally(sets) -> dict:
+    """코드마다 그 코드를 가진 집합 수. counts_of와 같은 값을 Counter 없이 센다 (많이 불러서)."""
+    out = {}
+    for codes in sets:
+        for c in codes:
+            out[c] = out.get(c, 0) + 1
+    return out
+
+
+def ladder_cell(cond: int, key: tuple, groups: dict, aic: dict, partners: list, rules: dict,
+                platform_of: dict = None, common: set = None, kinds: tuple = DECOYS):
+    """가짜 AI 사다리의 칸 계산. 판정은 judge_ladder가 한다. kinds는 만들 가짜 (안 만든 가짜는 결과에 없다).
+    obs: AI 페르소나마다 회차 하나를 뽑아 사람 전원과 견준 지표 (회차를 여러 번 뽑은 중앙값)
+    p_human: 사람 같음 검정. 플랫폼 안에서 사람·AI 꼬리표를 섞은 값이 기준 분포다. 작으면 AI가 사람과 다르다
+    decoys[가짜]: AI 값이 그 가짜 분포의 위쪽 끝에 있는지. 작으면 AI가 그 가짜보다 확실히 낫다. 못 만든 가짜는 None
+    가짜는 AI 페르소나마다 같은 플랫폼 사람 한 명의 답을 뽑아(그 플랫폼 사람이 없으면 전체에서) 바꿔 만든다.
+    뽑아 온 사람 답 한 벌을 가짜 종류들이 같이 쓰고, 바꾸는 난수는 종류마다 따로 쓴다.
+    floor는 같은 조건 AI가 다른 기능에 한 답을 같은 플랫폼 인원만큼 뽑은 것이다. common이 None이면 코드북이 없다는 뜻."""
+    ids = sorted(groups)
+    personas = sorted(aic["persona_eps"], key=str)
+    if not ids or not personas or not aic["code_eps"]:
+        return None
+    platform_of = platform_of or {}
+    tag = f"{cond}|{'|'.join(key)}"
+    human_c = counts_of(groups, ids)
+    eps = {p_: sorted(aic["persona_eps"][p_]) for p_ in personas}
+    one_episode = all(len(e) == 1 for e in eps.values())
+    plats = sorted({platform_of.get(i, "") for i in ids} | {_persona_platform(p_) for p_ in personas})
+    h_by = {plat: [groups[i] for i in ids if platform_of.get(i, "") == plat] for plat in plats}
+    p_by = {plat: [p_ for p_ in personas if _persona_platform(p_) == plat] for plat in plats}
+    everyone = [groups[i] for i in ids]
+    rng = random.Random(f"{rules['seed']}|ladder|perm|{tag}")
+    obs_draws, ref = [], []
+    for _ in range(rules["resamples"]):
+        ai_sets = {p_: aic["ep_codes"][rng.choice(eps[p_])] for p_ in personas}
+        if not (one_episode and obs_draws):  # 회차가 하나뿐이면 AI 값은 매번 같다
+            obs_draws.append(metric_values(_tally(ai_sets.values()), human_c))
+        perm_a, perm_h = [], []
+        for plat in plats:
+            pool = h_by[plat] + [ai_sets[p_] for p_ in p_by[plat]]
+            rng.shuffle(pool)
+            perm_a += pool[:len(p_by[plat])]
+            perm_h += pool[len(p_by[plat]):]
+        ref.append(metric_values(_tally(perm_a), _tally(perm_h)))
+    obs = {m: quantile([d[m] for d in obs_draws], 0.5) for m in ALL_METRICS}
+    out = {"obs": {m: rnd(obs[m]) for m in ALL_METRICS}, "p_human": minp_test(ref, obs, upper=False),
+           "decoys": {}, "codebook": common is not None}
+    need = {plat: len(p_by[plat]) for plat in plats if p_by[plat]}
+    n_draws = rules.get("ladder", {}).get("decoy_draws", 500)
+    made = [k for k in DECOYS if k != "floor" and k in kinds]
+    sources = [h_by[_persona_platform(p_)] or everyone for p_ in personas]
+    rng_base = random.Random(f"{rules['seed']}|ladder|base|{tag}")
+    rngs = {k: random.Random(f"{rules['seed']}|ladder|{k}|{tag}") for k in DECOYS}
+    refs = {k: [] for k in made}
+    for _ in range(n_draws):
+        base = [rng_base.choice(src) for src in sources]
+        for kind in list(made):
+            decoy = make_decoy(kind, base, human_c, common or set(), rngs[kind])
+            if decoy is None:  # 이 칸에서는 못 만드는 가짜 (공통 코드가 없음, 순서가 없음)
+                made.remove(kind)
+                continue
+            refs[kind].append(metric_values(_tally(decoy), human_c))
+    for kind in (k for k in DECOYS if k in kinds):
+        if kind == "floor":
+            ref = [metric_values(sample_ai_counts(rngs[kind].choice(partners), need, rngs[kind]), human_c)
+                   for _ in range(n_draws)] if partners else None
+        else:
+            ref = refs[kind] if kind in made else None
+        out["decoys"][kind] = minp_test(ref, obs, upper=True) if ref else None
+    return out
+
+
+def judge_ladder(cell: dict, rule: dict) -> tuple:
+    """가짜 AI 사다리 판정 (사전등록 v1.2 추가안 2장). 1·2번(자료 부족, 계산 불가)은 judge가 먼저 본다.
+    반환은 (판정, 못 이긴 가짜 목록, 까닭). alpha = 1 - level.
+      사람과 안 다름(p_human >= alpha) + must_beat 가짜를 다 이김(p < alpha)  -> 믿고 써도 됨
+      사람과 안 다름 + 못 이긴 가짜 있음   -> 참고용 (판정력 부족)
+      사람과 다름    + 다 이김             -> 참고용 (가짜보다 낫지만 사람과 다름)
+      사람과 다름    + 못 이긴 가짜 있음   -> 사람에게 물어볼 것
+    다른 기능 답(floor)을 이겨야 하는데 비교할 다른 기능이 없으면 믿고 써도 됨 대신 참고용.
+    공통 이유만 가짜(common_only)를 이겨야 하는데 코드북이 없으면 계산 불가. 그 밖에 못 만든 가짜는 건너뛴다."""
+    lad = cell.get("ladder")
+    if not lad or lad["p_human"] is None:
+        return NA, [], ""
+    beat = rule["must_beat"]
+    if "common_only" in beat and not lad["codebook"]:
+        return NA, [], ""
+    alpha = round(1 - rule["level"], 10)
+    like = lad["p_human"] >= alpha
+    made = [k for k in beat if lad["decoys"].get(k) is not None]
+    lost = sorted((k for k in made if lad["decoys"][k] >= alpha), key=lambda k: (-lad["decoys"][k], k))
+    if like and not lost:
+        if "floor" in beat and "floor" not in made:
+            return REF, lost, WHY_NO_FLOOR
+        return TRUST, lost, ""
+    if like:
+        return REF, lost, WHY_POWER
+    if not lost:
+        return REF, lost, WHY_DIFF
+    return ASK, lost, ""
+
+
+def ladder_view(cell: dict, rule: dict):
+    """출력용. 못 이긴 가짜, 까닭, 그리고 AI가 이긴 가장 낮은 틀린 비율 단(틀린 이유가 그 %보다는 적다)."""
+    lad = cell.get("ladder")
+    if not lad:
+        return None
+    alpha = round(1 - rule["level"], 10)
+    _, lost, why = judge_ladder(cell, rule)
+    beaten = [q for q in WRONG_RUNGS if lad["decoys"].get(f"wrong{q}") is not None
+              and lad["decoys"][f"wrong{q}"] < alpha]
+    return {"obs": lad["obs"], "p_human": rnd(lad["p_human"]),
+            "decoys": {k: rnd(v) for k, v in lad["decoys"].items()},
+            "lost": lost, "why": why, "wrong_below": min(beaten) if beaten else None}
+
+
 def anchor_view(draws: dict, level: float, metrics: list) -> dict:
     view = {}
     for m in metrics:
@@ -713,6 +903,8 @@ def judge(cell: dict, rule: dict) -> str:
         return LOW
     if not cell["ai_codes"]:
         return NA
+    if rule["method"] == "ladder":
+        return judge_ladder(cell, rule)[0]
     metrics = rule["metrics"]
     if rule["method"] == "fixed":
         vals = [cell["full"][m] for m in metrics]
@@ -780,6 +972,11 @@ def score_cells(human: list, ai: list, rules: dict, keys: list, codebook: dict =
     main_rule = merge_rule(rules, {})
     alts = [(a["name"], merge_rule(rules, a)) for a in rules["sensitivity"]]
     common = {c for c, s in (codebook or {}).items() if s == "common"}
+    ladder_rules = [r for r in [main_rule] + [r for _, r in alts] if r["method"] == "ladder"]
+    # 판정에 쓰는 가짜(must_beat)는 항상 만들고, 틀린 비율 사다리 세 단은 rungs가 꺼져 있으면 안 만든다 (보고용)
+    ladder_kinds = {k for r in ladder_rules for k in r["must_beat"]}
+    if rules.get("ladder", {}).get("rungs", True):
+        ladder_kinds |= {f"wrong{q}" for q in WRONG_RUNGS}
     conditions = sorted({c for c, _ in ai_cells})
     all_keys = sorted(set(humans) | {k for _, k in ai_cells})
     cells = []
@@ -817,6 +1014,11 @@ def score_cells(human: list, ai: list, rules: dict, keys: list, codebook: dict =
             cell["coverage"] = sample_coverage(groups, rules.get("coverage_target", 0.9))
             cell["human_equivalent"] = (human_equivalent(cond, key, groups, aic, rules, plats)
                                         if scope == MAIN else None)
+            # 가짜 AI 사다리는 그 규칙이 후보에 있을 때만 계산한다 (난수를 따로 써서 다른 규칙 결과를 안 바꾼다)
+            cell["ladder"] = (ladder_cell(cond, key, groups, aic, partners, rules, plats,
+                                          common if codebook is not None else None, tuple(ladder_kinds))
+                              if ladder_rules and len(groups) >= rules["min_humans"] else None)
+            cell["ladder_view"] = ladder_view(cell, ladder_rules[0]) if ladder_rules else None
             cell["verdict"] = judge(cell, main_rule)
             cell["sensitivity"] = {name: judge(cell, rule) for name, rule in alts}
             cell["stability"] = stability(cond, key, groups, ai_codes, rules)
@@ -896,7 +1098,8 @@ def summarize(cells: list, conditions: list, alts: list, keys: list, platform_re
 
 def cell_json(cell: dict, rules: dict) -> dict:
     view = anchor_view(cell["draws"], rules["level"], list(ALL_METRICS))
-    out = {k: v for k, v in cell.items() if k not in ("draws", "full", "nocommon")}
+    out = {k: v for k, v in cell.items() if k not in ("draws", "full", "nocommon", "ladder", "ladder_view")}
+    out["ladder"] = cell.get("ladder_view")
     for m in ALL_METRICS:
         out[m] = rnd(cell["full"][m])
     nc = cell["nocommon"]
@@ -918,6 +1121,7 @@ def cell_row(c: dict) -> dict:
     nc = c["nocommon"] or {}
     cov = c.get("coverage") or {}
     he = c.get("human_equivalent") or {}
+    lad = c.get("ladder") or {}
     return {"scope": c["scope"], "condition": c["condition"], **{k: c.get(k, "*") for k in CELL_KEYS},
             "n_humans": c["n_humans"], "n_humans_app": c["n_humans_app"], "n_humans_web": c["n_humans_web"],
             "ai_episodes": c["ai_episodes"], "ai_codes": len(c["ai_codes"]),
@@ -949,7 +1153,9 @@ def cell_row(c: dict) -> dict:
             "coverage": cov.get("estimate"), "coverage_need": cov.get("need"),
             "coverage_need_reliable": yn(cov.get("need_reliable")) if cov else "",
             "human_equiv_n": he.get("n_equiv"), "human_equiv_ai_size": he.get("ai_size"),
-            "human_equiv_bound": he.get("bound") or ""}
+            "human_equiv_bound": he.get("bound") or "",
+            "ladder_p_human": lad.get("p_human"), "ladder_lost": ";".join(lad.get("lost", [])),
+            "ladder_wrong_below": lad.get("wrong_below"), "ladder_why": lad.get("why", "")}
 
 
 def personas_with(aic: dict, code: str) -> list:
