@@ -442,9 +442,10 @@ class TestLadder(unittest.TestCase):
                 self.assertEqual(c["ladder_view"]["lost"], [], name)
         # 이유 종류만 보는 main은 순위 뒤집힌 AI를 믿는다
         self.assertEqual(self._cell(40, "순위 뒤집힌 AI")["verdict"], sr.TRUST)
-        # 30% 틀린 AI: 50% 틀린 가짜는 이기지만 사람과 다르다
+        # 30% 틀린 AI: 사람과 다르고, 순위를 바로 잰 50% 틀린 가짜도 확실히 이기지는 못한다
         c = self._cell(40, "30% 틀린 AI")
-        self.assertEqual((c["sensitivity"]["ladder_50"], c["ladder_view"]["why"]), (sr.REF, sr.WHY_DIFF))
+        self.assertEqual(c["sensitivity"]["ladder_50"], sr.ASK)
+        self.assertIn("wrong50", c["ladder_view"]["lost"])
 
     def test_report_rungs_do_not_change_verdict(self):
         on = self._cell(40, "반만 맞는 AI")
@@ -526,6 +527,28 @@ class TestLadder(unittest.TestCase):
         self.assertIsNone(sr.make_decoy("common_only", base, hc, set(), rng))  # 그 칸에 공통 이유가 없다
         self.assertEqual(sr.make_decoy("reversed", base, hc, set(), rng), [{"C02"}, {"F1-01", "C01"}])
         self.assertIsNone(sr.make_decoy("reversed", base, Counter({"A": 2, "B": 2}), set(), rng))
+
+    def test_decoy_values_take_the_stronger_wrong_decoy(self):
+        # 틀린 이유를 한 코드로 몰면 그 코드가 가짜 답의 1등이 돼 순위가 깨진다. 지표마다 몬 판·흩은 판 중 큰 값
+        hc = Counter({"C01": 5, "F1-01": 3, "C02": 2})
+        w = sr.WRONG_CODE
+        decoy = [{"C01"}, {"C01"}, {"F1-01"}, {w}, {w}, {w}]
+        lumped = sr.metric_values(sr._tally(decoy), hc)
+        spread = sr.metric_values(sr._tally([{"C01"}, {"C01"}, {"F1-01"}, {w + "3"}, {w + "4"}, {w + "5"}]), hc)
+        got = sr.decoy_values("wrong50", decoy, hc)
+        self.assertGreater(spread["rank"], lumped["rank"])
+        self.assertGreater(lumped["precision"], spread["precision"])
+        self.assertEqual(got, {"precision": lumped["precision"], "recall": lumped["recall"],
+                               "dist": lumped["dist"], "rank": spread["rank"]})
+        self.assertEqual((lumped["recall"], lumped["dist"]), (spread["recall"], spread["dist"]))  # 두 판이 같다
+        self.assertEqual(sr.decoy_values("reversed", decoy, hc), lumped)  # wrongNN만 두 판을 잰다
+        # 몬 판은 코드 개수가 전부 같아 순위가 없어도, 흩은 판 순위가 있으면 그 값을 쓴다
+        hc2 = Counter({"C01": 3, "C02": 1})
+        flat = [{"C01"}, {"C01"}, {"C02"}, {"C02"}, {w}, {w}]
+        self.assertIsNone(sr.metric_values(sr._tally(flat), hc2)["rank"])
+        want = sr.rank_agreement(sr._tally([{"C01"}, {"C01"}, {"C02"}, {"C02"}, {w + "4"}, {w + "5"}]), hc2)
+        self.assertIsNotNone(want)
+        self.assertEqual(sr.decoy_values("wrong25", flat, hc2)["rank"], want)
 
     def test_rule_checks(self):
         with self.assertRaises(sr.InputError):

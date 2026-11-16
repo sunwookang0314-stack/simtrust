@@ -696,11 +696,12 @@ def install_guards():
 # ---------------------------------------------------------------------------
 
 def _rel(path: Path, root: Path) -> str:
-    """기록에는 리포 기준 경로를 남긴다. 설정에서 리포 밖 경로를 주면 그대로 남긴다."""
+    """기록에는 리포 기준 경로를 남긴다. 설정에서 리포 밖 경로를 주면 그대로 남긴다.
+    구분자는 운영체제와 상관없이 /로 쓴다 (윈도우에서 돌려도 기록이 같게)."""
     try:
-        return str(path.relative_to(root))
+        return path.relative_to(root).as_posix()
     except ValueError:
-        return str(path)
+        return path.as_posix()
 
 
 def model_tag(model: str) -> str:

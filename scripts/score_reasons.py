@@ -750,8 +750,8 @@ def minp_test(ref: list, obs: dict, upper: bool):
 
 def make_decoy(kind: str, base: list, human_c: Counter, common: set, rng: random.Random):
     """가짜 AI 한 벌. base는 AI 페르소나마다 뽑아 온 사람 한 명의 코드 집합이다. 만들 수 없으면 None.
-    wrongNN: 코드마다 NN% 확률로 틀린 이유 하나(WRONG_CODE)로 바꾼다. 틀린 이유를 한 종류로 두는 것은 가짜를
-      가장 유리하게 두는 쪽이다(통과율이 가장 높다). 분포 유사도는 틀린 이유를 몇 종류로 나누든 같다
+    wrongNN: 코드마다 NN% 확률로 틀린 이유 하나(WRONG_CODE)로 바꾼다. 한 종류로 몰면 정밀도는 가짜에게 가장
+      유리하지만 순위 일치는 불리해서, 순위는 decoy_values가 흩은 판과 견줘 큰 쪽을 쓴다
     common_only: 공통 코드가 아닌 코드를, 그 칸 사람들이 말한 공통 코드 중 하나로 바꾼다 (말한 사람 수 비율로)
     reversed: 사람이 많이 말한 순서를 뒤집어 1등 코드를 꼴찌 코드로 바꿔 단다 (같은 수는 코드 순서)"""
     if kind.startswith("wrong"):
@@ -770,6 +770,21 @@ def make_decoy(kind: str, base: list, human_c: Counter, common: set, rng: random
         swap = dict(zip(ranked, reversed(ranked)))
         return [{swap[c] for c in s} for s in base]
     raise ValueError(kind)
+
+
+def decoy_values(kind: str, decoy: list, human_c: Counter) -> dict:
+    """가짜 한 벌의 지표. wrongNN은 틀린 이유를 한 코드로 몬 판으로 재고, 순위 일치만 사람마다 다른 틀린 코드로 흩은
+    판과 견줘 큰 값을 쓴다. 몬 틀린 이유는 가짜 답의 상위 코드가 되는데 사람은 0번이라 순위가 깨지기 때문이다.
+    정밀도는 몬 판이 늘 높고, 분포 유사도와 재현율은 두 판이 같아서 다시 재지 않는다.
+    흩은 판의 순위 일치는 틀린 이유가 없는 가짜보다도 높게 나올 수 있다(사람 0번·가짜 1번인 코드가 바닥에서 순위가
+    맞는 점으로 더해진다). 그래서 순위로는 wrongNN을 이기기 어렵다. 잘못 믿는 쪽이 아니라 덜 믿는 쪽이다."""
+    vals = metric_values(_tally(decoy), human_c)
+    if kind.startswith("wrong"):
+        spread = [{(f"{WRONG_CODE}{j}" if c == WRONG_CODE else c) for c in s} for j, s in enumerate(decoy)]
+        alt = rank_agreement(_tally(spread), human_c)
+        if alt is not None and (vals["rank"] is None or alt > vals["rank"]):
+            vals["rank"] = alt
+    return vals
 
 
 def _tally(sets) -> dict:
@@ -833,7 +848,7 @@ def ladder_cell(cond: int, key: tuple, groups: dict, aic: dict, partners: list, 
             if decoy is None:  # 이 칸에서는 못 만드는 가짜 (공통 코드가 없음, 순서가 없음)
                 made.remove(kind)
                 continue
-            refs[kind].append(metric_values(_tally(decoy), human_c))
+            refs[kind].append(decoy_values(kind, decoy, human_c))
     for kind in (k for k in DECOYS if k in kinds):
         if kind == "floor":
             ref = [metric_values(sample_ai_counts(rngs[kind].choice(partners), need, rngs[kind]), human_c)
