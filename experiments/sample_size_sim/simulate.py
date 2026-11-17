@@ -52,7 +52,7 @@ LOW_KINDS = ("same", "common_only", "half")  # 자료 부족을 세는 AI. 사�
 P_NOUSE = 1 / 3
 P_TWO_REASONS = 0.4
 P_APP = 0.7
-AI_PERSONAS_PER_PLATFORM = 10  # 본실험: 서비스·플랫폼·조건마다 페르소나 10명. 반복 3회는 계산기가 한 사람으로 묶는다
+AI_PERSONAS_PER_PLATFORM = 40  # 본실험: 서비스·플랫폼·조건마다 4칸 패널 40명 모두(사전등록 v1 11/18). 반복 3회는 계산기가 한 사람으로 묶는다
 SIZES = {"single": [10, 15, 20, 30, 35, 40, 45, 60, 90], "merged": [30, 40, 50, 60, 80, 90, 120]}
 RULE_ORDER = ["main", "anchors_90", "gate_fixed_70", "fixed_80", "fixed_70", "fixed_60",
               "main_dist", "main_rank", "ladder_50"]  # 사전등록 2장 동점 순서, v1.1·v1.2 추가 후보는 뒤에 붙인다
