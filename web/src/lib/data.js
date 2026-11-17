@@ -95,8 +95,16 @@ export const MAJORITY_SHARE = 1 / 3;
 export const isCandidate = r =>
   r.type === "ai_reason" && r.passed !== "Y" && r.ai_episodes_with_code / r.ai_episodes >= MAJORITY_SHARE;
 
+// 사람 데이터는 서비스를 나누지 않고 합쳐서 판정한다 (사전등록 v1 11/16 변경 기록, 강선우·김민우).
+// 설문 3-2에서 폼 보기 8개 서비스 중 하나를 고른 응답 31명. AI는 링커리어·캠퍼스픽 캡처를 본다
+export const HUMAN_POOL = { respondents: 31, services: 8 };
+export const POOLED = "pooled";
+// 가짜 견본은 아직 서비스마다 나뉘어 있어서, 합친 결과 자리에는 캠퍼스픽 견본 칸을 대신 쓴다(판정이 골고루 섞여 있어서) (김민우 견본이 나오면 바꿈)
+const POOLED_STANDIN = "campuspick";
+const svcOf = service => (service === POOLED ? POOLED_STANDIN : service);
+
 export const cellOf = (model, service, feature, kind) =>
-  model.cells.find(c => c.service === service && c.feature_id === feature && c.kind === kind);
+  model.cells.find(c => c.service === svcOf(service) && c.feature_id === feature && c.kind === kind);
 
 export const reasonsOf = (model, service, feature, kind) =>
-  model.reasons.filter(r => r.service === service && r.feature_id === feature && r.kind === kind);
+  model.reasons.filter(r => r.service === svcOf(service) && r.feature_id === feature && r.kind === kind);

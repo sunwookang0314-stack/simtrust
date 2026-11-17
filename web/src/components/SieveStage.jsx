@@ -5,7 +5,7 @@
 // 마지막에 AI가 못 맞힌 구멍이 빨갛게 깜빡인다
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { cellOf, isCandidate, reasonsOf } from "../lib/data.js";
+import { POOLED, cellOf, isCandidate, reasonsOf } from "../lib/data.js";
 import { PERSONAS, REPEATS } from "../lib/personas.js";
 import { VerdictBadge } from "./ui.jsx";
 
@@ -45,14 +45,14 @@ export default function SieveStage({ models, params }) {
   const scale = useFit(box);
 
   const model = models.find(m => m.id === pick) ?? models[0];
-  const cell = cellOf(model, params.service, params.feature, params.kind);
-  const rows = reasonsOf(model, params.service, params.feature, params.kind);
+  const cell = cellOf(model, POOLED, params.feature, params.kind);
+  const rows = reasonsOf(model, POOLED, params.feature, params.kind);
   const ai = rows.filter(r => r.type === "ai_reason")
     .sort((a, b) => b.ai_episodes_with_code - a.ai_episodes_with_code);
   // 사람 구멍: 이 칸에서 응답자가 말한 코드 전부 (AI 셋 어느 쪽 행에서 봐도 같다)
   const holeMap = new Map();
   for (const m of models)
-    for (const r of reasonsOf(m, params.service, params.feature, params.kind))
+    for (const r of reasonsOf(m, POOLED, params.feature, params.kind))
       if (r.human_count > 0 && !holeMap.has(r.code)) holeMap.set(r.code, r);
   const holes = [...holeMap.values()].sort((a, b) => b.human_count - a.human_count);
   const holeIdx = new Map(holes.map((h, i) => [h.code, i]));
@@ -70,7 +70,7 @@ export default function SieveStage({ models, params }) {
     setPhase(-1);
     const ts = PHASE_AT.map((t, i) => setTimeout(() => setPhase(i), t));
     return () => ts.forEach(clearTimeout);
-  }, [pick, params.service, params.feature, params.kind, run]);
+  }, [pick, params.feature, params.kind, run]);
 
   const perRow = Math.ceil(ai.length / 2);
   const chipPos = (r, i) => {
@@ -121,7 +121,7 @@ export default function SieveStage({ models, params }) {
             </div>
           )}
           <div className="zone zh" style={{ left: 0, top: 184, width: SIEVE1_R + 16, height: H - 184 }}>
-            <span className="ztag h bottom">① 응답자 {cell.n_humans}명이 말한 이유 {holes.length}개 = 거름망 구멍</span>
+            <span className="ztag h bottom">① 설문 응답자(8개 서비스 합침) {cell.n_humans}명이 말한 이유 {holes.length}개 = 거름망 구멍</span>
           </div>
           <div className="zone zm" style={{ left: SIEVE1_R + 30, top: 184, width: W - SIEVE1_R - 30, height: H - 184 }}>
             <span className="ztag m bottom">② AI 다수결 망</span>

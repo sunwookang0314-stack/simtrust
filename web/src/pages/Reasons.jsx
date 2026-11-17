@@ -3,14 +3,14 @@ import { useEffect, useState } from "react";
 import { CellPicker, MetricBar, ReasonChip, SampleTag, VerdictBadge } from "../components/ui.jsx";
 import { useCellParams } from "../lib/params.js";
 import SieveStage from "../components/SieveStage.jsx";
-import { FEATURES, KINDS, SERVICES, cellOf, isCandidate, loadAll, reasonsOf } from "../lib/data.js";
+import { FEATURES, HUMAN_POOL, KINDS, POOLED, cellOf, isCandidate, loadAll, reasonsOf } from "../lib/data.js";
 import { VERDICT_STYLE } from "../lib/verdict.js";
 
 const byCount = (a, b) => b.ai_episodes_with_code - a.ai_episodes_with_code || b.human_count - a.human_count;
 
 function ModelColumn({ model, params }) {
-  const cell = cellOf(model, params.service, params.feature, params.kind);
-  const rs = reasonsOf(model, params.service, params.feature, params.kind);
+  const cell = cellOf(model, POOLED, params.feature, params.kind);
+  const rs = reasonsOf(model, POOLED, params.feature, params.kind);
   const passed = rs.filter(r => r.type === "ai_reason" && r.passed === "Y").sort(byCount);
   const cand = rs.filter(isCandidate).sort(byCount);
   const stuck = rs.filter(r => r.type === "ai_reason" && r.passed !== "Y" && !isCandidate(r)).sort(byCount);
@@ -59,10 +59,10 @@ export default function Reasons() {
   const [err, setErr] = useState(null);
   useEffect(() => { loadAll().then(setModels, e => setErr(e.message)); }, []);
 
-  const label = k => ({ service: SERVICES, feature: FEATURES, kind: KINDS })[k].find(x => x.id === params[k]).name;
+  const label = k => ({ feature: FEATURES, kind: KINDS })[k].find(x => x.id === params[k]).name;
   let headline = "";
   if (models) {
-    const vs = models.map(m => [m.name, cellOf(m, params.service, params.feature, params.kind)?.verdict]).filter(x => x[1]);
+    const vs = models.map(m => [m.name, cellOf(m, POOLED, params.feature, params.kind)?.verdict]).filter(x => x[1]);
     const best = Math.min(...vs.map(([, v]) => VERDICT_STYLE[v]?.rank ?? 9));
     const top = vs.filter(([, v]) => (VERDICT_STYLE[v]?.rank ?? 9) === best);
     const who = top.length === vs.length ? "AI 넷 모두" : top.map(x => x[0]).join("·");
@@ -76,9 +76,9 @@ export default function Reasons() {
       <div className="phead">
         <span className="no">5 · 거름망</span><SampleTag />
         <h1>{headline || "불러오는 중"}</h1>
-        <p>같은 캡처와 질문에 AI 넷(페르소나 없는 모델 3개와 페르소나 AI)이 답한 이유를 {label("service")} 응답자 데이터로 걸렀어요. 통과율·재현율이 높아도, 사람끼리 잰 범위에 못 들거나 "아무 기능에나 할 말"과 구별이 안 되면 사람에게 물어봐요.</p>
+        <p>같은 캡처와 질문에 AI 넷(페르소나 없는 모델 3개와 페르소나 AI)이 답한 이유를 설문 응답자 {HUMAN_POOL.respondents}명({HUMAN_POOL.services}개 서비스 합침)의 답으로 걸렀어요. 통과율·재현율이 높아도, 사람끼리 잰 범위에 못 들거나 "아무 기능에나 할 말"과 구별이 안 되면 사람에게 물어봐요.</p>
       </div>
-      <CellPicker params={params} />
+      <CellPicker params={params} only={["feature", "kind"]} />
       {err && <p className="err">{err}</p>}
       {models && <SieveStage models={models} params={params} />}
       {models && <div className="mcols">{models.map(m => <ModelColumn key={m.id} model={m} params={params} />)}</div>}

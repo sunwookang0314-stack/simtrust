@@ -1,18 +1,12 @@
 // 화면 1. 서비스 고르기: 미리 찍어 둔 벤치마크 서비스(링커리어·캠퍼스픽)의 기능별 화면을 본다
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Shot from "../components/Shot.jsx";
 import { CellPicker } from "../components/ui.jsx";
-import { FEATURES, SERVICES } from "../lib/data.js";
+import { FEATURES, HUMAN_POOL, SERVICES } from "../lib/data.js";
 import { useCellParams } from "../lib/params.js";
 
 export default function Service() {
   const params = useCellParams();
-  const [total, setTotal] = useState(null);
-  useEffect(() => {
-    fetch(`${import.meta.env.BASE_URL}data/sample/summary.json`).then(r => r.json())
-      .then(s => setTotal(s.respondents_per_service), () => setTotal(null));
-  }, []);
   const svc = SERVICES.find(s => s.id === params.service).name;
 
   return (
@@ -20,12 +14,12 @@ export default function Service() {
       <div className="phead">
         <span className="no">1 · 서비스 고르기</span>
         <h1>{svc} {params.platform === "app" ? "앱" : "웹"} 화면을 AI에게 보여줄게요</h1>
-        <p>설문은 여러 공고 서비스로 받았고, 그중 화면을 미리 찍어 둔 두 서비스로 AI와 비교해요. 기능 4개마다 한 장씩이에요.</p>
+        <p>AI에게는 화면을 미리 찍어 둔 두 서비스(링커리어·캠퍼스픽)를 보여줘요. 기능 4개마다 한 장씩이에요.</p>
       </div>
       <CellPicker params={params} only={["service", "platform"]} />
       <div className="svc-info">
-        <span>설문에서 가장 자주 쓰는 서비스로 <b>{svc}</b>를 고른 응답자 <b>{total ?? "-"}명</b>과 비교해요</span>
-        <span className="sample">가짜 견본 인원</span>
+        <span>사람 쪽은 설문 응답자 <b>{HUMAN_POOL.respondents}명</b>을 합쳐서 비교해요. 공고 서비스 {HUMAN_POOL.services}개 중 자주 쓰는 걸 골라 답했고, 검색·필터·저장·마감 알림·추천은 어느 서비스에나 있는 기능이에요</span>
+        <span className="sample">사전등록 11/16 기록</span>
       </div>
       <div className="shots">
         {FEATURES.map(f => (

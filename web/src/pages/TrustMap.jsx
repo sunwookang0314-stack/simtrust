@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CellPicker, SampleTag } from "../components/ui.jsx";
 import { useBaseModel, useCellParams } from "../lib/params.js";
-import { FEATURES, KINDS, SERVICES, cellOf, loadAll } from "../lib/data.js";
+import { FEATURES, HUMAN_POOL, KINDS, POOLED, cellOf, loadAll } from "../lib/data.js";
 import { VERDICT_STYLE, pct, verdictKey } from "../lib/verdict.js";
 
 export default function TrustMap() {
@@ -15,11 +15,10 @@ export default function TrustMap() {
   const [err, setErr] = useState(null);
   useEffect(() => { loadAll().then(setModels, e => setErr(e.message)); }, []);
 
-  const svc = SERVICES.find(s => s.id === params.service).name;
   const kind = KINDS.find(k => k.id === params.kind).name;
-  const trustCount = m => FEATURES.filter(f => cellOf(m, params.service, f.id, params.kind)?.verdict === "믿고 써도 됨").length;
+  const trustCount = m => FEATURES.filter(f => cellOf(m, POOLED, f.id, params.kind)?.verdict === "믿고 써도 됨").length;
   const ranked = models ? [...models].sort((a, b) => trustCount(b) - trustCount(a)) : [];
-  const open = (f, m) => nav(`/reasons?service=${params.service}&feature=${f}&kind=${params.kind}&ai=${m}`);
+  const open = (f, m) => nav(`/reasons?feature=${f}&kind=${params.kind}&ai=${m}`);
   const baseM = models?.find(m => m.id === base), personaM = models?.find(m => m.persona);
   const effect = baseM && personaM ? trustCount(personaM) - trustCount(baseM) : null;
 
@@ -28,15 +27,15 @@ export default function TrustMap() {
       <div className="phead">
         <span className="no">6 · 신뢰도 지도</span><SampleTag />
         <h1>{!models ? "불러오는 중" : trustCount(ranked[0])
-          ? `${svc} ${kind}는 ${ranked[0].name} 말을 기능 ${FEATURES.length}개 중 ${trustCount(ranked[0])}개에서 믿고 써도 돼요`
-          : `${svc} ${kind}는 아직 어느 AI 말도 그대로 믿기 어려워요`}</h1>
-        <p>기능마다 거름망을 돌린 결과예요. 진할수록 믿을 만하고, 칸을 누르면 어떤 이유가 통과했는지 볼 수 있어요.</p>
+          ? `${kind}는 ${ranked[0].name} 말을 기능 ${FEATURES.length}개 중 ${trustCount(ranked[0])}개에서 믿고 써도 돼요`
+          : `${kind}는 아직 어느 AI 말도 그대로 믿기 어려워요`}</h1>
+        <p>설문 응답자 {HUMAN_POOL.respondents}명({HUMAN_POOL.services}개 서비스 합침)으로 기능마다 거름망을 돌린 결과예요. 진할수록 믿을 만하고, 칸을 누르면 어떤 이유가 통과했는지 볼 수 있어요.</p>
         {effect != null && (
           <p className="effect">페르소나 효과: {baseM.name} 그냥 <b>{trustCount(baseM)}칸</b> → {baseM.name}+페르소나 <b>{trustCount(personaM)}칸</b>
             {" "}({effect > 0 ? `${effect}칸 늘었어요` : effect < 0 ? `${-effect}칸 줄었어요` : "같아요"}) <span className="sample">자리표시 견본</span></p>
         )}
       </div>
-      <CellPicker params={params} only={["service", "kind"]} />
+      <CellPicker params={params} only={["kind"]} />
       {err && <p className="err">{err}</p>}
       {models && (
         <div className="map" style={{ gridTemplateColumns: `200px repeat(${models.length}, 1fr)` }}>
@@ -50,7 +49,7 @@ export default function TrustMap() {
           {FEATURES.map(f => [
             <div className="fc" key={f.id}>{f.name}</div>,
             ...models.map(m => {
-              const c = cellOf(m, params.service, f.id, params.kind);
+              const c = cellOf(m, POOLED, f.id, params.kind);
               return (
                 <button key={m.id + f.id} className={`vc v-${verdictKey(c?.verdict)}`} onClick={() => open(f.id, m.id)}
                         aria-label={`${f.name} ${m.name} ${c?.verdict ?? "결과 없음"} 이유 보기`}>
