@@ -58,6 +58,28 @@ class TestPreregistrationRules(unittest.TestCase):
         k["reversed"] = {"trust": 0.0, "reference": 0.0, "ask": 0.0, "low": 0.3, "na": 0.0}
         self.assertTrue(sim.check(k, {**CRIT, "max_reversed_trust": 0.1})["pass"])
 
+    def test_common_only_criterion_skipped_only_when_common_is_one(self):
+        # 사전등록 v1 11/17 변경 기록(이슈 #45 1번): 공통 이유 1.0 가정에서는 공통 이유만 AI 기준만 뺀다
+        out = sim.pilot_assumptions(BASE, {"common": 1.0, "p_nouse": 0.188, "p_two": 0.0})
+        self.assertEqual(len(out), 9)
+        self.assertEqual([a["name"] for a in out if sim.common_only_undefined(a)],
+                         ["pilot_common1.00", "common1.00_nouse0.19", "common1.00_two0.00"])
+        same_as_human = kinds(0.9, 0.0, 0.9)  # 공통 이유 1.0이면 공통 이유만 AI도 사람 같은 AI만큼 믿음을 받는다
+        self.assertFalse(sim.check(same_as_human, CRIT)["pass_v1"])
+        out = sim.check(same_as_human, CRIT, skip_common_only=True)
+        self.assertEqual((out["pass_v1"], out["common_only_skipped"]), (True, True))
+        # 나머지 기준은 그대로 본다
+        self.assertFalse(sim.check(kinds(0.799, 0.0, 0.9), CRIT, skip_common_only=True)["pass_v1"])
+        self.assertFalse(sim.check(kinds(0.9, 0.101, 0.9), CRIT, skip_common_only=True)["pass_v1"])
+        self.assertFalse(sim.check(kinds(0.9, 0.0, 0.9, 0.051), CRIT, skip_common_only=True)["pass_v1"])
+
+    def test_min_table_generic_ask_ignores_skipped_assumptions(self):
+        row = {"n": 30, "by_assumption": {
+            "common0.60": {"common_only_ask": 0.7, "common_only_skipped": False},
+            "pilot_common1.00": {"common_only_ask": 0.05, "common_only_skipped": True}}}
+        results = {"single": {"main": {"minimum_n": 30, "rows": [row]}}, "merged": {"main": {"minimum_n": 40}}}
+        self.assertEqual(sim.min_table(results, ["main"], "minimum_n")["main"]["generic_ask"], 0.7)
+
     def test_criteria_files_match_preregistration(self):
         for name in ("criteria_v1.json", "criteria_v1.1.json"):
             crit = json.loads((REPO / "experiments/sample_size_sim" / name).read_text(encoding="utf-8"))

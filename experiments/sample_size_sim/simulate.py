@@ -207,16 +207,25 @@ def rates(verdicts: Counter) -> dict:
             "ask": verdicts[sr.ASK] / total, "low": verdicts[sr.LOW] / total, "na": verdicts[sr.NA] / total}
 
 
-def check(by_kind: dict, crit: dict) -> dict:
+def common_only_undefined(a: dict) -> bool:
+    """공통 이유 비율이 1.0인 가정. 사람 이유가 전부 공통 이유라서 '공통 이유만 AI'가 사람 같은 AI와 같은 분포가 된다.
+    그 가정에서는 공통 이유만 AI 기준을 재지 않는다 (사전등록 v1 11/17 변경 기록, 이슈 #45 1번)."""
+    return a["common"] >= 1.0
+
+
+def check(by_kind: dict, crit: dict, skip_common_only: bool = False) -> dict:
     """가정 하나, 인원 하나에서 합격 기준. pass_v1은 사전등록 v1 1장 기준 넷, pass는 v1.1에서 더한
     순위 뒤집힌 AI 기준까지 (기준이나 그 AI가 없으면 pass = pass_v1).
-    자료 부족은 세 AI 시나리오(LOW_KINDS) 중 가장 큰 값으로 댄다 (사전등록 v1 1장, 11/8 변경 기록)."""
+    자료 부족은 세 AI 시나리오(LOW_KINDS) 중 가장 큰 값으로 댄다 (사전등록 v1 1장, 11/8 변경 기록).
+    skip_common_only면 공통 이유만 AI 믿음 기준만 빼고 나머지는 그대로 본다(common_only_undefined)."""
     same, half, gen = by_kind["same"], by_kind["half"], by_kind["common_only"]
     low = max(by_kind[k]["low"] for k in LOW_KINDS)
     out = {"same_trust": same["trust"], "half_trust": half["trust"], "common_only_trust": gen["trust"],
-           "low": low, "low_same": same["low"], "common_only_ask": gen["ask"]}
+           "low": low, "low_same": same["low"], "common_only_ask": gen["ask"],
+           "common_only_skipped": skip_common_only}
     out["pass_v1"] = (same["trust"] >= crit["min_same_trust"] and half["trust"] <= crit["max_half_trust"]
-                      and gen["trust"] <= crit["max_common_only_trust"] and low <= crit["max_low"])
+                      and (skip_common_only or gen["trust"] <= crit["max_common_only_trust"])
+                      and low <= crit["max_low"])
     out["pass"] = out["pass_v1"]
     if "reversed" in by_kind and "max_reversed_trust" in crit:
         out["reversed_trust"] = by_kind["reversed"]["trust"]
@@ -274,7 +283,8 @@ def select_tiered(table: dict, table_v1: dict, target_total: int = TARGET_TOTAL)
 
 
 def min_table(results: dict, rule_names: list, key: str) -> dict:
-    """규칙마다 두 구성의 최소 인원과, 서비스 하나 최소 인원 줄에서 공통 이유만 AI '물어볼 것' 비율(가정 중 낮은 쪽)."""
+    """규칙마다 두 구성의 최소 인원과, 서비스 하나 최소 인원 줄에서 공통 이유만 AI '물어볼 것' 비율(가정 중 낮은 쪽).
+    공통 이유만 AI 기준을 뺀 가정(common_only_skipped)은 이 비율에서도 뺀다. 그 가정에서는 그 AI가 사람 같은 AI라서다."""
     table = {}
     for rule in rule_names:
         smin = results.get("single", {}).get(rule, {}).get(key)
@@ -282,7 +292,8 @@ def min_table(results: dict, rule_names: list, key: str) -> dict:
         gen = None
         if smin is not None:
             row = next(x for x in results["single"][rule]["rows"] if x["n"] == smin)
-            gen = min(v["common_only_ask"] for v in row["by_assumption"].values())
+            asks = [v["common_only_ask"] for v in row["by_assumption"].values() if not v.get("common_only_skipped")]
+            gen = min(asks) if asks else None
         table[rule] = {"single_min": smin, "merged_min": mmin, "generic_ask": gen if gen is not None else 0.0}
     return table
 
@@ -356,7 +367,7 @@ def main(argv=None) -> int:
                 per_a = {}
                 for a in assumptions:
                     by_kind = {k: rates(agg[(cfg, a["name"], k, n)]["verdicts"][rule]) for k in AI_KINDS}
-                    per_a[a["name"]] = check(by_kind, crit)
+                    per_a[a["name"]] = check(by_kind, crit, common_only_undefined(a))
                 per_n.append({"n": n, "pass": all(v["pass"] for v in per_a.values()),
                               "pass_v1": all(v["pass_v1"] for v in per_a.values()), "by_assumption": per_a})
             results[cfg][rule] = {"minimum_n": minimum_n([(x["n"], x["pass"]) for x in per_n]),
@@ -389,6 +400,7 @@ def main(argv=None) -> int:
                                                     "docs/measurement/사전등록_v1.2_추가.md"],
               "command": "python " + " ".join([Path(sys.argv[0]).as_posix()] + (argv if argv is not None else sys.argv[1:])),
               "code_commit": git_commit(), "criteria": crit, "assumptions": assumptions, "pilot": pilot or None,
+              "common_only_skipped": [a["name"] for a in assumptions if common_only_undefined(a)],
               "settings": {"configs": configs, "sizes": {c: SIZES[c] for c in configs}, "reps": args.reps,
                            "resamples": resamples, "seed": args.seed, "rules_file": args.rules,
                            "rules_sha256": hashlib.sha256(rules_path.read_bytes()).hexdigest(),
@@ -406,6 +418,9 @@ def main(argv=None) -> int:
               crit["min_same_trust"], crit["max_half_trust"], crit["max_common_only_trust"], crit["max_low"],
               f"{crit['max_reversed_trust']:.0%}" if "max_reversed_trust" in crit else "(기준 없음)",
               len(assumptions)))
+    skipped = [a["name"] for a in assumptions if common_only_undefined(a)]
+    if skipped:
+        print(f"[공통 이유 1.0] 이 가정에서는 공통 이유만 AI 기준을 재지 않음: {', '.join(skipped)}")
     print("[최소 인원] 규칙 | 서비스 하나 | 두 서비스 합친 것 | (v1 기준 넷) 서비스 하나 | 합친 것")
     for rule in RULE_ORDER:
         if rule in table:
