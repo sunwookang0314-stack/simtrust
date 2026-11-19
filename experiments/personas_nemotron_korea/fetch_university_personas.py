@@ -22,11 +22,19 @@ education_level은 '졸업까지 끝낸 최종 학력'이다.
     AND age BETWEEN 23 AND 27 AND marital_status = '미혼'
     (4년제 완료는 22세부터만 나타나므로 '졸업 완료'가 명확함 — 재학생 쪽보다 훨씬 깨끗한 정의)
 
+  직장인 (졸업 후 1~2년차 사회초년생으로 근사, 폼 2-1 "졸업 후 직장 다니는 중"):
+    occupation <> '무직' AND occupation NOT LIKE '전직%'
+    AND education_level IN ('4년제 대학교', '2~3년제 전문대학')
+    AND age BETWEEN 23 AND 27 AND marital_status = '미혼'
+    ("전직 OO, 현재 구직중"은 지금 직장이 없으니 뺀다. 몇 년차인지는 데이터에 없어 나이로만 근사한다)
+
 여전히 완벽한 식별은 아니다 (군필 지연, 조기취업 등은 반영 못함). 근거와 트레이드오프는
 WORK_LOG.md 참고.
 
 사용:
     .venv-data/bin/python experiments/personas_nemotron_korea/fetch_university_personas.py
+    # 한 그룹만 다시 받을 때
+    .venv-data/bin/python experiments/personas_nemotron_korea/fetch_university_personas.py --groups workers
 """
 
 import argparse
@@ -53,6 +61,13 @@ GROUPS = {
         AND age BETWEEN 23 AND 27
         AND marital_status = '미혼'
     """,
+    "workers": """
+        occupation <> '무직'
+        AND occupation NOT LIKE '전직%'
+        AND education_level IN ('4년제 대학교', '2~3년제 전문대학')
+        AND age BETWEEN 23 AND 27
+        AND marital_status = '미혼'
+    """,
 }
 
 
@@ -66,6 +81,8 @@ def shard_urls() -> list[str]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out-dir", default=OUT_DIR, type=pathlib.Path)
+    parser.add_argument("--groups", nargs="+", choices=list(GROUPS), default=list(GROUPS),
+                        help="받을 그룹 (기본: 전부)")
     args = parser.parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -73,14 +90,15 @@ def main() -> None:
     con.execute("INSTALL httpfs; LOAD httpfs;")
     urls = ", ".join(f"'{u}'" for u in shard_urls())
 
-    for name, filter_sql in GROUPS.items():
+    for name in args.groups:
+        filter_sql = GROUPS[name]
         out_path = args.out_dir / f"{name}.parquet"
         query = f"""
             SELECT *
             FROM read_parquet([{urls}])
             WHERE {filter_sql}
         """
-        con.execute(f"COPY ({query}) TO '{out_path}' (FORMAT PARQUET)")
+        con.execute(f"COPY ({query}) TO '{out_path}' (FORMAT PARQUET, COMPRESSION zstd)")
         count = con.execute(f"SELECT count(*) FROM read_parquet('{out_path}')").fetchone()[0]
         print(f"[{name}] saved {count} rows -> {out_path}")
 
