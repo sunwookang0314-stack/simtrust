@@ -1,8 +1,11 @@
-# Nemotron-Personas-Korea → 대학생/취준생 페르소나
+# Nemotron-Personas-Korea → 재학·취준·직장 페르소나
 
 [nvidia/Nemotron-Personas-Korea](https://huggingface.co/datasets/nvidia/Nemotron-Personas-Korea)
-(CC BY 4.0)에서 "재학생"과 "취준생" 두 그룹을 근사해서 걸러내고(1단계), 각각 N명을
-샘플링해 TinyTroupe `TinyPerson` 형식으로 변환한다(2단계). 결과물은 팀 공유를 위해
+(CC BY 4.0)에서 "재학생", "취준생", "직장인" 그룹을 근사해서 걸러내고(1단계), 4칸에서
+칸마다 10명씩 뽑아 TinyTroupe `TinyPerson` 형식으로 변환한다(2단계).
+
+**지금 쓰는 패널은 `personas_v2/panel/` 40명이다 (11/17).** 아래 "4칸 패널" 참고.
+`personas/`의 30명(재학 15, 취준 15)은 이전 판이라 기존 설정·문서가 가리키는 것 때문에 남겨 둔다. 결과물은 팀 공유를 위해
 git에 포함한다 (`WORK_LOG.md`만 로컬 전용 작업 일지라 제외).
 
 ## 왜 두 그룹으로 나눴나
@@ -48,21 +51,58 @@ AND marital_status = '미혼'
 가리키므로 상대적으로 깨끗한 정의다. 미혼 조건은 두 그룹 모두에 넣었다 (기혼·有자녀는
 이 나이대라도 재학생/취준생일 가능성이 매우 낮다고 판단).
 
+## 4칸 패널 (11/17)
+
+폼 B 응답이 나온 뒤 사람 쪽 상태 묶음(2-1: 재학 / 졸업 후 취업 준비 / 직장)에 맞춰 칸을
+나눠 다시 뽑았다. 칸마다 수를 똑같이(10명) 맞추고, 사람 쪽 구성 비율은 분석할 때 가중으로 맞춘다.
+
+| 칸 (ID 접두사) | 묶음 | 조건 | 풀 | 뽑는 방식 |
+|---|---|---|---|---|
+| `S1-` | 재학 | 무직 · 고등학교 · 미혼 · 19~22세 | 10,292 | 나이마다 2~3명, 각 나이 안 성비는 풀 비율 |
+| `S2-` | 재학 | 무직 · 고등학교 · 미혼 · 23~25세 | 2,282 | 성별×나이 비례층화 |
+| `J-` | 취준 | 무직 · 4년제 · 미혼 · 23~27세 | 12,567 | 성별×나이 비례층화 |
+| `W-` | 직장 | 직업 있음(전직·구직중 제외) · 4년제 또는 전문대 · 미혼 · 23~27세 | 27,702 | 성별×나이 비례층화 |
+
+- S1을 비례로 뽑으면 19세가 풀의 78%라 10명 중 8명이 19세가 된다. 그래서 나이마다 고르게 뽑는다.
+  10명을 4개 나이에 나누고 남는 2명은 시드로 고른 나이에 한 명씩 더한다.
+- J·W는 성별×나이 층이 10개라 비례로 뽑아도 반올림 때문에 층마다 1명(남녀 5:5)이 된다.
+  풀의 성비(J 여 58%, W 남 60%)와는 다르다.
+- W 풀에서 "전직 OO, 현재 구직중" 2,226명은 지금 직장이 없으니 뺐다.
+
+### 페르소나 글
+
+변환 메모("근사함", "추정")는 모델이 그대로 읽으니 페르소나 글에서 뺐다 (`docs/work-orders/kim-minwoo/AI실행기.md`).
+
+| 칸 | `occupation.title` | `education` |
+|---|---|---|
+| 재학 | 대학생 | 대학교 재학 중 |
+| 취준 | 취업준비생 | `education_level` 졸업 (전공 계열) |
+| 직장 | 원본 `occupation` 그대로 (예: 치과기공사, 그 외 법률 관련 사무원) | `education_level` 졸업 (전공 계열) |
+
+나머지 필드 매핑은 아래 "필드 매핑"과 같다.
+
+### 한계
+
+- 재학은 근사치다. 무직·고졸·미혼을 재학생으로 쳤으니 대학에 안 간 사람이 섞여 있다.
+  원본 글에 "고교 졸업 후 잠시 숨을 고르는" 같은 문장이 남아 있으면 "대학교 재학 중"과 어긋날 수 있다.
+- 휴학과 졸업유예는 데이터로 구분할 수 없어서 재학에 묶었다.
+- 직장은 직업이 있다는 것만 알 수 있고 몇 년차인지는 데이터에 없다. 23~27세로 사회초년생을 근사했다.
+
 ## 파일
 
 - `fetch_university_personas.py` (1단계) : HuggingFace 원본 parquet(9개 조각, 총 100만 건)을
-  네트워크로 직접 쿼리(duckdb httpfs)해서 두 그룹 조건에 맞는 행만 로컬에 저장한다.
-  전체를 디스크에 받지 않고 원격에서 걸러서 가져온다.
-- `data/students_in_progress.parquet` (1단계 결과, 재학생 풀) : 12,574행, ~22MB.
-- `data/job_seekers.parquet` (1단계 결과, 취준생 풀) : 12,567행, ~22MB.
-  (두 파일 모두 **팀 공유를 위해 git에 포함**한다. 저장소 용량에 민감하면 Git LFS로
-  옮기는 것도 고려.)
-- `sample_and_convert.py` (2단계) : 두 parquet에서 각각 성별×나이 비례층화로 N명을 뽑고,
-  TinyTroupe `TinyPerson` JSON(`experiments/smoke_ko/personas/*.agent.json`과 같은 형식)으로
-  변환한다.
-- `personas/students_in_progress/*.agent.json`, `personas/job_seekers/*.agent.json`
-  (2단계 결과) : 변환된 페르소나 파일들. 파일명 접두사 `S`=재학생, `J`=취준생.
-- `personas/manifest.json` : 어떤 원본 uuid가 어떤 그룹·파일이 됐는지 추적용 목록.
+  네트워크로 직접 쿼리(duckdb httpfs)해서 그룹 조건에 맞는 행만 로컬에 저장한다.
+  전체를 디스크에 받지 않고 원격에서 걸러서 가져온다. `--groups`로 일부 그룹만 받을 수 있다.
+- `data/students_in_progress.parquet` (재학생 풀, 19~25세) : 12,574행, ~22MB.
+- `data/job_seekers.parquet` (취준생 풀) : 12,567행, ~22MB.
+- `data/workers.parquet` (직장인 풀) : 27,702행, ~26MB (zstd).
+  (모두 **팀 공유를 위해 git에 포함**한다. 저장소 용량에 민감하면 Git LFS로 옮기는 것도 고려.)
+- `sample_and_convert.py` (2단계) : 4칸에서 칸마다 N명을 뽑아 TinyTroupe `TinyPerson` JSON으로 변환한다.
+- `personas_v2/panel/*.agent.json` : 변환된 40명. 실행기(`scripts/run_simulation.py`)의 `personas_dir`로
+  바로 쓴다. 실행기는 파일 이름에서 `_` 앞(`S1-01` 등)을 페르소나 ID로 쓴다.
+- `personas_v2/manifest.json` : 페르소나마다 칸, 묶음(재학/취준/직장), 원본 uuid, 나이, 성별, 원본 직업, 학력.
+  실행기가 읽는 폴더 밖에 둔다.
+- `personas/` : 이전 판 30명 (재학 15, 취준 15). 메모가 글에 들어가 있는 판이다.
 
 ### 필드 매핑 (2단계)
 
@@ -73,8 +113,7 @@ Nemotron에 실제로 있는 값만 쓰고, 근거 없는 성격 수치(Big Five
 | `name` | `persona` 텍스트 맨 앞 "OOO 씨는" 패턴에서 정규식으로 추출 (전수 매치 확인함) |
 | `age`, `gender` | `age`, `sex` (남자→Male, 여자→Female) |
 | `residence` | `province` + `district` + `family_type` + `housing_type` 조합 |
-| `education` | 그룹별로 다르게 서술. 재학생은 "재학 여부 확인 불가, 근사함"을 명시, 취준생은 "졸업 완료(확정)"로 서술 |
-| `occupation.title` | 재학생="대학생 (재학 중으로 추정)", 취준생="취업준비생 (4년제 대학교 졸업)" |
+| `education`, `occupation.title` | 위 "페르소나 글" 표 |
 | `occupation.description`, `long_term_goals` | `career_goals_and_ambitions` |
 | `preferences.likes` | `hobbies_and_interests_list` |
 | `other_facts` | `persona` 요약문 + 6종 세부 페르소나(`professional_persona`, `sports_persona`, `arts_persona`, `travel_persona`, `culinary_persona`, `family_persona`) + `cultural_background` + `skills_and_expertise` + 혼인/병역 상태 |
@@ -88,17 +127,10 @@ Nemotron에 실제로 있는 값만 쓰고, 근거 없는 성격 수치(Big Five
 python3 -m venv .venv-data   # 최초 1회, 루트 .venv와 별개 (TinyTroupe 의존성과 무관)
 .venv-data/bin/pip install duckdb pandas pyarrow
 
-# 1단계: 원본에서 재학생/취준생 두 그룹 조건으로 필터링
+# 1단계: 원본에서 그룹 조건으로 필터링 (전체 약 5분, 이미 있으면 --groups로 일부만)
 .venv-data/bin/python experiments/personas_nemotron_korea/fetch_university_personas.py
+.venv-data/bin/python experiments/personas_nemotron_korea/fetch_university_personas.py --groups workers
 
-# 2단계: 그룹별 N명 샘플링 + TinyPerson 변환 (기본 15+15=30명)
-.venv-data/bin/python experiments/personas_nemotron_korea/sample_and_convert.py \
-    --n-students 15 --n-job-seekers 15
+# 2단계: 4칸 x 10명 샘플링 + TinyPerson 변환 (같은 시드면 결과가 같다)
+.venv-data/bin/python experiments/personas_nemotron_korea/sample_and_convert.py --n-per-cell 10 --seed 42
 ```
-
-## 다음 단계
-
-- 변환된 페르소나를 `experiments/smoke_ko/run_smoke.py` 같은 파이프라인에 투입해서
-  실제로 TinyTroupe가 문제없이 로드/대화하는지 확인
-- 필요하면 `--n-students`, `--n-job-seekers`, `--seed`를 바꿔 다른 규모/비율의 샘플을
-  추가로 생성
