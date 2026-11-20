@@ -95,6 +95,12 @@ class FakeAPI:
         return "\n".join(self.decoded(i) for i in range(len(self.prompts)))
 
     def answer_for(self, question, mark):
+        if question == "used6m":  # 점검 모드 (폼 2-6)
+            if self.mode == "check_bad" or (self.mode == "check_bad_once" and self.calls == 1):
+                return f"글쎄요, 잘 기억이 안 나요 {mark}"
+            if self.mode == "check_no":
+                return f'"없다" 요즘은 그런 걸 찾아본 적이 없어요 {mark}'
+            return f"있다. 지난달에 인턴 공고를 찾아봤어요 {mark}"
         if self.mode == "read_screen":
             return "공모전, 대외활동, 채용 탭과 마감 3일 전 알림이 보여요"
         if question == "use":
@@ -136,7 +142,8 @@ class FakeAPI:
         if self.mode == "empty" or (self.mode == "empty_once" and self.calls == 1):
             content, finish = "", "length"
         else:
-            question = ("q47" if "안 쓰게 됐거나 안 써본 기능이 있다면" in last else
+            question = ("used6m" if "써보신 적이 있나요" in last else
+                        "q47" if "안 쓰게 됐거나 안 써본 기능이 있다면" in last else
                         "nouse" if "안 쓸 것 같은 이유에 가까운" in last else
                         "why" if "쓸 것 같다고 고른 기능마다" in last else
                         "use" if "중 하나로 답해주세요" in last else "other")
@@ -688,6 +695,123 @@ class TestRunSimulation(unittest.TestCase):
                 self.assertEqual(code, expected, log)
         self.assertEqual(FAKE.calls, 0)
         self.assertFalse((TMP / "out_input").exists())
+
+
+def check_args(cfg, condition=2, repeat=1, limit=1):
+    argv = ["--check", "used6m", "--condition", str(condition), "--repeat", str(repeat), "--seed", "7",
+            "--config", cfg]
+    if limit is not None:
+        argv += ["--limit-personas", str(limit)]
+    return argv
+
+
+def read_check_raw(name):
+    path = TMP / f"out_{name}" / "raw.used6m.jsonl"
+    if not path.exists():
+        return []
+    return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+
+
+class TestCheckMode(unittest.TestCase):
+    """무관심 재현 점검 모드 (docs/measurement/무관심재현점검_계획.md 2장)."""
+
+    def setUp(self):
+        FAKE.reset()
+        os.environ["OPENAI_BASE_URL"] = GEMINI_URL
+        os.environ["OPENAI_API_KEY"] = "test-not-a-real-key"
+
+    def test_only_question_2_6_without_start_or_screens(self):
+        cfg = write_cfg("check")
+        code, log = run(*check_args(cfg, repeat=2))
+        self.assertEqual(code, 0, log)
+        self.assertEqual(FAKE.calls, 2)  # 에피소드 2개, 한 번씩만 묻는다
+        lines = read_check_raw("check")
+        pid = rs.persona_id_from_path(PERSONA_SRC[0])
+        self.assertEqual([(x["persona_id"], x["repeat"], x["choice"], x["attempts"]) for x in lines],
+                         [(pid, 1, "있다", 1), (pid, 2, "있다", 1)])
+        self.assertEqual(lines[0]["answers"][0]["question_id"], "Q-AI-USED6M")
+        self.assertIsInstance(lines[0]["persona_age"], int)
+        sent = squash(FAKE.sent_text())
+        question = (PROTOCOL / "questions/Q-AI-USED6M.txt").read_text(encoding="utf-8")
+        self.assertIn(squash(question), sent)  # 폼 문구 그대로
+        self.assertNotIn(squash("이 서비스는 오늘 처음 보는 서비스입니다"), sent)  # 시작 안내 없음
+        self.assertNotIn(squash("화면을 살펴본 뒤"), sent)  # 화면 없음
+        self.assertNotIn("#001", FAKE.decoded(1))  # 두 번째 에피소드는 새 에이전트라 첫 답을 모른다
+        self.assertFalse((TMP / "out_check" / "raw.jsonl").exists())  # 본실험 원시 응답에 안 섞인다
+        metas = read_metas("check")
+        self.assertEqual({(m["check"], m["service"], m["platform"]) for m in metas}, {("used6m", None, None)})
+        self.assertTrue(all("/used6m_c2_" in m["cache_file"] for m in metas))
+        s = last_summary("check")
+        self.assertEqual((s["answers"], s["asked_twice"], s["exit_code"]), ({"있다": 2, "없다": 0, "무효": 0}, 0, 0))
+
+    def test_asks_again_once_then_invalid(self):
+        FAKE.reset("check_bad_once")
+        code, log = run(*check_args(write_cfg("check_retry")))
+        self.assertEqual(code, 0, log)
+        line = read_check_raw("check_retry")[0]
+        self.assertEqual((line["choice"], line["attempts"], FAKE.calls), ("있다", 2, 2))
+        self.assertEqual([a["attempt"] for a in line["answers"]], [1, 2])
+
+        FAKE.reset("check_bad")
+        code, log = run(*check_args(write_cfg("check_bad")))
+        self.assertEqual(code, 0, log)  # 무효는 실패가 아니다. 개수를 결과에 적는다
+        line = read_check_raw("check_bad")[0]
+        self.assertEqual((line["choice"], line["attempts"], FAKE.calls), (None, 2, 2))
+        s = last_summary("check_bad")
+        self.assertEqual((s["answers"]["무효"], s["asked_twice"]), (1, 1))
+
+    def test_read_choice(self):
+        FAKE.reset("check_no")
+        code, log = run(*check_args(write_cfg("check_no")))
+        self.assertEqual(code, 0, log)
+        self.assertEqual(read_check_raw("check_no")[0]["choice"], "없다")
+        cases = {"있다": "있다", ' "없다" 이유는': "없다", "**있다**": "있다", "있다고 생각해요": "있다",
+                 "저는 있다": None, "있습니다": None, "": None, None: None}
+        for text, want in cases.items():
+            self.assertEqual(rs.read_choice(text), want, text)
+
+    def test_rerun_skips_and_main_flow_stays_separate(self):
+        cfg = write_cfg("check_mix")
+        self.assertEqual(run(*check_args(cfg))[0], 0)
+        FAKE.reset()
+        code, log = run(*check_args(cfg))
+        self.assertEqual(code, 0, log)
+        self.assertEqual((FAKE.calls, last_summary("check_mix")["episodes_skipped"]), (0, 1))
+        # 같은 설정으로 본실험 흐름을 돌려도 파일과 캐시가 따로다
+        code, log = run(*args(cfg))
+        self.assertEqual(code, 0, log)
+        self.assertEqual((len(read_raw("check_mix")), len(read_check_raw("check_mix"))), (1, 1))
+        groups = sorted(p.name for p in (TMP / "out_check_mix" / "cache").iterdir())
+        self.assertEqual(len(groups), 2)
+        self.assertTrue(groups[1].startswith("used6m_c2_") and groups[0].startswith("fake_app_c2_"), groups)
+
+    def test_condition1_uses_neutral_name(self):
+        code, log = run(*check_args(write_cfg("check_c1"), condition=1))
+        self.assertEqual(code, 0, log)
+        name = json.loads(PERSONA_SRC[0].read_text(encoding="utf-8"))["persona"]["name"]
+        sent = FAKE.sent_text()
+        self.assertIn(BASE_CFG["neutral_agent_name"], sent)
+        self.assertNotIn(name, sent)
+
+    def test_usage_and_input_errors(self):
+        no_q = TMP / "protocol_no_check"
+        if not no_q.exists():
+            shutil.copytree(TMP / "protocol", no_q)
+            (no_q / "questions/Q-AI-USED6M.txt").unlink()
+        cfg = write_cfg("check_err")
+        cases = [
+            ("서비스를 같이 줌", check_args(cfg) + ["--service", "fake"], 1),
+            ("플랫폼을 같이 줌", check_args(cfg) + ["--platform", "app"], 1),
+            ("조건 0", check_args(cfg, condition=0), 1),
+            ("본실험 흐름에 서비스 없음", ["--condition", "2", "--repeat", "1", "--seed", "1", "--config", cfg], 1),
+            ("점검 질문 파일 없음", check_args(write_cfg("check_err_q", protocol_dir="protocol_no_check")), 4),
+            ("페르소나 폴더에 {service}", check_args(write_cfg("check_err_p", personas_dir="{service}/personas")), 4),
+        ]
+        for label, argv, expected in cases:
+            with self.subTest(label):
+                code, log = run(*argv)
+                self.assertEqual(code, expected, log)
+        self.assertEqual(FAKE.calls, 0)
 
 
 class TestParseUseAnswers(unittest.TestCase):

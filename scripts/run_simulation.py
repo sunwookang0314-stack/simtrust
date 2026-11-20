@@ -14,6 +14,13 @@
     쓸 것 같은 기능이 하나도 없으면 Q-AI-WHY-USE, 안 쓸 것 같은 기능이 하나도 없으면 Q-AI-NOUSE를 건너뛴다.
     Q-4-7은 폼에서 필수라 늘 묻는다. 문구와 기능 목록은 실행 설정의 protocol_dir에서 읽는다.
 
+무관심 재현 점검 모드 (--check used6m, docs/measurement/무관심재현점검_계획.md 2장)
+    python scripts/run_simulation.py --check used6m --condition 2 --repeat 5 --seed 1 --config <본실험 설정>
+    시작 안내와 화면 없이 폼 2-6(Q-AI-USED6M) 한 문항만 묻는다. 서비스와 플랫폼은 받지 않고 조건은 1·2만 된다.
+    답이 "있다"나 "없다"로 시작하지 않으면 같은 질문을 한 번 더 묻고, 그래도 아니면 무효로 센다.
+    원시 응답은 본실험 파일 옆 *.used6m.jsonl에, 캐시는 used6m_ 폴더에 따로 쓴다. 실행 기록 폴더는 같이 써서
+    비용 상한을 본실험과 합쳐 센다.
+
 아직 안 하는 것
 - 질문 순서 (a): 강선우 결정 전이라 (b)만 짰다. (a)로 정해지면 넣는다.
 - 기능별 제시(프로토콜 1번 ②): 3단계 실측 뒤 정한다. 지금은 캡처를 한 번에 보여준다(①).
@@ -33,6 +40,7 @@ import subprocess
 import sys
 import time
 import traceback
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -60,6 +68,16 @@ FAILURE_RATE_LIMIT = 0.05
 
 # 시간 환산용. 대조 서비스 2 x 조건 4 x 페르소나 10 x 반복 3 x 플랫폼 2 (AI제시프로토콜.md 235행)
 PLANNED_EPISODES = 480
+
+# 무관심 재현 점검 (docs/measurement/무관심재현점검_계획.md 2장). 폼 2-6 한 문항만 묻는다
+CHECK_USED6M = "used6m"
+CHECK_QUESTION = "Q-AI-USED6M"
+CHECK_CHOICES = ("있다", "없다")
+CHECK_CONDITIONS = (1, 2)  # 조건 0은 페르소나가 없어서 "써본 적"을 물을 대상이 없다
+# 이어 돌릴 때 같은 점검 에피소드인지 가리는 칸 (점검 원시 응답 파일 안에서)
+CHECK_EPISODE_KEY = ("check", "condition", "persona_id", "repeat", "provider", "model", "protocol_version")
+# 답 앞의 공백, 따옴표, 강조 기호는 건너뛰고 본다
+_CHOICE_HEAD = re.compile(r"^[\s\"'“”‘’「」『』*]*(있다|없다)")
 
 
 class Stop(Exception):
@@ -120,8 +138,10 @@ class _Parser(argparse.ArgumentParser):
 
 def parse_args(argv):
     ap = _Parser(description="AI 실행기 (TRD IF-05)")
-    ap.add_argument("--service", required=True)
-    ap.add_argument("--platform", required=True, choices=PLATFORMS, help="캡처 플랫폼. 에이전트 하나에는 한 플랫폼 화면만 준다")
+    ap.add_argument("--service", help="본실험 흐름에서 꼭 준다. 점검 모드에서는 주지 않는다")
+    ap.add_argument("--platform", choices=PLATFORMS, help="캡처 플랫폼. 에이전트 하나에는 한 플랫폼 화면만 준다")
+    ap.add_argument("--check", choices=[CHECK_USED6M],
+                    help="무관심 재현 점검: 화면 없이 폼 2-6만 묻는다 (docs/measurement/무관심재현점검_계획.md)")
     ap.add_argument("--condition", required=True, type=int, choices=[0, 1, 2, 3])
     ap.add_argument("--repeat", required=True, type=int)
     ap.add_argument("--seed", required=True, type=int)
@@ -132,6 +152,13 @@ def parse_args(argv):
         ap.error("--repeat 는 1 이상이어야 한다")
     if args.limit_personas is not None and args.limit_personas < 1:
         ap.error("--limit-personas 는 1 이상이어야 한다")
+    if args.check:
+        if args.service is not None or args.platform is not None:
+            ap.error("점검 모드는 화면을 주지 않아서 --service, --platform 을 받지 않는다")
+        if args.condition not in CHECK_CONDITIONS:
+            ap.error(f"점검 모드는 조건 {', '.join(map(str, CHECK_CONDITIONS))}만 된다 (조건 0은 물을 페르소나가 없다)")
+    elif args.service is None or args.platform is None:
+        ap.error("--service 와 --platform 을 꼭 준다 (점검 모드만 빼고)")
     return args
 
 
@@ -273,6 +300,34 @@ def load_protocol(protocol_dir: Path):
     return {"features": features, "options_4_6": options, "questions": questions}, problems
 
 
+def load_check_question(protocol_dir: Path):
+    """점검 모드 질문(폼 2-6 문구). 폼 문구 그대로라 {자리}가 없어야 하고, 두 보기가 다 들어 있어야 한다."""
+    path = protocol_dir / "questions" / f"{CHECK_QUESTION}.txt"
+    if not path.is_file():
+        return None, [f"점검 질문 파일이 없다: {path}"]
+    text = _read_text(path)
+    problems = []
+    if not text.strip():
+        problems.append(f"점검 질문 파일이 비어 있다: {path}")
+    if re.search(r"\{[a-z_0-9]+\}", text):
+        problems.append(f"{CHECK_QUESTION}.txt 는 폼 문구 그대로여야 해서 {{자리}}를 넣으면 안 된다")
+    for choice in CHECK_CHOICES:
+        if choice not in text:
+            problems.append(f"{CHECK_QUESTION}.txt 에 보기 {choice!r} 가 없다")
+    return text, problems
+
+
+def read_choice(text: str):
+    """점검 답이 "있다"나 "없다"로 시작하면 그 말을, 아니면 None. 앞의 공백과 따옴표는 건너뛴다."""
+    m = _CHOICE_HEAD.match(text or "")
+    return m.group(1) if m else None
+
+
+def check_raw_path(raw_path: Path) -> Path:
+    """점검 원시 응답 파일. 본실험 파일과 같은 폴더에 이름만 다르게 둔다 (추출기가 본실험 파일만 읽게)."""
+    return raw_path.with_name(f"{raw_path.stem}.{CHECK_USED6M}{raw_path.suffix}")
+
+
 def _nonempty_str(v):
     return isinstance(v, str) and v.strip() != ""
 
@@ -395,11 +450,11 @@ def previous_tokens(meta_dir: Path, provider: str) -> int:
     return total
 
 
-def episode_key(record: dict) -> tuple:
-    return tuple(str(record.get(k)) for k in EPISODE_KEY)
+def episode_key(record: dict, keys=EPISODE_KEY) -> tuple:
+    return tuple(str(record.get(k)) for k in keys)
 
 
-def recorded_episodes(raw_path: Path) -> set:
+def recorded_episodes(raw_path: Path, keys=EPISODE_KEY) -> set:
     """원시 응답에 이미 있는 에피소드(성공한 것만 쓰인다). 같은 명령을 다시 돌려도 같은 에피소드가 두 번 쌓이지
     않게 하고, 중간에 멈춘 실행은 남은 에피소드만 이어서 돌게 한다(11/9 김승하 리뷰).
     다시 돌려서 새로 받고 싶으면 실행 설정의 raw_responses_path를 바꾼다."""
@@ -410,7 +465,7 @@ def recorded_episodes(raw_path: Path) -> set:
         if not text.strip():
             continue
         try:
-            done.add(episode_key(json.loads(text)))
+            done.add(episode_key(json.loads(text), keys))
         except json.JSONDecodeError:
             # 못 읽은 줄을 빼고 가리면 같은 에피소드가 또 쌓일 수 있다. 고친 뒤에 다시 돌린다.
             raise Stop(EXIT_INPUT, f"원시 응답 {raw_path.name} {i}행을 읽지 못해서 이미 돈 에피소드를 가릴 수 없다")
@@ -1132,9 +1187,41 @@ def print_summary(s: dict) -> None:
     print("=" * 60)
 
 
+def setup_tinytroupe(cfg: dict, root: Path, provider: str, label: str):
+    """TinyTroupe를 불러 설정을 검사하고 실행기 감싸기를 건다. 본실험 흐름과 점검 모드가 같이 쓴다.
+    (모델, 응답 토큰 상한, batch_id)를 돌려준다."""
+    os.chdir(root)  # TinyTroupe는 import 시점에 현재 폴더의 config.ini를 읽는다
+    import tinytroupe  # noqa: F401
+    from tinytroupe import config_manager
+    from tinytroupe.agent import TinyPerson
+
+    model, max_completion_tokens = check_tinytroupe_settings(config_manager, provider)
+
+    stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    batch_id = f"{label}_{stamp}_{secrets.token_hex(2)}"
+    if cfg["tinytroupe_log_dir"]:
+        relocate_tinytroupe_log(root / cfg["tinytroupe_log_dir"], f"tinytroupe.{batch_id}.log")
+
+    install_guards()
+    patch_tinytroupe_json()
+    # 기본값 15를 그대로 쓴다. 3으로 낮추면 [THINK, THINK, TALK, DONE]이 [THINK, THINK, DONE]이 돼서 답이 사라진다.
+    # (TRD FR-03-07의 "호출 3회"는 TRD v0.3에서 고친다)
+    TinyPerson.MAX_ACTIONS_BEFORE_DONE = cfg["max_actions_before_done"]
+    # 응답 내용이 화면에 찍히지 않게 한다 (print_summary 주석 참고)
+    TinyPerson.communication_display = False
+    # 프로토콜 3번: 이전 화면 다시 보여주기 수, 자동 영어 요약
+    TinyPerson.MAX_IMAGE_STIMULI_TO_RECALL = cfg["max_image_stimuli_to_recall"]
+    if not cfg["auto_image_description"]:
+        # 사람은 못 받는 영어 해석 문장이고, 클래스 공용 캐시를 거쳐 다른 에피소드에도 들어간다
+        TinyPerson._describe_images = _no_image_description
+    return model, max_completion_tokens, batch_id
+
+
 def run(args, root: Path) -> int:
     global _STATE
 
+    if args.check:
+        return run_check(args, root)
     if args.condition == 3:
         raise Stop(EXIT_USAGE, "조건 3(후기 검색)은 아직 자리만 있다. 후기 출처가 정해진 뒤 넣는다 (FR-03-03)")
 
@@ -1176,30 +1263,8 @@ def run(args, root: Path) -> int:
     # --- 설정 검사 ---
     provider, base_url = check_env(root)
     tokens_before = previous_tokens(root / cfg["meta_dir"], provider)
-    os.chdir(root)  # TinyTroupe는 import 시점에 현재 폴더의 config.ini를 읽는다
-    import tinytroupe  # noqa: F401
-    from tinytroupe import config_manager
-    from tinytroupe.agent import TinyPerson
-
-    model, max_completion_tokens = check_tinytroupe_settings(config_manager, provider)
-
-    stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-    batch_id = f"{args.service}_{args.platform}_c{args.condition}_{stamp}_{secrets.token_hex(2)}"
-    if cfg["tinytroupe_log_dir"]:
-        relocate_tinytroupe_log(root / cfg["tinytroupe_log_dir"], f"tinytroupe.{batch_id}.log")
-
-    install_guards()
-    patch_tinytroupe_json()
-    # 기본값 15를 그대로 쓴다. 3으로 낮추면 [THINK, THINK, TALK, DONE]이 [THINK, THINK, DONE]이 돼서 답이 사라진다.
-    # (TRD FR-03-07의 "호출 3회"는 TRD v0.3에서 고친다)
-    TinyPerson.MAX_ACTIONS_BEFORE_DONE = cfg["max_actions_before_done"]
-    # 응답 내용이 화면에 찍히지 않게 한다 (print_summary 주석 참고)
-    TinyPerson.communication_display = False
-    # 프로토콜 3번: 이전 화면 다시 보여주기 수, 자동 영어 요약
-    TinyPerson.MAX_IMAGE_STIMULI_TO_RECALL = cfg["max_image_stimuli_to_recall"]
-    if not cfg["auto_image_description"]:
-        # 사람은 못 받는 영어 해석 문장이고, 클래스 공용 캐시를 거쳐 다른 에피소드에도 들어간다
-        TinyPerson._describe_images = _no_image_description
+    model, max_completion_tokens, batch_id = setup_tinytroupe(
+        cfg, root, provider, f"{args.service}_{args.platform}_c{args.condition}")
 
     missing = snap.get("missing_features", [])
     screens = snap["screens"]
@@ -1260,10 +1325,23 @@ def run(args, root: Path) -> int:
         print(f"[이어서] 원시 응답에 이미 있는 에피소드 {ctx['episodes_skipped']}개는 다시 돌리지 않는다. "
               f"남은 {len(todo)}개만 돈다")
 
+    episodes, fatal = run_episodes(ctx, todo, run_episode)
+    exit_code = decide_exit_code(episodes, fatal)
+    summary = summarize(ctx, episodes, exit_code)
+    ctx["meta_dir"].mkdir(parents=True, exist_ok=True)
+    (ctx["meta_dir"] / f"{batch_id}.summary.json").write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    print_summary(summary)
+    return exit_code
+
+
+def run_episodes(ctx: dict, todo: list, one) -> tuple:
+    """에피소드를 차례로 돌린다. 본실험 흐름과 점검 모드가 같이 쓴다. (에피소드 결과 목록, 멈춘 이유)를 돌려준다."""
     episodes, fatal = [], None
     try:
         for unit, repeat in todo:
-            ep = run_episode(ctx, unit, repeat)
+            ep = one(ctx, unit, repeat)
             episodes.append(ep)
             print(f"  {ep['run_id']}: {'성공' if ep['ok'] else ep['abort'].label} ({ep['elapsed']}초)")
             if ep["ok"]:
@@ -1279,14 +1357,243 @@ def run(args, root: Path) -> int:
         # 에피소드 사이에 멈춘 경우. 끝난 에피소드 기록은 이미 써 있고, 요약만 남긴다
         fatal = Interrupted("Ctrl-C로 멈췄다. 같은 명령으로 다시 돌리면 끝난 에피소드는 건너뛴다")
         print(f"[중단] {fatal}", file=sys.stderr)
+    return episodes, fatal
 
-    exit_code = decide_exit_code(episodes, fatal)
-    summary = summarize(ctx, episodes, exit_code)
+
+# ---------------------------------------------------------------------------
+# 무관심 재현 점검 모드 (--check used6m)
+# ---------------------------------------------------------------------------
+
+def run_check_episode(ctx: dict, unit: dict, repeat: int):
+    """페르소나에게 시작 안내와 화면 없이 폼 2-6만 묻는다. 매번 새 에이전트다(계획 2장)."""
+    from tinytroupe.clients import force_api_cache
+
+    st = _STATE
+    st.episode = _new_counts()
+    st.requests = []
+    pid = unit["persona_id"]
+    run_id = f"{ctx['batch_id']}_{pid}_r{repeat}"
+
+    cache_file = None
+    if ctx["cfg"]["cache"]:
+        # 본실험 캐시 폴더(서비스_플랫폼_조건_모델)와 겹치지 않게 used6m_으로 시작하는 폴더를 쓴다
+        cache_file = ctx["cache_dir"] / f"{CHECK_USED6M}_c{ctx['condition']}_{ctx['model_tag']}" / f"{pid}_r{repeat}.json"
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        force_api_cache(True, str(cache_file))
+    else:
+        force_api_cache(False)
+
+    answers, choice, abort, error_detail = [], None, None, None
+    started = time.time()
+    try:
+        agent = build_agent(ctx["condition"], unit, ctx["cfg"]["neutral_agent_name"])
+        # 답이 "있다"나 "없다"로 시작하지 않으면 같은 질문을 한 번 더 묻는다(계획 2장 답 읽기)
+        for attempt in (1, 2):
+            actions = agent.listen_and_act(ctx["question"], return_actions=True, communication_display=False)
+            entry = {"question_id": CHECK_QUESTION, "attempt": attempt}
+            entry.update(split_actions(actions))
+            answers.append(entry)
+            choice = read_choice(entry["talk"])
+            if choice:
+                break
+    except AbortRun as e:
+        abort = e
+    except KeyboardInterrupt:
+        abort = Interrupted("Ctrl-C로 멈췄다. 같은 명령으로 다시 돌리면 끝난 에피소드는 건너뛴다")
+    except Exception as e:
+        abort = ApiFailed(f"예상 못 한 오류 ({type(e).__name__}: {e})")
+        error_detail = traceback.format_exc()
+    elapsed = round(time.time() - started, 1)
+
+    status = "성공" if abort is None else f"{abort.label}: {abort}"
+    meta = {
+        "run_id": run_id,
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "check": CHECK_USED6M,
+        "provider": ctx["provider"],
+        "base_url": ctx["base_url"] or None,
+        "model": ctx["model"],
+        "tinytroupe_commit": ctx["tinytroupe_commit"],
+        "simtrust_commit": ctx["simtrust_commit"],
+        "service": None,  # 화면을 안 준다
+        "platform": None,
+        "condition": ctx["condition"],
+        "persona_id": pid,
+        "repeat": repeat,
+        "seed": ctx["seed"],
+        "cache_file": _rel(cache_file, ctx["root"]) if cache_file else None,
+        "max_completion_tokens": ctx["max_completion_tokens"],
+        "tokens_in": st.episode["tokens_in"],
+        "tokens_in_cached": st.episode["tokens_in_cached"],
+        "tokens_out": st.episode["tokens_out"],
+        "elapsed_sec": elapsed,
+        "status": status,
+        "protocol_version": ctx["cfg"]["protocol_version"],
+        "action_truncations": st.episode["truncated"],
+        "batch_id": ctx["batch_id"],
+        "attempts": len(answers),
+        "calls_real": st.episode["calls_real"],
+        "calls_cached": st.episode["calls_cached"],
+        "empty_responses": st.episode["empty"],
+        "length_cutoffs": st.episode["length"],
+        "max_actions_before_done": ctx["cfg"]["max_actions_before_done"],
+        "json_ensure_ascii": False,
+        "neutral_agent_name": ctx["cfg"]["neutral_agent_name"] if ctx["condition"] == 1 else None,
+        "config_file": ctx["config_file"],
+        "question_file": ctx["question_file"],
+        "persona_file": _rel(unit["path"], ctx["root"]),
+    }
+    if error_detail:
+        meta["error_detail"] = error_detail
     ctx["meta_dir"].mkdir(parents=True, exist_ok=True)
-    (ctx["meta_dir"] / f"{batch_id}.summary.json").write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    print_summary(summary)
+    (ctx["meta_dir"] / f"{run_id}.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    if abort is None:
+        line = {
+            "run_id": run_id,
+            "batch_id": ctx["batch_id"],
+            "check": CHECK_USED6M,
+            "condition": ctx["condition"],
+            "persona_id": pid,
+            # 묶음을 나눌 때 쓴다(계획 2장: 나이는 페르소나 age로 22세 이하 / 23세 이상)
+            "persona_age": unit["spec"]["persona"]["age"],
+            "repeat": repeat,
+            "protocol_version": ctx["cfg"]["protocol_version"],
+            "provider": ctx["provider"],
+            "model": ctx["model"],
+            "status": "성공",
+            "choice": choice,  # "있다" / "없다" / None(두 번 다 아니면 무효)
+            "attempts": len(answers),
+            "answers": answers,
+        }
+        ctx["raw_path"].parent.mkdir(parents=True, exist_ok=True)
+        with ctx["raw_path"].open("a", encoding="utf-8") as f:
+            f.write(json.dumps(line, ensure_ascii=False) + "\n")
+
+    return {"run_id": run_id, "ok": abort is None, "elapsed": elapsed, "abort": abort, "choice": choice,
+            "attempts": len(answers)}
+
+
+def summarize_check(ctx: dict, episodes: list, exit_code: int) -> dict:
+    t = _STATE.totals
+    ok = [e for e in episodes if e["ok"]]
+    count = Counter(e["choice"] or "무효" for e in ok)
+    return {
+        "batch_id": ctx["batch_id"],
+        "check": CHECK_USED6M,
+        "condition": ctx["condition"],
+        "seed": ctx["seed"],
+        "provider": ctx["provider"],
+        "model": ctx["model"],
+        "exit_code": exit_code,
+        "episodes_planned": ctx["episodes_planned"],
+        "episodes_skipped": ctx["episodes_skipped"],
+        "episodes_run": len(episodes),
+        "episodes_ok": len(ok),
+        # 이번에 돈 에피소드만 센다. 묶음별 비율과 가중은 분석 단계에서 점검 원시 응답 전체로 낸다
+        "answers": {k: count.get(k, 0) for k in (*CHECK_CHOICES, "무효")},
+        "asked_twice": sum(1 for e in ok if e["attempts"] > 1),
+        "calls_real": t["calls_real"],
+        "calls_cached": t["calls_cached"],
+        "tokens_in": t["tokens_in"],
+        "tokens_in_cached": t["tokens_in_cached"],
+        "tokens_out": t["tokens_out"],
+        "tokens_total": t["tokens_in"] + t["tokens_out"],
+        "tokens_before": _STATE.tokens_before,
+        "tokens_cumulative": _STATE.tokens_used,
+        "token_cap": _STATE.token_cap,
+        "failure_rate": round((len(episodes) - len(ok)) / len(episodes), 3) if episodes else None,
+        "action_truncations": t["truncated"],
+        "elapsed_sec": round(sum(e["elapsed"] for e in episodes), 1),
+    }
+
+
+def print_summary_check(s: dict) -> None:
+    print("=" * 60)
+    print(f"[점검 요약] {s['batch_id']}  종료 코드 {s['exit_code']}")
+    print(f"  에피소드     : 성공 {s['episodes_ok']} / 실행 {s['episodes_run']} / 계획 {s['episodes_planned']}"
+          f" (이미 있어서 건너뜀 {s['episodes_skipped']})")
+    a = s["answers"]
+    print(f"  답           : 있다 {a['있다']}, 없다 {a['없다']}, 무효 {a['무효']} (다시 물은 에피소드 {s['asked_twice']})")
+    print(f"  호출         : 실제 {s['calls_real']}회, 캐시 {s['calls_cached']}회")
+    print(f"  토큰         : 이번 {s['tokens_total']:,}, 누적 {s['tokens_cumulative']:,} / 상한 {s['token_cap']:,}")
+    rate = "-" if s["failure_rate"] is None else f"{s['failure_rate'] * 100:.1f}%"
+    print(f"  실패 비율    : {rate} (NFR-06 문턱 {FAILURE_RATE_LIMIT * 100:.0f}%)")
+    print(f"  걸린 시간    : {s['elapsed_sec']}초")
+    print("=" * 60)
+
+
+def run_check(args, root: Path) -> int:
+    """무관심 재현 점검. 설정 파일은 본실험 것을 그대로 쓴다(모델·설정을 같게, 계획 2장).
+    스냅샷 칸은 읽지 않는다. 원시 응답과 캐시는 본실험과 따로, 실행 기록 폴더는 같이 쓴다(비용 상한 합산)."""
+    global _STATE
+
+    config_path = root / args.config
+    cfg = load_json(config_path, "실행 설정")
+    problems = validate_config(cfg)
+    if problems:
+        raise Stop(EXIT_INPUT, "실행 설정 검증 실패\n  - " + "\n  - ".join(problems))
+    protocol_dir = root / cfg["protocol_dir"]
+    question, problems = load_check_question(protocol_dir)
+    if "{service}" in cfg["personas_dir"]:
+        problems.append("점검 모드는 서비스가 없어서 personas_dir 에 {service} 를 쓸 수 없다")
+    personas_dir = root / cfg["personas_dir"]
+    if not problems and not personas_dir.is_dir():
+        raise Stop(EXIT_USAGE, f"페르소나 폴더가 없다: {personas_dir}")
+    if not problems:
+        personas, persona_problems = load_personas(personas_dir, args.limit_personas)
+        problems += persona_problems
+    if problems:
+        raise Stop(EXIT_INPUT, "입력 검증 실패\n  - " + "\n  - ".join(problems))
+    raw_path = check_raw_path(root / cfg["raw_responses_path"])
+    done = recorded_episodes(raw_path, CHECK_EPISODE_KEY)
+
+    provider, base_url = check_env(root)
+    tokens_before = previous_tokens(root / cfg["meta_dir"], provider)
+    model, max_completion_tokens, batch_id = setup_tinytroupe(cfg, root, provider,
+                                                              f"{CHECK_USED6M}_c{args.condition}")
+    ctx = {
+        "root": root,
+        "cfg": cfg,
+        "condition": args.condition,
+        "seed": args.seed,
+        "batch_id": batch_id,
+        "provider": provider,
+        "base_url": base_url,
+        "model": model,
+        "model_tag": model_tag(model),
+        "max_completion_tokens": max_completion_tokens,
+        "tinytroupe_commit": tinytroupe_commit(),
+        "simtrust_commit": simtrust_commit(root),
+        "question": question,
+        "question_file": _rel(protocol_dir / "questions" / f"{CHECK_QUESTION}.txt", root),
+        "config_file": _rel(config_path, root),
+        "raw_path": raw_path,
+        "meta_dir": root / cfg["meta_dir"],
+        "cache_dir": root / cfg["cache_dir"],
+        "episodes_planned": len(personas) * args.repeat,
+    }
+    _STATE = RunState(cfg["token_cap"], cfg["empty_retries"], tokens_before)
+    print(f"[점검] {batch_id}: {provider}/{model}, 조건 {args.condition}, 페르소나 {len(personas)} x 반복 {args.repeat}, "
+          f"폼 2-6 한 문항")
+
+    same = {"check": CHECK_USED6M, "condition": args.condition, "provider": provider, "model": model,
+            "protocol_version": cfg["protocol_version"]}
+    plan = [(unit, repeat) for unit in personas for repeat in range(1, args.repeat + 1)]
+    todo = [(unit, repeat) for unit, repeat in plan
+            if episode_key({**same, "persona_id": unit["persona_id"], "repeat": repeat}, CHECK_EPISODE_KEY) not in done]
+    ctx["episodes_skipped"] = len(plan) - len(todo)
+    if ctx["episodes_skipped"]:
+        print(f"[이어서] 점검 원시 응답에 이미 있는 에피소드 {ctx['episodes_skipped']}개는 다시 돌리지 않는다. "
+              f"남은 {len(todo)}개만 돈다")
+
+    episodes, fatal = run_episodes(ctx, todo, run_check_episode)
+    exit_code = decide_exit_code(episodes, fatal)
+    summary = summarize_check(ctx, episodes, exit_code)
+    ctx["meta_dir"].mkdir(parents=True, exist_ok=True)
+    (ctx["meta_dir"] / f"{batch_id}.summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2),
+                                                             encoding="utf-8")
+    print_summary_check(summary)
     return exit_code
 
 

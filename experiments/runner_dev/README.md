@@ -46,6 +46,8 @@
 | `questions/Q-4-7.txt` | 배포된 폼 4-7 제목과 설명. 위와 같이 확인했다 |
 | `questions/START.txt`, `SECTION4.txt`, `Q-AI-USE.txt`, `Q-AI-WHY-USE.txt`, `Q-AI-NOUSE.txt` | v0.1 참고 초안(강선우)의 제안 문구에서 시작해 11/6 v0.1로 정했다. 시작 안내는 폼 제목에 맞춰 "공모전·대회·인턴·취업"으로 바꿨다 |
 
+| `questions/Q-AI-USED6M.txt` | 무관심 재현 점검용(11/20). 첫 줄은 배포된 폼 2-6 제목 그대로(`docs/form-b/SimTrust-폼B-v2-생성.gs` 114행), 둘째 줄은 보기 "있다"·"없다" 중 하나로만 답하라는 안내(`docs/measurement/무관심재현점검_계획.md` 2장). 둘째 줄 문구는 Q-AI-USE 안내 문장에 맞춰 김민우가 씀 |
+
 - `SECTION4.txt`의 `{service_name}`은 스냅샷의 `service_name`, `{platform_label}`은 폼 3-3 보기("앱", "웹사이트")로 채운다.
 - 파일은 줄바꿈을 LF로 읽는다. 윈도에서 git이 CRLF로 받아도 폼 문구와 글자가 같아야 하기 때문이다.
 
@@ -68,6 +70,26 @@
 - Ctrl-C로 멈추면 그 에피소드에서 쓴 토큰까지 실행 기록에 남기고 요약을 쓴 뒤 130으로 끝난다. 안 남기면 다음 실행의 누적 토큰(비용 상한)을 모자라게 센다(11/9).
 - 원시 응답에 이미 있는 에피소드(서비스, 플랫폼, 조건, 페르소나, 회차, 제공자, 모델, 프로토콜·스냅샷 버전, 입력 방식, 질문 순서가 모두 같은 것)는 다시 돌리지 않는다. 같은 명령을 다시 돌리면 남은 에피소드만 돈다. 새로 받고 싶으면 실행 설정의 `raw_responses_path`를 바꾼다(11/9).
 
+## 무관심 재현 점검 모드 (11/20, #46)
+
+`docs/measurement/무관심재현점검_계획.md` 2장을 돌리는 모드다. 페르소나에게 화면과 시작 안내 없이 폼 2-6 한 문항만 묻는다.
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_simulation.py --check used6m --condition 2 --repeat 5 --seed 1 --config <본실험 설정>
+.\.venv\Scripts\python.exe scripts\run_simulation.py --check used6m --condition 1 --repeat 5 --seed 1 --config <본실험 설정>
+```
+
+- 설정 파일은 본실험 것을 그대로 쓴다(계획 2장: 모델과 설정을 본실험과 같게). 스냅샷 칸은 읽지 않는다. 페르소나는 설정의 `personas_dir`를 쓰고, 계획대로면 `experiments/personas_nemotron_korea/personas_v2/panel`(40명)이다. 점검 모드는 서비스가 없어서 `personas_dir`에 `{service}`가 있으면 멈춘다
+- `--service`, `--platform`은 받지 않는다. 조건은 1·2만 된다(조건 0은 물을 페르소나가 없다)
+- 에피소드마다 새 에이전트에게 `Q-AI-USED6M` 한 번을 묻는다. 말한 답(TALK)이 "있다"나 "없다"로 시작하면 그 답이다. 앞의 공백, 따옴표, `*`는 건너뛴다. 아니면 같은 에이전트에게 같은 질문을 한 번 더 묻고, 그래도 아니면 `choice: null`(무효)로 남긴다. 무효는 실패가 아니라서 종료 코드에 안 들어가고, 요약에 개수가 찍힌다
+- 다시 물을 때 문구를 새로 만들지 않고 같은 질문을 그대로 준다. 계획에 다시 묻는 문구가 정해져 있지 않아서다
+- 출력
+  - 원시 응답: 본실험 파일 옆에 이름만 다르게 둔다. 예: `raw_responses.jsonl`이면 `raw_responses.used6m.jsonl`. 한 줄 = 한 에피소드(조건 x 페르소나 x 회차)이고 `choice`, `attempts`, `persona_age`(나이 묶음용), 답 원문이 들어간다. 추출기가 읽는 본실험 파일과 섞이지 않는다
+  - 캐시: `{cache_dir}/used6m_c{조건}_{모델}/{페르소나}_r{회차}.json`. 본실험 캐시 폴더(`{서비스}_{플랫폼}_c{조건}_{모델}`)와 겹치지 않는다
+  - 실행 기록: 본실험과 같은 `meta_dir`에 쓴다(`check: used6m`, `service`·`platform`은 null). 그래서 비용 상한을 본실험과 합쳐 센다
+- 같은 명령을 다시 돌리면 점검 원시 응답에 이미 있는 에피소드(조건, 페르소나, 회차, 제공자, 모델, 프로토콜 버전이 같은 것)는 건너뛴다
+- 묶음별 비율, 가중, 구간은 실행기가 내지 않는다. 계획 3장대로 분석 단계에서 점검 원시 응답으로 낸다
+
 ## 이미지 입력 (프로토콜 3번)
 
 - 자동 영어 요약(`_describe_images`)은 실행 설정 `auto_image_description: false`로 끈다.
@@ -85,7 +107,7 @@ API 키 없이 돈다. TinyTroupe의 실제 호출 함수만 가짜로 바꾸고
 python -m unittest tests.test_run_simulation tests.test_extract_reasons -v
 ```
 
-실행기 36개, 추출기 11개를 확인한다. 추출기 테스트는 TinyTroupe 없이도 돈다. 실행기 테스트는 설정 사본에서 호출 사이 대기(`WAITING_TIME`)를 0으로 둔다.
+실행기 42개, 추출기 11개를 확인한다. 추출기 테스트는 TinyTroupe 없이도 돈다. 실행기 테스트는 설정 사본에서 호출 사이 대기(`WAITING_TIME`)를 0으로 둔다.
 
 - 질문 흐름: 질문 4개가 순서대로 가고, 꼬리 질문은 필요 없으면 건너뛰고, 캡처 없는 기능은 묻지 않고 기록한다
 - 폼 문구(4-7, 4-6 보기, 기능 이름)가 그대로 가고 `{자리}`가 남지 않는다. 기능 설명은 안 들어간다
@@ -100,6 +122,7 @@ python -m unittest tests.test_run_simulation tests.test_extract_reasons -v
 - 실행 중 쓸/안 쓸 판별(parse_use_answers)
 - 이미지 확인 스크립트(1-b): PC 경로가 모델 입력에 안 들어가고, 예상 못 한 오류가 나도 기록을 쓴다
 - `features.txt`에서 공백만 다른 기능 ID(`F1`, `F1 `)를 겹침으로 잡는다
+- 점검 모드(11/20): 폼 2-6 문구만 가고 시작 안내와 화면은 안 간다. 회차마다 새 에이전트다. 답이 "있다"·"없다"로 시작하지 않으면 한 번 더 묻고, 그래도 아니면 무효로 센다. 원시 응답과 캐시가 본실험과 따로이고 다시 돌리면 끝난 에피소드를 건너뛴다. 조건 1은 중립 이름이다. 서비스·플랫폼을 주거나 조건 0이면 1, 질문 파일이 없거나 `personas_dir`에 `{service}`가 있으면 4로 멈춘다
 
 ## 작업지시서를 따라 정한 것
 
