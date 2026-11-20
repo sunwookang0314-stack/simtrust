@@ -2,9 +2,11 @@
 
 전부 가짜다. 실제 응답, 실제 AI 답, 외부 API를 쓰지 않는다.
 이유 코드는 코드북 v0.1(docs/codebook/코드북_초안.csv)의 코드를 그대로 쓴다 (11/12, #44).
+11/20부터 사람을 서비스 구분 없이 합쳐 판정한다 (사전등록 v1 11/16 변경 기록, 본 판정은 8개 서비스 31명).
+판정 칸은 기능 x 쓸/안 쓸이고 service 칸은 "*"다. AI는 두 대조 서비스 답을 합친다.
 
 흐름
-1. 가짜 폼 응답 CSV (구글폼 응답 시트와 같은 칸, 서비스 2곳 x 40명)
+1. 가짜 폼 응답 CSV (구글폼 응답 시트와 같은 칸, 합 31명)
 2. scripts/form_to_sheet.py make   정리 시트
 3. 가짜 정리: 만들 때 정한 코드를 두 정리 담당 칸에 채운다 (5%는 일부러 다르게)
 4. scripts/form_to_sheet.py import  사람 코드 CSV
@@ -32,10 +34,13 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import form_to_sheet as fts  # noqa: E402
 import score_reasons as sr  # noqa: E402
 
-SEED = "demo-20261112"
+SEED = "demo-20261120"
 CODEBOOK = ROOT / "docs/codebook/코드북_초안.csv"
 SERVICES = {"링커리어": "linkareer", "에브리커리어(캠퍼스픽)": "campuspick"}
-PER_SERVICE = 40
+# 가짜 사람 수. 합쳐서 판정하니 서비스별 수는 결과에 안 나온다. 합만 본 판정 인원(31명)에 맞췄다
+RESPONDENTS = {"링커리어": 16, "에브리커리어(캠퍼스픽)": 15}
+# 서비스를 뺀 판정 칸 (사전등록 v1 6장: cell_keys에서 service를 뺌)
+POOLED_CELL_KEYS = ["feature_id", "kind"]
 P_APP = 0.7  # 사람 수 시뮬레이션과 같은 가정
 P_TWO = 0.4  # 한 사람이 이유 2개를 대는 비율 (시뮬레이션과 같다)
 COMMON_SHARE = 0.6  # 안 쓸 이유 중 공통 이유 비율 (시뮬레이션 common60과 같다)
@@ -151,7 +156,7 @@ def fake_responses(book: Book, features: list, rng: random.Random) -> tuple:
     rows, truth = [], {}
     order = 0
     for shown in SERVICES:
-        for _ in range(PER_SERVICE):
+        for _ in range(RESPONDENTS[shown]):
             order += 1
             r = {"타임스탬프": f"가짜 {order}", fts.Q_CONSENT: fts.CONSENT_YES, fts.Q_USED: "있다",
                  fts.Q_SERVICE: shown, fts.Q_PLATFORM: "앱" if rng.random() < P_APP else "웹사이트"}
@@ -222,6 +227,10 @@ def main() -> int:
     shutil.copytree(ROOT / "docs/ai-protocol", work / "docs/ai-protocol")
     shutil.copytree(ROOT / "configs", work / "configs")
     shutil.copyfile(CODEBOOK, work / "codebook.csv")
+    # 규칙 초안에서 판정 칸만 서비스를 뺀 것으로 바꾼다. 나머지 값은 그대로다
+    rules = json.loads((ROOT / "configs/rules.draft.json").read_text(encoding="utf-8"))
+    rules["cell_keys"] = POOLED_CELL_KEYS
+    (work / "configs/rules.pooled.json").write_text(json.dumps(rules, ensure_ascii=False, indent=1), encoding="utf-8")
     out_dir = ROOT / "experiments/demo_sample/out"
     if out_dir.exists():
         shutil.rmtree(out_dir)
@@ -256,7 +265,7 @@ def main() -> int:
         ai = fake_ai(book, model, condition, kind, features, rng)
         write_csv(work / f"ai_{model}.csv", sr.AI_FIELDS + ["input_mode", "model"], ai)
         assert sr.main(["--human", str(human_path.relative_to(work)), "--ai", f"ai_{model}.csv",
-                        "--rules", "configs/rules.draft.json", "--codebook", "codebook.csv",
+                        "--rules", "configs/rules.pooled.json", "--codebook", "codebook.csv",
                         "--out", f"scoring_{model}", "--allow-draft"], root=work) == 0
         for prefix in ("cells", "reasons"):
             src = next((work / f"scoring_{model}").glob(f"{prefix}_all_*.csv"))
@@ -267,11 +276,12 @@ def main() -> int:
                           "ai_answers_per_service_platform": SLOTS * REPEATS,
                           "nouse_verdicts": dict(Counter(c["verdict"] for c in cells))}
     (out_dir / "summary.json").write_text(json.dumps({"seed": SEED, "codebook": "docs/codebook/코드북_초안.csv (v0.1)",
-                                                      "respondents_per_service": PER_SERVICE,
+                                                      "pooled": True, "cell_keys": POOLED_CELL_KEYS,
+                                                      "respondents": sum(RESPONDENTS.values()),
                                                       "models": summary}, ensure_ascii=False, indent=1),
                                           encoding="utf-8")
     shutil.rmtree(work, ignore_errors=True)
-    print("[견본] 안 쓸 이유 칸 판정 (서비스 2곳 x 기능 4개)")
+    print(f"[견본] 안 쓸 이유 칸 판정 (서비스 합침, 사람 {sum(RESPONDENTS.values())}명 x 기능 4개)")
     for model, s in summary.items():
         print(f"  {model} ({s['label']}): {s['nouse_verdicts']}")
     print(f"  출력: {out_dir.relative_to(ROOT)}")
