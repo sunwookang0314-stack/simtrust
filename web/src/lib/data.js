@@ -31,8 +31,8 @@ export const SERVICES = [
 
 // 사람 쪽 kind. nouse_quit(그만둔 사람)은 참고용이라 화면 기본 목록에서 뺀다
 export const KINDS = [
-  { id: "nouse", name: "안 쓸 이유" },
   { id: "use", name: "쓸 이유" },
+  { id: "nouse", name: "안 쓸 이유" },
 ];
 
 /** 따옴표 칸과 BOM을 처리하는 작은 CSV 파서. 첫 줄을 칸 이름으로 쓴다. */

@@ -1,16 +1,8 @@
-import { NavLink, Outlet, Route, Routes } from "react-router-dom";
+import { Navigate, NavLink, Outlet, Route, Routes } from "react-router-dom";
 import Home from "./pages/Home.jsx";
-import Service from "./pages/Service.jsx";
-import Mvp from "./pages/Mvp.jsx";
-import Ask from "./pages/Ask.jsx";
-import Extract from "./pages/Extract.jsx";
-import Coding from "./pages/Coding.jsx";
-import Reasons from "./pages/Reasons.jsx";
+import Demo from "./pages/Demo.jsx";
 import TrustMap from "./pages/TrustMap.jsx";
-
-import { STEPS } from "./lib/steps.js";
-
-const PAGES = { service: <Service />, mvp: <Mvp />, ask: <Ask />, extract: <Extract />, coding: <Coding />, reasons: <Reasons />, map: <TrustMap /> };
+import { NAV } from "./lib/steps.js";
 
 function Layout() {
   return (
@@ -18,13 +10,11 @@ function Layout() {
       <header className="gnb">
         <div className="in">
           <NavLink to="/" className="logo"><i />SimTrust</NavLink>
-          <nav aria-label="단계">
-            {STEPS.map(s => (
-              <NavLink key={s.path} to={s.path} className={({ isActive }) => (isActive ? "on" : "")}>
-                <b>{s.no}</b>{s.name}{s.preview ? <small>미리보기</small> : !s.ready && <small>틀</small>}
-              </NavLink>
-            ))}
+          <nav aria-label="메뉴">
+            {NAV.map(s => <NavLink key={s.path} to={s.path} className={({ isActive }) => (isActive ? "on" : "")}>{s.name}</NavLink>)}
           </nav>
+          {/* 가짜 견본·지어낸 예시라는 표시는 화면마다 달지 않고 여기 한 번만 */}
+          <span className="demo-pill" title="실제 실험 결과가 나오면 같은 화면에 그대로 바꿔 넣어요">예시 데이터</span>
         </div>
       </header>
       <main className="in"><Outlet /></main>
@@ -37,7 +27,12 @@ export default function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<Home />} />
-        {STEPS.map(s => <Route key={s.path} path={s.path} element={PAGES[s.path]} />)}
+        <Route path="demo" element={<Demo />} />
+        <Route path="map" element={<TrustMap />} />
+        {/* 11/21 전 주소: 화면 1~5는 시연 한 페이지로 합쳤고, 새 MVP 점검은 뺐다 */}
+        {["service", "ask", "extract", "coding"].map(p => <Route key={p} path={p} element={<Navigate to="/demo" replace />} />)}
+        <Route path="reasons" element={<Navigate to="/demo?go=sieve" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
   );

@@ -1,43 +1,47 @@
-// concept.html에서 쓰던 부품을 React로 옮긴 것: 판정 배지, 통과율·재현율 막대, 이유 칩, 칸 고르기
+// 여러 화면이 같이 쓰는 부품: 화면 머리, 판정 배지, 비율 막대, 칸 고르기, 접는 설명
 import { PARAMS } from "../lib/params.js";
-import { pct, verdictKey } from "../lib/verdict.js";
+import { RULE, pct, verdictKey } from "../lib/verdict.js";
+
+/** 화면 머리: 머리글 + 한 줄 제목 + 한 줄 설명. 설명은 한 문장을 넘기지 않는다 */
+export function PageHead({ eyebrow, title, sub }) {
+  return (
+    <div className="phead">
+      {eyebrow && <span className="eyebrow">{eyebrow}</span>}
+      <h1>{title}</h1>
+      {sub && <p>{sub}</p>}
+    </div>
+  );
+}
+
+/** 발표 때 질문이 나오면 펼쳐 보는 연구 설명. 기본은 접혀 있다 */
+export function More({ label = "자세히", children }) {
+  return (
+    <details className="more">
+      <summary>{label}</summary>
+      <div className="more-body">{children}</div>
+    </details>
+  );
+}
 
 export function VerdictBadge({ verdict, size = "md" }) {
   return <span className={`verd v-${verdictKey(verdict)} ${size}`}>{verdict}</span>;
 }
 
-/** 막대 하나. 점선 = 참고용 50%, 믿고 써도 됨 70% (사전등록 v1 고정 70% 후보, 11/12 확정 전 예시) */
-export function MetricBar({ label, value, sub }) {
+/** 비율 막대 하나. 숫자는 "몇 개 중 몇 개"로 같이 보여 준다. 눈금 = 판정 문턱 50%·70% (RULE) */
+export function MetricBar({ label, value, hit, total }) {
   const v = value == null ? 0 : value * 100;
   return (
-    <div className={`mbar${v < 70 ? " lo" : ""}`}>
-      <span className="lab">{label}{sub && <small>{sub}</small>}</span>
+    <div className={`mbar${value != null && value < RULE.ref ? " lo" : ""}`}>
+      <div className="mtop">
+        <span className="lab">{label}</span>
+        <strong>{value == null ? "-" : `${pct(value)}%`}</strong>
+      </div>
       <div className="track">
         <div className="fill" style={{ width: `${v}%` }} />
-        <i style={{ left: "50%" }} /><i style={{ left: "70%" }} />
+        <i style={{ left: `${RULE.ref * 100}%` }} /><i style={{ left: `${RULE.trust * 100}%` }} />
       </div>
-      <strong>{value == null ? "-" : `${pct(value)}%`}</strong>
+      {total != null && <small>{total}개 중 {hit}개</small>}
     </div>
-  );
-}
-
-/** 이유 칩. passed = 사람도 말함(거름망 통과), missed = 사람만 말함(AI가 놓침) */
-export function ReasonChip({ reason, cand = false }) {
-  const missed = reason.type === "missed";
-  const passed = reason.passed === "Y";
-  const cls = missed ? "missed" : passed ? "pass" : cand ? "cand" : "stuck";
-  return (
-    <li className={`rchip ${cls}`} title={reason.basis}>
-      <span className="nm">
-        {reason.common === "Y" && <em className="cm">공통</em>}
-        {reason.name || reason.code}
-      </span>
-      <span className="ct">
-        {missed
-          ? `사람 ${reason.human_count}명 · AI 0번`
-          : `AI ${reason.ai_episodes_with_code}/${reason.ai_episodes}번 · 사람 ${reason.human_count}명`}
-      </span>
-    </li>
   );
 }
 
@@ -45,17 +49,16 @@ export function CellPicker({ params, only = ["service", "feature", "kind"] }) {
   return (
     <div className="picker">
       {only.map(k => (
-        <div className="seg" key={k} role="group" aria-label={PARAMS[k].label}>
-          {PARAMS[k].list.map(x => (
-            <button key={x.id} className={params[k] === x.id ? "on" : ""} aria-pressed={params[k] === x.id}
-                    onClick={() => params.set(k, x.id)}>{x.name}</button>
-          ))}
+        <div className="pgroup" key={k}>
+          <span className="plab">{PARAMS[k].label}</span>
+          <div className="seg" role="group" aria-label={PARAMS[k].label}>
+            {PARAMS[k].list.map(x => (
+              <button key={x.id} className={params[k] === x.id ? "on" : ""} aria-pressed={params[k] === x.id}
+                      onClick={() => params.set(k, x.id)}>{x.name}</button>
+            ))}
+          </div>
         </div>
       ))}
     </div>
   );
-}
-
-export function SampleTag() {
-  return <span className="sample">가짜 견본 데이터 · 판정은 규칙 초안(main), 본 규칙 fixed_70은 동결 뒤 반영 · 막대 점선 50%·70%</span>;
 }

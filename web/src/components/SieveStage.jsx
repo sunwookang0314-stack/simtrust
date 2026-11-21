@@ -2,55 +2,38 @@
 // 위 = AI 영역(이유 칩, 클수록 많이 나온 이유), 아래 = 사람 영역(구멍 = 응답자가 말한 이유)
 // ① 사람도 말한 이유는 구멍을 통과하고, 사람이 안 말한 이유는 망에 걸린다
 // ② 걸린 이유는 AI 다수결 망으로 가서, AI 답에서 많이 나온 것만 "사람에게 확인할 후보"로 남는다 (11/11 확정)
-// 마지막에 AI가 못 맞힌 구멍이 빨갛게 깜빡인다
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+// 마지막에 AI가 못 맞힌 구멍이 빨갛게 깜빡인다.
+// 11/21: 시연 페이지의 "다음" 버튼이 upto(어느 단계까지 갈지)를 정하고, 장면은 거기까지 한 걸음씩 걸어간다.
+// stamp가 켜지면 마지막 단계 뒤에 판정 도장이 가운데에 찍힌다. 판정은 도장으로만 보여 준다
+import { useEffect, useRef, useState } from "react";
 import { POOLED, cellOf, isCandidate, reasonsOf } from "../lib/data.js";
-import { VerdictBadge } from "./ui.jsx";
+import { reduceMotion, useFit } from "../lib/motion.js";
+import { AI_ZONE_H, W, aiHome, chipScale, spread, tier } from "../lib/stage.js";
+import { verdictKey, verdictWhy } from "../lib/verdict.js";
 
-const W = 1200, H = 470;              // 무대 좌표. 화면 폭에 맞춰 줄이고 키운다
-const AI_ROWS = [86, 134], MESH_Y = 250, REST_Y = 204;
+const H = 470;
+const MESH_Y = 250, REST_Y = 204;
 const SIEVE1_R = 900, S2X = 1050;      // ① 사람 거름망은 왼쪽(40~900), ② 다수결 망은 오른쪽 가운데 S2X
 const passY = i => (i % 2 ? 386 : 340);   // 통과한 칩은 두 줄로 엇갈려 겹치지 않게
 // 단계: 0 칩 등장 → 1 통과할 칩이 구멍 위로 → 2 통과 → 3 나머지가 ① 망에 걸림
 //       → 4 걸린 칩이 ② 다수결 망으로 → 5 적게 나온 칩은 빠져 사라지고 후보만 남음 → 6 놓친 이유 깜빡임
-const PHASE_AT = [60, 1300, 2300, 3300, 4300, 5200, 6100];
-const LAST = PHASE_AT.length - 1;
-const reduce = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+const LAST = 6;
+const STEP_MS = 1000;
 
-const spread = (n, i, left = 90, right = W - 90) => (n === 1 ? W / 2 : left + (i * (right - left)) / (n - 1));
-const tier = share => (share >= 0.3 ? 3 : share >= 0.12 ? 2 : 1);
-
-function useFit(ref) {
-  const [scale, setScale] = useState(1);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setScale(el.clientWidth / W));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [ref]);
-  return scale;
-}
-
-export default function SieveStage({ models, params }) {
-  // 고른 AI는 주소(?ai=model_b)에 남겨서 링크로 같은 장면을 열 수 있게
-  const [sp, setSp] = useSearchParams();
-  const pick = models.some(m => m.id === sp.get("ai")) ? sp.get("ai") : models[0].id;
-  const setPick = id => { const n = new URLSearchParams(sp); n.set("ai", id); setSp(n, { replace: true }); };
+export default function SieveStage({ models, params, pick, onPick, upto = LAST, stamp = false, cellLabel = "" }) {
   const [phase, setPhase] = useState(-1);
   const [run, setRun] = useState(0);
   // 페르소나 AI일 때: 칩에 올리면 그 말을 한 페르소나를, 페르소나 원에 올리면 그 페르소나가 한 말을 켠다
   const [hover, setHover] = useState({ code: null, pid: null });
   const box = useRef(null);
-  const scale = useFit(box);
+  const scale = useFit(box, W);
 
   const model = models.find(m => m.id === pick) ?? models[0];
   const cell = cellOf(model, POOLED, params.feature, params.kind);
   const rows = reasonsOf(model, POOLED, params.feature, params.kind);
   const ai = rows.filter(r => r.type === "ai_reason")
     .sort((a, b) => b.ai_episodes_with_code - a.ai_episodes_with_code);
-  // 사람 구멍: 이 칸에서 응답자가 말한 코드 전부 (AI 셋 어느 쪽 행에서 봐도 같다)
+  // 사람 구멍: 이 칸에서 응답자가 말한 코드 전부 (AI 넷 어느 쪽 행에서 봐도 같다)
   const holeMap = new Map();
   for (const m of models)
     for (const r of reasonsOf(m, POOLED, params.feature, params.kind))
@@ -69,18 +52,24 @@ export default function SieveStage({ models, params }) {
   const saidBy = pid => hoverRow?.personas?.get(pid) ?? 0;
   const said = r => (hover.pid ? r.personas?.get(hover.pid) ?? 0 : null);
 
-  // 칸이나 AI가 바뀌거나 다시 보기를 누르면 처음부터 돈다
+  // upto까지 한 걸음씩. AI·칸이 바뀌거나 다시 보기면 처음부터 upto까지 다시 걷는다. 뒤로 가기는 바로 그 단계로
+  const key = `${model.id}|${params.feature}|${params.kind}|${run}`;
+  const keyRef = useRef(key), phaseRef = useRef(-1);
   useEffect(() => {
-    if (reduce()) { setPhase(LAST); return; }
-    setPhase(-1);
-    const ts = PHASE_AT.map((t, i) => setTimeout(() => setPhase(i), t));
+    const go = p => { phaseRef.current = p; setPhase(p); };
+    const restart = keyRef.current !== key;
+    keyRef.current = key;
+    if (reduceMotion()) { go(upto); return; }
+    const from = restart ? -1 : phaseRef.current;
+    if (restart) go(-1);
+    if (upto <= from) { go(upto); return; }
+    const ts = [];
+    for (let p = from + 1, k = 0; p <= upto; p++, k++) ts.push(setTimeout(() => go(p), 80 + k * STEP_MS));
     return () => ts.forEach(clearTimeout);
-  }, [pick, params.feature, params.kind, run]);
+  }, [key, upto]);
 
-  const perRow = Math.ceil(ai.length / 2);
   const chipPos = (r, i) => {
-    const row = i < perRow ? 0 : 1, k = row ? i - perRow : i, n = row ? ai.length - perRow : perRow;
-    const home = { x: spread(n, k, 150, W - 150), y: AI_ROWS[row] };
+    const home = aiHome(i, ai.length);
     if (phase < 1) return home;
     if (passed.has(r.code)) {
       const x = holeX.get(r.code);
@@ -93,27 +82,41 @@ export default function SieveStage({ models, params }) {
     return candIdx.has(r.code) ? { x: S2X, y: REST_Y - candIdx.get(r.code) * 40 } : { x: S2X, y: H - 40 };
   };
 
-  if (!cell) return null;
+  const stamped = stamp && phase >= LAST;
+  if (!cell) return <section className="stage-card empty">이 칸에는 결과가 없어요</section>;
   return (
-    <section className="stage-card" aria-label="거름망 장면">
+    <section className={`stage-card${stamped ? " thud" : ""}`} aria-label="거름망 장면">
+      <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
+        <filter id="ink"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" seed="3" result="n" /><feDisplacementMap in="SourceGraphic" in2="n" scale="3" /></filter>
+      </svg>
       <div className="stage-top">
         <div className="seg" role="group" aria-label="AI 고르기">
           {models.map(m => (
-            <button key={m.id} className={m.id === pick ? "on" : ""} aria-pressed={m.id === pick}
-                    onClick={() => setPick(m.id)}>{m.name}<small> {m.persona ? "본실험" : "페르소나 없음"}</small></button>
+            <button key={m.id} className={m.id === model.id ? "on" : ""} aria-pressed={m.id === model.id}
+                    onClick={() => onPick?.(m.id)}>{m.name}</button>
           ))}
         </div>
         <div className={`stage-sum${phase >= LAST ? " on" : ""}`} aria-live="polite">
-          <span><b className="c-pass">통과 {nPassed}</b> · <b className="c-stuck">걸림 {nStuck}</b> (<b className="c-cand">확인할 후보 {cands.length}</b>) · <b className="c-miss">놓침 {nMissed}</b></span>
-          <VerdictBadge verdict={cell.verdict} />
-          <button className="replay" onClick={() => setRun(x => x + 1)}>↻ 다시 보기</button>
+          <span className="ss pass"><b>{nPassed}</b>대학생도 말함</span>
+          <span className="ss stuck"><b>{nStuck}</b>AI만 말함{cands.length > 0 && <small> (확인할 후보 {cands.length})</small>}</span>
+          <span className="ss miss"><b>{nMissed}</b>AI가 놓침</span>
         </div>
+        <button className="replay" onClick={() => setRun(x => x + 1)} disabled={upto < 0}>↻ 다시 보기</button>
       </div>
 
       <div className="stage-box" ref={box} style={{ height: H * scale }}>
+        {stamped && (
+          <div className="stamp-wrap" key={key} role="status">
+            <div className={`stamp k-${verdictKey(cell.verdict)}`}>
+              <b>{cell.verdict}</b>
+              <small>{model.name}{cellLabel && ` · ${cellLabel}`}</small>
+            </div>
+            <p className="stamp-why">{verdictWhy(cell)}</p>
+          </div>
+        )}
         <div className="stage" style={{ width: W, height: H, transform: `scale(${scale})` }}>
-          <div className="zone za" style={{ left: 0, top: 0, width: W, height: 170 }}>
-            <span className="ztag a">{model.name} 답 {cell.ai_episodes}개에서 나온 이유 {ai.length}개</span>
+          <div className="zone za" style={{ left: 0, top: 0, width: W, height: AI_ZONE_H }}>
+            <span className="ztag a">{model.name}가 말한 이유 {ai.length}개 <small>· 클수록 자주 말함</small></span>
           </div>
           {model.persona && pids.length > 0 && (
             <div className="pstrip" style={{ left: W - 20 - 300, top: 10, width: 300 }} aria-label={`페르소나 ${pids.length}명`}>
@@ -129,16 +132,16 @@ export default function SieveStage({ models, params }) {
                 );
               })}
               <small>{hover.code ? `${hoverRow?.name}: ${[...(hoverRow?.personas?.keys() ?? [])].length}명이 말함`
-                : hover.pid ? `페르소나 ${hover.pid}가 한 말이 켜져요` : `페르소나 ${pids.length}명 · 칩이나 원에 마우스를 올려 보세요`}</small>
+                : hover.pid ? `가상 대학생 ${hover.pid}가 한 말이 켜져요` : `가상 대학생 ${pids.length}명 · 올려 보면 누가 말했는지 보여요`}</small>
             </div>
           )}
           <div className="zone zh" style={{ left: 0, top: 184, width: SIEVE1_R + 16, height: H - 184 }}>
-            <span className="ztag h bottom">① 설문 응답자(8개 서비스 합침) {cell.n_humans}명이 말한 이유 {holes.length}개 = 거름망 구멍</span>
+            <span className="ztag h bottom">진짜 대학생 {cell.n_humans}명이 말한 이유 {holes.length}개 = 거름망 구멍</span>
           </div>
           <div className="zone zm" style={{ left: SIEVE1_R + 30, top: 184, width: W - SIEVE1_R - 30, height: H - 184 }}>
-            <span className="ztag m bottom">② AI 다수결 망</span>
+            <span className="ztag m bottom">AI가 자주 말한 것만 남김</span>
           </div>
-          <span className="s2note" style={{ left: S2X, top: MESH_Y + 46 }}>답의 1/3 이상 나온 것만 남아요</span>
+          <span className="s2note" style={{ left: S2X, top: MESH_Y + 46 }}>답 3개 중 1개 이상에서 나온 것</span>
           <span className={`candlab${phase >= 5 && cands.length ? " on" : ""}`}
                 style={{ left: S2X, top: REST_Y - (cands.length - 1) * 40 - 22 }}>사람에게 확인할 후보</span>
 
@@ -151,7 +154,7 @@ export default function SieveStage({ models, params }) {
               <div key={h.code} className={`hole${hit ? " hit" : ""}${missed ? " missed" : ""}`}
                    style={{ left: holeX.get(h.code), top: MESH_Y, width: holeW }} title={h.basis}>
                 <span>{h.name || h.code}</span>
-                <small>사람 {h.human_count}명</small>
+                <small>대학생 {h.human_count}명</small>
               </div>
             );
           })}
@@ -168,18 +171,16 @@ export default function SieveStage({ models, params }) {
             const s = said(r);
             const lit = s == null ? "" : s > 0 ? " hl" : " dim";
             return (
-              <div key={r.code} className={`schip t${tier(share)}${state}${lit}`} title={r.basis} tabIndex={0}
+              <div key={r.code} className={`schip t${tier(share)}${state}${lit}`} title={`AI 답 ${r.ai_episodes}개 중 ${r.ai_episodes_with_code}개에서 나옴 · ${r.basis}`} tabIndex={0}
                    onMouseEnter={() => setHover({ code: r.code, pid: null })} onMouseLeave={() => setHover({ code: null, pid: null })}
                    onFocus={() => setHover({ code: r.code, pid: null })} onBlur={() => setHover({ code: null, pid: null })}
                    style={{ left: p.x, top: p.y, opacity: phase < 0 || gone ? 0 : 1,
-                            "--s": phase < 0 ? 0.3 : 0.86 + Math.min(share, 0.6) * 0.5,
+                            "--s": phase < 0 ? 0.3 : chipScale(share),
                             transitionDelay: `${(phase <= 0 ? i * 70 : isPass ? i * 90 : phase >= 4 ? i * 60 : 0)}ms` }}>
-                {r.common === "Y" && <em>공통</em>}{r.name || r.code}
-                <small>{r.ai_episodes_with_code}번</small>
+                {r.name || r.code}
               </div>
             );
           })}
-
         </div>
       </div>
     </section>

@@ -5,7 +5,7 @@ import { PLATFORMS } from "./services.js";
 export const PARAMS = {
   service: { list: SERVICES, def: "linkareer", label: "서비스" },
   feature: { list: FEATURES, def: "F3", label: "기능" },
-  kind: { list: KINDS, def: "nouse", label: "이유" },
+  kind: { list: KINDS, def: "use", label: "이유" },   // 시연 이야기 칸(마감 알림 · 쓸 이유)에 맞춤
   platform: { list: PLATFORMS, def: "app", label: "플랫폼" },
 };
 
