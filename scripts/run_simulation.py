@@ -603,6 +603,8 @@ def _new_counts():
         "truncated": 0,  # 행동 목록이 MAX_ACTIONS_BEFORE_DONE보다 길어서 잘린 횟수
         # 실제 호출인데 응답에 사용량(usage)이 없던 횟수. 0으로 더해져서 비용이 덜 세어진다
         "usage_missing": 0,
+        # 출력 상한에 닿아 응답을 못 읽은 호출 (LengthFinishReasonError). TinyTroupe가 다시 묻는다. length에도 들어간다
+        "length_errors": 0,
         "retried_answers": 0,  # 답(TALK)이 비어서 같은 질문을 한 번 더 물은 횟수
         "empty_answers": 0,  # 다시 물어도 답(TALK)이 빈 질문 수. 그 에피소드는 무효로 표시한다
     }
@@ -722,6 +724,22 @@ def install_guards():
             if st is not None:
                 # TinyTroupe는 400·429 등을 None으로 바꿔서 돌려준다. 원인을 실행 기록에 남기려고 종류만 적어 둔다
                 st.last_api_error = type(e).__name__
+                if isinstance(e, getattr(openai, "LengthFinishReasonError", ())):
+                    # 응답 형식을 줄 때 출력 상한에 닿으면 응답을 못 읽고 이 예외가 난다. TinyTroupe가 잡아서 다시 묻기
+                    # 때문에 _update_cost_stats까지 안 가서 토큰과 길이 초과가 안 세어졌다 (11/22 gpt-5-mini 시범: 추론
+                    # 토큰이 2,048을 다 씀). 돈은 나갔으니 여기서 센다
+                    usage = getattr(getattr(e, "completion", None), "usage", None)
+                    t_in = getattr(usage, "prompt_tokens", 0) or 0
+                    t_out = getattr(usage, "completion_tokens", 0) or 0
+                    st.add("calls_real")
+                    st.add("length")
+                    st.add("length_errors")
+                    if usage is None:
+                        st.add("usage_missing")
+                    st.add("tokens_in", t_in)
+                    st.add("tokens_in_cached", provider_cached_tokens(usage))
+                    st.add("tokens_out", t_out)
+                    st.tokens_used += weighted_tokens(t_in, t_out, st.output_weight)
             if _is_quota_error(e):
                 # 충전금이 바닥나면 다시 물어도 같다. 남은 에피소드를 하나씩 실패시키며 돌지 않고 바로 멈춘다
                 raise SettingsFailed("API 사용 한도·충전금이 바닥났다 (insufficient_quota). 결제 화면을 확인해라") from None
@@ -1138,6 +1156,7 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
         "empty_responses": st.episode["empty"],
         "length_cutoffs": st.episode["length"],
         "usage_missing": st.episode["usage_missing"],
+        "length_errors": st.episode["length_errors"],
         "retried_answers": st.episode["retried_answers"],
         "invalid_answers": invalid,
         "cut_answers": cut,
@@ -1252,6 +1271,7 @@ def summarize(ctx: dict, episodes: list, exit_code: int) -> dict:
         "retried_answers": t["retried_answers"],
         "empty_answers": t["empty_answers"],
         "usage_missing": t["usage_missing"],
+        "length_errors": t["length_errors"],
         "output_token_weight": st.output_weight,
         "empty_rate": rate(t["empty"], t["messages"]),
         "length_cutoff_rate": rate(t["length"], responses),
@@ -1305,7 +1325,8 @@ def print_summary(s: dict) -> None:
     for w in summary_warnings(s):
         print(f"  [경고] {w}")
     print(f"  빈 응답 비율 : {pct(s['empty_rate'])}")
-    print(f"  길이 초과    : {pct(s['length_cutoff_rate'])} (finish_reason=length)")
+    print(f"  길이 초과    : {pct(s['length_cutoff_rate'])} (finish_reason=length, 그중 응답을 못 읽고 다시 물은 호출 "
+          f"{s['length_errors']}회)")
     print(f"  행동 잘림    : {s['action_truncations']}회")
     print(f"  질문         : {s['questions_asked']}개 물음 (성공한 에피소드 합계)")
     print(f"  요청당 이미지: {s['images_per_request_min']}~{s['images_per_request_max']}장")

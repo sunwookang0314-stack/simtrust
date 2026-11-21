@@ -145,6 +145,13 @@ class FakeAPI:
                     "code": "insufficient_quota"}
             raise openai.RateLimitError("Error code: 429 - insufficient_quota",
                                         response=httpx.Response(429, request=request), body=body)
+        if self.mode == "length_error_once" and self.calls == 1:
+            # gpt-5-mini 시범(11/22): 추론 토큰이 출력 상한을 다 써서 응답 형식을 못 읽음. TinyTroupe가 잡고 다시 묻는다
+            done = ChatCompletion.model_validate({
+                "id": "fake-len", "object": "chat.completion", "created": 0, "model": model,
+                "choices": [{"index": 0, "finish_reason": "length", "message": {"role": "assistant", "content": ""}}],
+                "usage": {"prompt_tokens": 1000, "completion_tokens": 2048, "total_tokens": 3048}})
+            raise openai.LengthFinishReasonError(completion=done)
         if self.mode == "not_found":
             raise openai.NotFoundError("model not found", response=httpx.Response(404, request=request), body=None)
         if self.mode == "empty" or (self.mode == "empty_once" and self.calls == 1):
@@ -614,6 +621,17 @@ class TestRunSimulation(unittest.TestCase):
         self.assertEqual(FAKE.calls, 1)  # 남은 에피소드를 하나씩 실패시키며 돌지 않는다
         self.assertIn("insufficient_quota", log)
         self.assertEqual(read_metas("quota")[0]["last_api_error"], "RateLimitError")
+
+    def test_length_error_tokens_are_counted(self):
+        FAKE.reset("length_error_once")
+        cfg = write_cfg("lenerr")
+        code, log = run(*args(cfg))
+        self.assertEqual(code, 0, log)
+        s = last_summary("lenerr")
+        self.assertEqual(s["length_errors"], 1)
+        self.assertEqual(s["calls_real"], FAKE.calls)  # 못 읽은 호출도 실제 호출로 센다
+        # 못 읽은 호출 1000 + 2048, 나머지 호출은 1000 + 100
+        self.assertEqual(s["tokens_total"], 3048 + (FAKE.calls - 1) * 1100)
 
     def test_missing_usage_is_warned(self):
         FAKE.reset("no_usage")
