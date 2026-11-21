@@ -39,6 +39,9 @@ EXIT_OK, EXIT_USAGE, EXIT_INPUT = 0, 1, 4
 SOURCES = ("talk", "think_talk")
 # 폼 서술 답에 어느 출력을 맞출지는 실제 캡처 시범 전에 정한다(프로토콜 10번). 참고 초안 제안은 TALK만이다
 DEFAULT_SOURCE = "talk"
+# 기능을 못 가려 검토표로만 간 이유 줄의 비율이 조건 하나에서라도 이 값을 넘으면 종료 코드 4 (11/21 조용한 실패 점검 3번).
+# 검토표로 간 줄은 판정 시트에 안 들어가서, 많으면 AI가 틀린 게 아니라 추출이 못 읽은 것이 점수에 섞인다
+REVIEW_RATE_LIMIT = 0.05
 # 원시 응답 한 줄에 꼭 있어야 하는 칸
 REQUIRED = ["run_id", "service", "platform", "condition", "persona_id", "repeat", "features", "answers"]
 CSV_FIELDS = ["run_id", "service", "platform", "condition", "persona_id", "repeat", "feature_id", "feature_name",
@@ -47,6 +50,9 @@ CSV_FIELDS = ["run_id", "service", "platform", "condition", "persona_id", "repea
 INTRO_WORDS = ("답변", "의견", "정리", "다음과 같", "아래와 같", "선택한 기능", "고른 기능", "말씀드리")
 # "말씀드립니다", "답변드립니다"처럼 받침 ㅂ으로 끝나는 말도 있어서 "니다"로 본다 (11/6 실제 답)
 INTRO_END = re.compile(r"니다[.:：]?$|[:：]$")
+# 맺음말로 보는 말. 마지막 줄이고 기능 이름이 없을 때만 본다 ("더 궁금한 점은 없습니다." 11/5 실제 답).
+# 검토로 보내면 기능을 못 가린 줄 비율(REVIEW_RATE_LIMIT)이 맺음말만으로 넘는다
+OUTRO_WORDS = re.compile(r"궁금|감사|이상입니다|이상이에요|도움이\s*되|참고가\s*되|추가로\s*(말씀|드릴)")
 # 4-7에서 써 봤는지만 말한 문장. 문장 전체가 이것일 때만 뺀다 ("안 써봤고 검색으로 찾습니다"는 이유로 남긴다)
 STATUS = re.compile(
     r"^(저는\s*|이\s*기능은\s*|아직\s*)*(한\s*번도\s*)?"
@@ -80,23 +86,23 @@ def split_pieces(text: str) -> list:
 
 
 def features_in(piece: str, features: list) -> list:
-    return [fid for fid, name in features if any(k in piece for k in rs.feature_keys(name))]
+    return [fid for fid, name in features if rs.feature_match(piece, name)]
 
 
 def lead_feature(piece: str, features: list):
     """문장이 기능 이름으로 시작하면 그 기능. 뒤에 다른 기능 이름이 나와도 앞 기능 줄로 본다."""
     for fid, name in features:
-        if any(piece.startswith(k) for k in rs.feature_keys(name)):
+        if rs.feature_match(piece, name, at_start=True):
             return fid
     return None
 
 
 def strip_feature_prefix(piece: str, name: str) -> str:
     """기능 이름을 뗀 나머지. 이름만 있는 줄(목록 머리)이면 빈 문자열."""
-    for key in rs.feature_keys(name):
-        if piece.startswith(key):
-            rest = re.sub(r"^\s*\([^)]*\)", "", piece[len(key):])  # "공고 저장(스크랩, 찜, 북마크):"
-            return re.sub(r"^\s*[:\uff1a\-\u2013]\s*|^\s*(은|는|이|가)\s+", "", rest).strip()
+    m = rs.feature_match(piece, name, at_start=True)
+    if m:
+        rest = re.sub(r"^\s*\([^)]*\)", "", piece[m.end():])  # "공고 저장(스크랩, 찜, 북마크):"
+        return re.sub(r"^\s*[:\uff1a\-\u2013]\s*|^\s*(은|는|이|가)\s+", "", rest).strip()
     return piece
 
 
@@ -117,7 +123,8 @@ def assign(text: str, features: list, sole: str = None):
     names = dict(features)
     seen_feature = False
     heading = None
-    for sentences in split_pieces(text):
+    all_lines = split_pieces(text)
+    for line_no, sentences in enumerate(all_lines):
         if not seen_feature and is_intro(sentences, features):
             intro.append(" ".join(sentences))
             continue
@@ -127,6 +134,9 @@ def assign(text: str, features: list, sole: str = None):
             if is_none(piece):
                 continue
             hits = features_in(piece, features)
+            if not hits and line_no == len(all_lines) - 1 and OUTRO_WORDS.search(piece):
+                intro.append(piece)  # 맺음말. 머리말과 같이 검토표 intro로만 남긴다
+                continue
             lead = lead_feature(piece, features) if len(hits) > 1 else None
             fid = hits[0] if len(hits) == 1 else lead
             if fid:
@@ -193,6 +203,9 @@ def extract_episode(line: dict, options: list, source: str) -> tuple:
 
     base = {k: line.get(k) for k in ("run_id", "batch_id", "service", "platform", "condition", "persona_id",
                                      "repeat", "protocol_version", "snapshot_version", "input_mode", "model")}
+    # 실행기가 다시 물어도 빈 답이던 질문(11/21 전 기록에는 칸이 없다). 판정 시트에서 이 에피소드를 뺀다
+    base["invalid_answers"] = line.get("invalid_answers") or []
+    base["cut_answers"] = line.get("cut_answers") or []
     records = []
     for fid, name in features:
         if fid in missing:
@@ -233,6 +246,26 @@ def extract_episode(line: dict, options: list, source: str) -> tuple:
     return records, review, notes
 
 
+def review_rates(lines: list, records: list, reviews: list) -> dict:
+    """조건마다 이유 줄 중 기능을 못 가려 검토표로만 간 비율. 쓸/안 쓸 판별 검토(Q-AI-USE)는 이유 줄이 아니라 뺀다."""
+    cond_of = {ln["run_id"]: ln.get("condition") for ln in lines}
+    out = {}
+    for r in records:
+        if not r.get("asked"):
+            continue
+        c = str(r.get("condition"))
+        v = out.setdefault(c, {"assigned": 0, "review": 0})
+        v["assigned"] += len(r["use_reasons"]) + len(r["nouse_lines"]) + len(r["q47_details"])
+    for v in reviews:
+        if v["question_id"] == "Q-AI-USE":
+            continue
+        out.setdefault(str(cond_of.get(v["run_id"])), {"assigned": 0, "review": 0})["review"] += 1
+    for v in out.values():
+        total = v["assigned"] + v["review"]
+        v["rate"] = round(v["review"] / total, 4) if total else None
+    return dict(sorted(out.items()))
+
+
 def csv_rows(records: list, reviews: list, notes: list = ()) -> list:
     rows = []
     for r in records:
@@ -270,6 +303,8 @@ def main(argv=None, root: Path = ROOT) -> int:
                     help="4-6 보기 파일 (실행에 쓴 프로토콜과 같은 파일)")
     ap.add_argument("--out", required=True, help="출력 폴더")
     ap.add_argument("--source", default=DEFAULT_SOURCE, choices=SOURCES)
+    ap.add_argument("--allow-review", metavar="사유", default="",
+                    help=f"기능을 못 가린 줄이 {REVIEW_RATE_LIMIT:.0%}를 넘어도 종료 코드 0. 사유를 요약에 남긴다")
     args = ap.parse_args(argv)
 
     raw_path, opt_path = root / args.raw, root / args.options
@@ -320,6 +355,8 @@ def main(argv=None, root: Path = ROOT) -> int:
 
     asked = [r for r in records if r["asked"]]
     choices = Counter(r["use_choice"] for r in asked)
+    by_cond = review_rates(lines, records, reviews)
+    over = {c: v for c, v in by_cond.items() if v["rate"] is not None and v["rate"] > REVIEW_RATE_LIMIT}
     per_answer = {k: [r["reason_counts"][k] for r in asked if r["reason_counts"][k]] for k in ("why_use", "q47")}
     summary = {
         "episodes": len(lines),
@@ -332,6 +369,13 @@ def main(argv=None, root: Path = ROOT) -> int:
         "intro_lines": sum(1 for v in notes if v["kind"] == "intro"),
         "attached_lines": sum(1 for v in notes if v["kind"] == "attached"),
         "q47_status_lines": sum(len(r.get("q47_status", [])) for r in asked),
+        # 조건별: 기능에 붙은 이유 줄, 기능을 못 가려 검토표로만 간 줄, 그 비율
+        "review_by_condition": by_cond,
+        "review_rate_limit": REVIEW_RATE_LIMIT,
+        "review_over_limit_reason": args.allow_review if over else None,
+        # 실행기가 무효로 표시한 에피소드(다시 물어도 빈 답), 답이 잘렸을 수 있는 에피소드
+        "invalid_episodes": sum(1 for ln in lines if ln.get("invalid_answers")),
+        "cut_episodes": sum(1 for ln in lines if ln.get("cut_answers")),
         "source": args.source,
         "files": {"records": rs._rel(jsonl, root), "review": rs._rel(review_path, root)},
     }
@@ -347,8 +391,20 @@ def main(argv=None, root: Path = ROOT) -> int:
     print(f"  따로 둔 줄   : 머리말 {summary['intro_lines']}개, 4-7 사용 상태 {summary['q47_status_lines']}개 "
           "(이유로 세지 않음, 검토표에 남김)")
     print(f"  붙인 줄      : 기능 이름 없이 대상 기능 하나에 붙인 줄 {summary['attached_lines']}개 (검토표에 남김)")
+    for c, v in by_cond.items():
+        rate = "-" if v["rate"] is None else f"{v['rate'] * 100:.1f}%"
+        print(f"  조건 {c}: 기능에 붙은 이유 줄 {v['assigned']}개, 기능을 못 가린 줄 {v['review']}개 ({rate})")
+    if summary["invalid_episodes"] or summary["cut_episodes"]:
+        print(f"  실행기 표시  : 무효 에피소드 {summary['invalid_episodes']}개(판정 시트에서 빠짐), "
+              f"잘렸을 수 있는 에피소드 {summary['cut_episodes']}개(그대로 씀)")
     print(f"  기록: {summary['files']['records']}, 검토표: {summary['files']['review']}")
     print("=" * 60)
+    if over and not args.allow_review:
+        print(f"[중단] 기능을 못 가린 줄이 {REVIEW_RATE_LIMIT:.0%}를 넘는 조건: "
+              + ", ".join(f"조건 {c} {v['rate'] * 100:.1f}%" for c, v in over.items())
+              + ". 검토표를 보고 추출 규칙을 고치거나, 그대로 쓰려면 --allow-review \"사유\"를 붙인다",
+              file=sys.stderr)
+        return EXIT_INPUT
     return EXIT_OK
 
 

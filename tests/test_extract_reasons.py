@@ -72,8 +72,9 @@ def outputs(name):
 
 class TestExtractReasons(unittest.TestCase):
     def test_features_reasons_and_options(self):
+        # 견본에 기능 이름 없는 줄을 일부러 넣어서 못 가린 줄 비율이 문턱을 넘는다. 문턱 검사는 아래 따로 본다
         code, log = run("--raw", write_raw("good", [GOOD]), "--options", "protocol/options_4-6.txt",
-                        "--out", "out_good")
+                        "--out", "out_good", "--allow-review", "시험 견본")
         self.assertEqual(code, 0, log)
         records, rows, summary = outputs("good")
         by = {r["feature_id"]: r for r in records}
@@ -174,12 +175,13 @@ class TestExtractReasons(unittest.TestCase):
         by = {r["feature_id"]: r for r in records}
         self.assertEqual({k: v["use_choice"] for k, v in by.items()},
                          {"F1": "use", "F2": "nouse", "F3": "use", "F4": "nouse"})
-        # 머리말 줄은 검토 목록에 안 가고 intro로만 남는다. 기능 줄 뒤에 온 말은 지금처럼 검토로 간다
+        # 머리말 줄과 마지막 줄 맺음말은 검토 목록에 안 가고 intro로만 남는다 (11/21: 맺음말도 intro로)
         reviews = [(r["kind"], r["text"]) for r in rows if r["kind"].startswith("review:")]
-        self.assertEqual(reviews, [("review:Q-AI-WHY-USE", "더 궁금한 점은 없습니다.")])
+        self.assertEqual(reviews, [])
+        self.assertIn("더 궁금한 점은 없습니다.", [r["text"] for r in rows if r["kind"] == "intro:Q-AI-WHY-USE"])
         intros = [r["kind"] for r in rows if r["kind"].startswith("intro:")]
-        self.assertEqual(intros, ["intro:Q-AI-WHY-USE", "intro:Q-AI-NOUSE"])
-        self.assertEqual(summary["intro_lines"], 2)
+        self.assertEqual(intros, ["intro:Q-AI-WHY-USE", "intro:Q-AI-WHY-USE", "intro:Q-AI-NOUSE"])
+        self.assertEqual(summary["intro_lines"], 3)
         # 써 봤는지만 말한 문장은 이유에서 빠지고 q47_status로 간다. 이유가 같이 있는 문장은 그대로 둔다
         self.assertEqual(by["F2"]["q47_details"], ["엑셀에 직접 적어 둡니다."])
         self.assertEqual(by["F2"]["q47_status"], ["한 번도 안 써봤습니다."])
@@ -291,6 +293,50 @@ class TestExtractReasons(unittest.TestCase):
                 code, log = run(*argv)
                 self.assertEqual(code, expected, log)
         self.assertFalse((TMP / "out_x").exists())
+
+
+class TestSilentFailures(unittest.TestCase):
+    """11/21 조용한 실패 점검 3번: 기능을 못 가린 줄, 기능 이름 구분자"""
+
+    def test_review_rate_over_limit_stops(self):
+        line = episode(run_id="over", answers=[
+            answer("Q-AI-USE", "공고 검색·필터: 쓸 것 같다\n마감 알림: 쓸 것 같다"),
+            answer("Q-AI-WHY-USE", "공고 검색·필터: 조건으로 좁힐 수 있어서\n그리고 이건 어느 기능인지 안 썼다"),
+            answer("Q-4-7", "공고 검색·필터: 자주 씁니다"),
+        ])
+        raw = write_raw("over", [line])
+        code, log = run("--raw", raw, "--options", "protocol/options_4-6.txt", "--out", "out_over")
+        self.assertEqual(code, 4, log)
+        self.assertIn("기능을 못 가린 줄", log)
+        # 결과 파일은 남겨서 검토표를 볼 수 있다
+        _, _, summary = outputs("over")
+        self.assertGreater(summary["review_by_condition"]["2"]["rate"], er.REVIEW_RATE_LIMIT)
+        code, log = run("--raw", raw, "--options", "protocol/options_4-6.txt", "--out", "out_over2",
+                        "--allow-review", "시험")
+        self.assertEqual(code, 0, log)
+        self.assertEqual(outputs("over2")[2]["review_over_limit_reason"], "시험")
+
+    def test_separator_variants_match_feature(self):
+        line = episode(run_id="sep", answers=[
+            answer("Q-AI-USE", "공고 검색/필터: 쓸 것 같다\n마감 알림: 쓸 것 같다"),
+            answer("Q-AI-WHY-USE", "공고 검색 필터: 조건으로 좁힐 수 있어서\n마감알림: 놓치지 않으려고"),
+            answer("Q-4-7", "공고검색·필터: 자주 씁니다"),
+        ])
+        code, log = run("--raw", write_raw("sep", [line]), "--options", "protocol/options_4-6.txt", "--out", "out_sep")
+        self.assertEqual(code, 0, log)
+        by = {r["feature_id"]: r for r in outputs("sep")[0]}
+        self.assertEqual(by["F1"]["use_choice"], "use")
+        self.assertEqual(by["F1"]["use_reasons"], ["조건으로 좁힐 수 있어서"])
+        self.assertEqual(by["F3"]["use_reasons"], ["놓치지 않으려고"])
+
+    def test_invalid_answers_are_carried(self):
+        line = episode(run_id="inv", answers=[answer("Q-AI-USE", "공고 검색·필터: 쓸 것 같다")])
+        line["invalid_answers"] = [{"question_id": "Q-AI-WHY-USE", "why": "다시 물어도 빈 답"}]
+        code, log = run("--raw", write_raw("inv", [line]), "--options", "protocol/options_4-6.txt", "--out", "out_inv")
+        self.assertEqual(code, 0, log)
+        records, _, summary = outputs("inv")
+        self.assertTrue(all(r["invalid_answers"] for r in records))
+        self.assertEqual(summary["invalid_episodes"], 1)
 
 
 if __name__ == "__main__":

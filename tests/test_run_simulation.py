@@ -87,6 +87,7 @@ class FakeAPI:
         self.calls = 0
         self.prompts = []  # 요청 전체 (디코딩 전)
         self.last_user = []  # 요청마다 마지막 사용자 메시지 (디코딩 후)
+        self.no_talk_done = False
 
     def decoded(self, i):
         return decode(self.prompts[i])
@@ -98,6 +99,8 @@ class FakeAPI:
         if question == "used6m":  # 점검 모드 (폼 2-6)
             if self.mode == "check_bad" or (self.mode == "check_bad_once" and self.calls == 1):
                 return f"글쎄요, 잘 기억이 안 나요 {mark}"
+            if self.mode == "check_polite":
+                return f"있습니다. 지난달에 인턴 공고를 찾아봤어요 {mark}"
             if self.mode == "check_no":
                 return f'"없다" 요즘은 그런 걸 찾아본 적이 없어요 {mark}'
             return f"있다. 지난달에 인턴 공고를 찾아봤어요 {mark}"
@@ -137,6 +140,11 @@ class FakeAPI:
             body = [{"error": {"code": 400, "message": "Please pass a valid API key", "status": "INVALID_ARGUMENT"}}]
             raise openai.BadRequestError(f"Error code: 400 - {body}", response=httpx.Response(400, request=request),
                                          body=body)
+        if self.mode == "quota":
+            body = {"message": "You exceeded your current quota", "type": "insufficient_quota",
+                    "code": "insufficient_quota"}
+            raise openai.RateLimitError("Error code: 429 - insufficient_quota",
+                                        response=httpx.Response(429, request=request), body=body)
         if self.mode == "not_found":
             raise openai.NotFoundError("model not found", response=httpx.Response(404, request=request), body=None)
         if self.mode == "empty" or (self.mode == "empty_once" and self.calls == 1):
@@ -151,6 +159,10 @@ class FakeAPI:
             mark = f"#{self.calls:03d}"
             actions = [{"type": "THINK", "content": f"화면을 다시 떠올려 본다 {mark}", "target": ""},
                        {"type": "TALK", "content": self.answer_for(question, mark), "target": ""}]
+            if self.mode == "no_talk" or (self.mode == "no_talk_once" and question == "use" and not self.no_talk_done):
+                # 생각만 하고 말(TALK) 없이 끝낸 답. TinyTroupe가 비슷한 TALK를 DONE으로 바꾼 경우와 같다
+                self.no_talk_done = True
+                actions = actions[:1]
             if self.mode == "long":
                 # 행동 상한보다 긴 목록. TinyTroupe가 잘라야 한다
                 actions = [{"type": "THINK", "content": f"생각 {k} {mark}", "target": ""} for k in range(6)] + actions
@@ -167,6 +179,8 @@ class FakeAPI:
         })
 
     def usage(self):
+        if self.mode == "no_usage":
+            return None
         u = {"prompt_tokens": 1000, "completion_tokens": 100, "total_tokens": 1100}
         if self.mode == "prompt_cache" and self.calls > 1:
             # OpenAI처럼 두 번째 요청부터 앞부분이 API 쪽 캐시에 걸렸다고 친다
@@ -180,7 +194,9 @@ OpenAIClient._raw_model_call = lambda self, model, params: FAKE(self, model, par
 
 BASE_CFG = json.loads((REPO / "configs/simulation.dev.json").read_text(encoding="utf-8"))
 BASE_CFG.update({"snapshot_root": "snapshots", "personas_dir": "personas", "images_root": "images",
-                 "protocol_dir": "protocol"})
+                 "protocol_dir": "protocol",
+                 # 토큰 수를 단순하게 세려고 출력도 입력과 같게 센다. 가중은 test_output_weight에서 따로 본다
+                 "output_token_weight": 1})
 
 
 def write_cfg(name, **override):
@@ -553,12 +569,71 @@ class TestRunSimulation(unittest.TestCase):
         self.assertEqual(summary["action_truncations"], FAKE.calls)
         self.assertEqual(read_metas("trunc")[0]["action_truncations"], FAKE.calls)
         self.assertIn(f"행동 잘림    : {FAKE.calls}회", log)
+        # 잘리면서 TALK가 사라져 질문마다 한 번 더 묻고, 그래도 비어서 에피소드가 무효로 표시된다 (11/21)
+        self.assertEqual(summary["episodes_invalid"], summary["episodes_ok"])
+        self.assertTrue(read_raw("trunc")[0]["invalid_answers"])
+        self.assertIn("[경고] 무효 에피소드", log)
 
         FAKE.reset()
         cfg = write_cfg("notrunc")
         code, log = run(*args(cfg))
         self.assertEqual(code, 0, log)
         self.assertEqual(last_summary("notrunc")["action_truncations"], 0)
+
+    def test_empty_talk_is_asked_again(self):
+        # 11/21 점검 1번: 첫 질문에 말 없이 생각만 하면 한 번 더 묻고, 답이 오면 무효가 아니다
+        FAKE.reset("no_talk_once")
+        cfg = write_cfg("notalk1")
+        code, log = run(*args(cfg))
+        self.assertEqual(code, 0, log)
+        line = read_raw("notalk1")[0]
+        use = [a for a in line["answers"] if a["question_id"] == "Q-AI-USE"][0]
+        self.assertTrue(use["talk"])
+        self.assertEqual(use["first_attempt"]["talk"], "")
+        self.assertEqual(line["invalid_answers"], [])
+        s = last_summary("notalk1")
+        self.assertEqual((s["retried_answers"], s["episodes_invalid"]), (1, 0))
+
+    def test_always_empty_talk_marks_episode_invalid(self):
+        FAKE.reset("no_talk")
+        cfg = write_cfg("notalk")
+        code, log = run(*args(cfg))
+        self.assertEqual(code, 0, log)  # 실패가 아니라 무효로 표시하고 경고한다
+        line = read_raw("notalk")[0]
+        self.assertEqual({a["question_id"] for a in line["invalid_answers"]},
+                         {a["question_id"] for a in line["answers"] if a["asked"]})
+        self.assertEqual(read_metas("notalk")[0]["invalid_answers"], line["invalid_answers"])
+        self.assertEqual(last_summary("notalk")["invalid_rate"], 1.0)
+        self.assertIn("[경고] 무효 에피소드", log)
+
+    def test_quota_error_stops_at_once(self):
+        FAKE.reset("quota")
+        cfg = write_cfg("quota")
+        code, log = run(*args(cfg, limit=2))
+        self.assertEqual(code, rs.EXIT_SETTINGS, log)
+        self.assertEqual(FAKE.calls, 1)  # 남은 에피소드를 하나씩 실패시키며 돌지 않는다
+        self.assertIn("insufficient_quota", log)
+        self.assertEqual(read_metas("quota")[0]["last_api_error"], "RateLimitError")
+
+    def test_missing_usage_is_warned(self):
+        FAKE.reset("no_usage")
+        cfg = write_cfg("nousage")
+        code, log = run(*args(cfg))
+        self.assertEqual(code, 0, log)
+        s = last_summary("nousage")
+        self.assertEqual(s["usage_missing"], FAKE.calls)
+        self.assertIn("[경고] 사용량(usage)이 없는 실제 호출", log)
+
+    def test_output_weight(self):
+        cfg = write_cfg("weight", output_token_weight=8)
+        code, log = run(*args(cfg))
+        self.assertEqual(code, 0, log)
+        s = last_summary("weight")
+        # 호출마다 입력 1000 + 출력 100 x 8
+        self.assertEqual(s["tokens_cumulative"], FAKE.calls * 1800)
+        self.assertEqual(s["output_token_weight"], 8)
+        bad = write_cfg("weight_bad", output_token_weight=0.5)
+        self.assertEqual(run(*args(bad))[0], 4)
 
     def test_cost_cap_exit_3(self):
         cfg = write_cfg("cap", token_cap=1)
@@ -766,9 +841,26 @@ class TestCheckMode(unittest.TestCase):
         self.assertEqual(code, 0, log)
         self.assertEqual(read_check_raw("check_no")[0]["choice"], "없다")
         cases = {"있다": "있다", ' "없다" 이유는': "없다", "**있다**": "있다", "있다고 생각해요": "있다",
-                 "저는 있다": None, "있습니다": None, "": None, None: None}
+                 "저는 있다": None, "": None, None: None,
+                 # 11/21: 끝맺음만 다른 존댓말 답도 받는다. 안 받으면 gpt-5-mini 존댓말 답이 무효로 쌓인다
+                 "있습니다": "있다", "없어요. 요즘은": "없다", "있음": "있다", "없습니다": "없다"}
         for text, want in cases.items():
             self.assertEqual(rs.read_choice(text), want, text)
+
+    def test_polite_answer_is_valid(self):
+        FAKE.reset("check_polite")
+        code, log = run(*check_args(write_cfg("check_polite")))
+        self.assertEqual(code, 0, log)
+        line = read_check_raw("check_polite")[0]
+        self.assertEqual((line["choice"], line["attempts"]), ("있다", 1))
+        self.assertEqual(last_summary("check_polite")["invalid_rate"], 0.0)
+
+    def test_many_invalid_answers_warn(self):
+        FAKE.reset("check_bad")
+        code, log = run(*check_args(write_cfg("check_warn")))
+        self.assertEqual(code, 0, log)
+        self.assertEqual(last_summary("check_warn")["invalid_rate"], 1.0)
+        self.assertIn("[경고] 무효", log)
 
     def test_rerun_skips_and_main_flow_stays_separate(self):
         cfg = write_cfg("check_mix")

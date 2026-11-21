@@ -84,7 +84,7 @@ LOW, NA, ASK, TRUST, REF = "자료 부족", "계산 불가", "사람에게 물�
 VERDICTS = (TRUST, REF, ASK, LOW, NA)
 
 CELL_CSV = ["scope", "condition", "service", "platform", "feature_id", "kind", "n_humans", "n_humans_app",
-            "n_humans_web", "ai_episodes", "ai_codes", "human_codes", "matched", "precision", "recall",
+            "n_humans_web", "ai_episodes", "ai_personas", "ai_codes", "human_codes", "matched", "precision", "recall",
             "precision_nocommon", "recall_nocommon", "ai_codes_nocommon", "human_codes_nocommon",
             "ai_split_precision", "ai_split_recall",
             "human_precision_low", "human_precision_high", "human_recall_low", "human_recall_high",
@@ -1012,6 +1012,8 @@ def score_cells(human: list, ai: list, rules: dict, keys: list, codebook: dict =
                     "n_humans_app": sum(v == "app" for v in plats.values()),
                     "n_humans_web": sum(v == "web" for v in plats.values()),
                     "ai_episodes": len(aic["episodes"]), "ai_codes": sorted(ai_codes),
+                    # 이 칸에 답이 남은 AI 페르소나 수. 무효로 빠지면 줄어든다. 판정에는 안 쓰고 보여 준다 (11/21 점검 2번)
+                    "ai_personas": len(aic["persona_eps"]),
                     "human_codes": len(human_count), "matched": len(ai_codes & set(human_count)),
                     "full": {"precision": p, "recall": r, "dist": jsd_similarity(ai_count, human_count),
                              "rank": rank_agreement(ai_count, human_count)},
@@ -1065,9 +1067,12 @@ def score(human: list, ai: list, rules: dict, codebook: dict = None) -> dict:
     platform_ref = []
     if "platform" not in keys and rules.get("platform_reference", True):
         platform_ref = score_cells(human, ai + copies, rules, with_platform(keys), codebook, PLATFORM_REF)[0]
+    summary = summarize(cells, conditions, alts, keys, platform_ref)
+    # 판정이 난 칸 중 AI 페르소나가 사람 하한보다 적은 칸. 판정 규칙은 그대로 두고 수만 알린다 (11/21 점검 2번)
+    summary["ai_personas_below_min_cells"] = sum(
+        1 for c in cells if c["verdict"] in (TRUST, REF, ASK) and (c.get("ai_personas") or 0) < rules["min_humans"])
     return {"cells": cells, "platform_ref": platform_ref, "conditions": conditions, "dropped_ai_rows": dropped,
-            "coverage": coverage, "saturation": saturation(human, rules),
-            "summary": summarize(cells, conditions, alts, keys, platform_ref)}
+            "coverage": coverage, "saturation": saturation(human, rules), "summary": summary}
 
 
 def summarize(cells: list, conditions: list, alts: list, keys: list, platform_ref: list = ()) -> dict:
@@ -1139,7 +1144,7 @@ def cell_row(c: dict) -> dict:
     lad = c.get("ladder") or {}
     return {"scope": c["scope"], "condition": c["condition"], **{k: c.get(k, "*") for k in CELL_KEYS},
             "n_humans": c["n_humans"], "n_humans_app": c["n_humans_app"], "n_humans_web": c["n_humans_web"],
-            "ai_episodes": c["ai_episodes"], "ai_codes": len(c["ai_codes"]),
+            "ai_episodes": c["ai_episodes"], "ai_personas": c.get("ai_personas"), "ai_codes": len(c["ai_codes"]),
             "human_codes": c["human_codes"], "matched": c["matched"], "precision": c["precision"],
             "recall": c["recall"], "precision_nocommon": nc.get("precision"), "recall_nocommon": nc.get("recall"),
             "ai_codes_nocommon": nc.get("ai_codes"), "human_codes_nocommon": nc.get("human_codes"),
@@ -1237,6 +1242,9 @@ def print_summary(result: dict, rules: dict, run_id: str) -> None:
     for cond, v in s.get("platform_reference", {}).items():
         print(f"  조건 {cond} 플랫폼별 칸(참고, 사람 {rules['min_humans']}명 이상만): "
               + ", ".join(f"{k} {v[k]}" for k in VERDICTS))
+    if s.get("ai_personas_below_min_cells"):
+        print(f"  주의: 판정이 났지만 AI 페르소나가 {rules['min_humans']}명보다 적은 칸 {s['ai_personas_below_min_cells']}개 "
+              "(무효·이유 없음으로 빠졌는지 cells CSV의 ai_personas를 본다)")
     if s.get("ai_platform_short_cells"):
         print(f"  AI 페르소나가 플랫폼 비율만큼 없어서 덜 뽑힌 칸: {s['ai_platform_short_cells']}개")
     for name, n in s["sensitivity_changed"].items():

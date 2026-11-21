@@ -275,6 +275,49 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(cells[(0, "F2", "nouse")]["ai_codes"], ["N-NONEED"])
         self.assertEqual(cells[(2, "F1", "use")]["verdict"], sr.LOW)  # 사람 응답이 없는 칸
         self.assertEqual(record["dropped_ai_rows"], 2)
+        self.assertEqual(c2["ai_personas"], 1)  # 이 칸에 답이 남은 AI 페르소나 수 (11/21)
+
+
+class TestNoReasonAndInvalid(unittest.TestCase):
+    """11/21 조용한 실패 점검 2번: 이유 없이 답만 한 기능은 '-'로 응답자에 넣고, 무효 에피소드는 빼고 센다"""
+
+    def make_from(self, name, episodes):
+        raw = TMP / f"{name}.jsonl"
+        raw.write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in episodes), encoding="utf-8")
+        code, log = run(er, "--raw", raw.name, "--options", "protocol/options_4-6.txt", "--out", f"ext_{name}")
+        self.assertEqual(code, 0, log)
+        ext = str(next((TMP / f"ext_{name}").glob("extracted_*.jsonl")).relative_to(TMP))
+        code, log = run(rsh, "make", "--extracted", ext, "--out", f"sheet_{name}")
+        self.assertEqual(code, 0, log)
+        d = TMP / f"sheet_{name}"
+        return read(next(d.glob("sheet_*.csv"))), read(next(d.glob("key_*.csv"))), log
+
+    def test_no_reason_feature_becomes_dash_row(self):
+        # 마감 알림은 쓴다고 했지만 쓸 이유에 마감 알림 줄이 없다
+        quiet = ep("c2_S02", 2, USE, "공고 검색·필터: 인턴 공고를 찾으려고",
+                   "공고 저장: 나한테 필요 없을 것 같아서\n추천 공고 목록: 광고 같아서 손이 안 간다", "공고 저장: 따로 안 모읍니다")
+        sheet, key, log = self.make_from("quiet", [quiet])
+        none_rows = [r for r in key if r["source"] == rsh.NO_REASON]
+        self.assertEqual([(r["feature_id"], r["kind"]) for r in none_rows], [("F3", "use")])
+        self.assertNotIn(none_rows[0]["item_id"], {r["item_id"] for r in sheet})  # 판정자 시트에는 없다
+        self.assertIn("이유 없이 쓴다/안 쓴다고만 한 기능 1개", log)
+        # 가져오면 '-' 줄로 들어가서 계산기가 응답자로 센다
+        keyp = str(next((TMP / "sheet_quiet").glob("key_*.csv")).relative_to(TMP))
+        filled = fill(sheet, TMP / "filled_quiet.csv")
+        code, log = run(rsh, "import", "--sheet", filled, "--key", keyp, "--out", "coded_quiet")
+        self.assertEqual(code, 0, log)
+        rows = read(next((TMP / "coded_quiet").glob("ai_codes_*.csv")))
+        self.assertIn(("F3", "use", "-"), {(r["feature_id"], r["kind"], r["code"]) for r in rows})
+        report = json.loads(next((TMP / "coded_quiet").glob("agreement_*.json")).read_text(encoding="utf-8"))
+        self.assertEqual(report["no_reason_features"], 1)
+
+    def test_invalid_episode_is_left_out_and_counted(self):
+        good = EPISODES[0]
+        bad = ep("c2_S03", 2, USE, "", "공고 저장: 나한테 필요 없을 것 같아서", "")
+        bad["invalid_answers"] = [{"question_id": "Q-AI-WHY-USE", "why": "다시 물어도 빈 답"}]
+        sheet, key, log = self.make_from("invalid", [good, bad])
+        self.assertNotIn("c2_S03", {r["run_id"] for r in key})
+        self.assertIn("무효로 뺌 1", log)
 
 
 if __name__ == "__main__":

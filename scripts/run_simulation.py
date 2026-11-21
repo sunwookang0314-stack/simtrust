@@ -65,6 +65,11 @@ CONDITION0_SLOTS = 10
 
 # NFR-06: 에피소드 실패율이 이 값을 넘으면 종료 코드 5
 FAILURE_RATE_LIMIT = 0.05
+# 답이 비어 무효로 친 에피소드, 점검 모드 무효 답이 이 비율을 넘으면 요약에 경고를 낸다 (11/21 조용한 실패 점검)
+INVALID_RATE_WARN = 0.05
+# 비용 상한은 "입력 토큰 환산"으로 센다. 출력 토큰 하나를 입력 토큰 몇 개로 칠지.
+# gpt-5-mini 값(입력 $0.25, 출력 $2.00 / 100만 토큰)이 8배라서 기본 8. 실행 설정 output_token_weight로 바꾼다
+OUTPUT_TOKEN_WEIGHT_DEFAULT = 8
 
 # 시간 환산용. 대조 서비스 2 x 조건 4 x 페르소나 10 x 반복 3 x 플랫폼 2 (AI제시프로토콜.md 235행)
 PLANNED_EPISODES = 480
@@ -76,8 +81,9 @@ CHECK_CHOICES = ("있다", "없다")
 CHECK_CONDITIONS = (1, 2)  # 조건 0은 페르소나가 없어서 "써본 적"을 물을 대상이 없다
 # 이어 돌릴 때 같은 점검 에피소드인지 가리는 칸 (점검 원시 응답 파일 안에서)
 CHECK_EPISODE_KEY = ("check", "condition", "persona_id", "repeat", "provider", "model", "protocol_version")
-# 답 앞의 공백, 따옴표, 강조 기호는 건너뛰고 본다
-_CHOICE_HEAD = re.compile(r"^[\s\"'“”‘’「」『』*]*(있다|없다)")
+# 답 앞의 공백, 따옴표, 강조 기호는 건너뛰고 본다. "있습니다", "있어요", "있음"처럼 끝맺음만 다른 답도 받는다
+# ("저는 있다"처럼 앞에 다른 말이 붙으면 다시 묻는다)
+_CHOICE_HEAD = re.compile(r"^[\s\"'“”‘’「」『』*]*(있|없)(다|습니다|어요|음)")
 
 
 class Stop(Exception):
@@ -188,6 +194,10 @@ CONFIG_KEYS = {
     "require_random_capture_names": (bool,),
     "tinytroupe_log_dir": (str, type(None)),
 }
+# 없어도 되는 키: (타입, 기본값). 검사 뒤 기본값을 채운다
+OPTIONAL_CONFIG_KEYS = {
+    "output_token_weight": ((int, float), OUTPUT_TOKEN_WEIGHT_DEFAULT),
+}
 
 # 프로토콜 파일. 문구는 질문 ID마다 파일 하나다 (프로토콜 9번)
 QUESTION_FILES = ["START", "SECTION4", "Q-AI-USE", "Q-AI-WHY-USE", "Q-AI-NOUSE", "Q-4-7"]
@@ -224,11 +234,18 @@ def validate_config(cfg) -> list:
             problems.append(f"실행 설정에 {key} 가 없다")
         elif not _type_ok(cfg[key], types):
             problems.append(f"실행 설정 {key} 의 타입이 맞지 않다: {cfg[key]!r}")
+    for key, (types, _) in OPTIONAL_CONFIG_KEYS.items():
+        if key in cfg and not _type_ok(cfg[key], types):
+            problems.append(f"실행 설정 {key} 의 타입이 맞지 않다: {cfg[key]!r}")
     for key in cfg:
-        if key not in CONFIG_KEYS and not key.startswith("_"):
+        if key not in CONFIG_KEYS and key not in OPTIONAL_CONFIG_KEYS and not key.startswith("_"):
             problems.append(f"실행 설정에 모르는 키가 있다: {key}")
     if problems:
         return problems
+    for key, (_, default) in OPTIONAL_CONFIG_KEYS.items():
+        cfg.setdefault(key, default)
+    if cfg["output_token_weight"] < 1:
+        problems.append("output_token_weight 는 1 이상이어야 한다 (출력이 입력보다 싸게 매겨지는 모델은 없다)")
 
     if cfg["input_mode"] not in ("text", "image"):
         problems.append(f"input_mode 는 text 또는 image 여야 한다: {cfg['input_mode']!r}")
@@ -318,9 +335,10 @@ def load_check_question(protocol_dir: Path):
 
 
 def read_choice(text: str):
-    """점검 답이 "있다"나 "없다"로 시작하면 그 말을, 아니면 None. 앞의 공백과 따옴표는 건너뛴다."""
+    """점검 답이 "있다"나 "없다"(있습니다·있어요·있음 포함)로 시작하면 "있다"/"없다", 아니면 None.
+    앞의 공백과 따옴표는 건너뛴다."""
     m = _CHOICE_HEAD.match(text or "")
-    return m.group(1) if m else None
+    return (m.group(1) + "다") if m else None
 
 
 def check_raw_path(raw_path: Path) -> Path:
@@ -425,7 +443,12 @@ def load_personas(personas_dir: Path, limit):
     return units, problems
 
 
-def previous_tokens(meta_dir: Path, provider: str) -> int:
+def weighted_tokens(tokens_in: int, tokens_out: int, weight) -> int:
+    """비용 상한에 세는 값 (입력 토큰 환산). 출력 토큰은 weight배로 센다."""
+    return int(tokens_in + tokens_out * weight)
+
+
+def previous_tokens(meta_dir: Path, provider: str, weight=1) -> int:
     """비용 상한은 본실험 전체 누적으로 센다. 같은 실행 기록 폴더에 남은 이전 에피소드의 토큰을 더한다.
 
     명령은 서비스 x 플랫폼 x 조건으로 나눠 도니까 명령마다 따로 세면 상한의 몇 배까지 쓸 수 있다.
@@ -443,7 +466,7 @@ def previous_tokens(meta_dir: Path, provider: str) -> int:
             broken.append(path.name)
             continue
         if meta.get("provider") == provider:
-            total += int(meta.get("tokens_in") or 0) + int(meta.get("tokens_out") or 0)
+            total += weighted_tokens(int(meta.get("tokens_in") or 0), int(meta.get("tokens_out") or 0), weight)
     if broken:
         # 못 읽은 기록을 빼고 세면 상한보다 더 쓸 수 있다. 고친 뒤에 다시 돌린다.
         raise Stop(EXIT_INPUT, f"이전 실행 기록을 읽지 못해서 누적 토큰을 셀 수 없다: {', '.join(broken)}")
@@ -578,17 +601,23 @@ def _new_counts():
         "empty": 0,  # 그중 빈 응답 또는 실패(None)
         "length": 0,  # finish_reason=length
         "truncated": 0,  # 행동 목록이 MAX_ACTIONS_BEFORE_DONE보다 길어서 잘린 횟수
+        # 실제 호출인데 응답에 사용량(usage)이 없던 횟수. 0으로 더해져서 비용이 덜 세어진다
+        "usage_missing": 0,
+        "retried_answers": 0,  # 답(TALK)이 비어서 같은 질문을 한 번 더 물은 횟수
+        "empty_answers": 0,  # 다시 물어도 답(TALK)이 빈 질문 수. 그 에피소드는 무효로 표시한다
     }
 
 
 class RunState:
     """이번 실행의 호출 집계. 아래 감싼 함수들이 여기에 쓴다."""
 
-    def __init__(self, token_cap: int, empty_retries: int, tokens_before: int = 0):
+    def __init__(self, token_cap: int, empty_retries: int, tokens_before: int = 0, output_weight=1):
         self.token_cap = token_cap
         self.empty_retries = empty_retries
-        self.tokens_before = tokens_before  # 이전 실행에서 이미 쓴 토큰
+        self.output_weight = output_weight  # 비용 상한에서 출력 토큰 하나를 입력 토큰 몇 개로 칠지
+        self.tokens_before = tokens_before  # 이전 실행에서 이미 쓴 토큰 (입력 토큰 환산)
         self.tokens_used = tokens_before  # 실제 호출만 센다. 캐시 응답은 돈이 안 든다
+        self.last_api_error = None  # 마지막 API 오류 종류 (문구는 키가 섞일 수 있어서 안 남긴다)
         self.totals = _new_counts()
         self.episode = _new_counts()
         self.requests = []  # 이번 에피소드의 요청마다 들어간 이미지 장수 (캐시 응답 포함)
@@ -645,6 +674,17 @@ def _is_auth_error(e) -> bool:
     return False
 
 
+def _is_quota_error(e) -> bool:
+    """충전금·사용 한도 소진 (OpenAI 429 insufficient_quota). 잠깐 몰린 429(rate limit)와는 다르게 기다려도 안 풀린다."""
+    import openai
+
+    if not isinstance(e, openai.RateLimitError):
+        return False
+    body = getattr(e, "body", None)
+    code = getattr(e, "code", None) or (body.get("code") if isinstance(body, dict) else None)
+    return code == "insufficient_quota" or "insufficient_quota" in str(e)
+
+
 def install_guards():
     """한 프로세스에서 한 번만 감싼다. 감싼 함수는 모듈 전역 _STATE를 본다."""
     global _GUARDS_INSTALLED
@@ -679,6 +719,12 @@ def install_guards():
         try:
             return orig_raw(self, model, chat_api_params)
         except Exception as e:
+            if st is not None:
+                # TinyTroupe는 400·429 등을 None으로 바꿔서 돌려준다. 원인을 실행 기록에 남기려고 종류만 적어 둔다
+                st.last_api_error = type(e).__name__
+            if _is_quota_error(e):
+                # 충전금이 바닥나면 다시 물어도 같다. 남은 에피소드를 하나씩 실패시키며 돌지 않고 바로 멈춘다
+                raise SettingsFailed("API 사용 한도·충전금이 바닥났다 (insufficient_quota). 결제 화면을 확인해라") from None
             if _is_auth_error(e):
                 # 오류 문구에 키 일부가 섞여 나올 수 있어서 종류만 남긴다
                 raise AuthFailed(f"인증 오류 ({type(e).__name__})") from None
@@ -701,10 +747,13 @@ def install_guards():
             st.add("calls_cached")
         else:
             st.add("calls_real")
+            if usage is None or not (tokens_in or tokens_out):
+                # 실제 호출인데 사용량이 없으면 0으로 더해져 비용이 덜 세어진다. 몇 번인지 남겨서 요약에 경고한다
+                st.add("usage_missing")
             st.add("tokens_in", tokens_in)
             st.add("tokens_in_cached", tokens_cached)
             st.add("tokens_out", tokens_out)
-            st.tokens_used += tokens_in + tokens_out
+            st.tokens_used += weighted_tokens(tokens_in, tokens_out, st.output_weight)
         try:
             if response.choices[0].finish_reason == "length":
                 st.add("length")
@@ -882,10 +931,33 @@ _NOUSE = re.compile(r"(쓸|사용할)\s*것\s*같(지|진)\s*(는\s*)?않|않을
 _USE = re.compile(r"쓸\s*것\s*같|쓸\s*거\s*같|사용할\s*것\s*같")
 
 
+# 기능 이름 안의 띄어쓰기와 가운뎃점·빗금·쉼표는 AI가 바꿔 쓰기 쉬워서 아무 구분자(없어도 됨)로 본다
+_NAME_SEP = r"[\s·・/,，、]*"
+
+
 def feature_keys(name: str) -> list:
-    # "공고 저장 (스크랩, 찜, 북마크)"를 AI가 "공고 저장"으로 줄여 쓰는 경우까지 잡는다
+    # "공고 저장 (스크랩, 찜, 북마크)"를 AI가 "공고 저장"으로 줄여 쓰는 경우까지 잡는다.
+    # "공고"를 뗀 "검색·필터" 같은 별칭은 넣지 않는다. "검색 필터로 찾는다"처럼 다른 기능의 대체 수단으로 나오는
+    # 말까지 기능 이름으로 잡혀서 이유 줄이 엉뚱한 기능으로 간다 (11/21 시험에서 확인)
     keys = [name, name.split(" (")[0]]
     return [k for k in dict.fromkeys(keys) if k]
+
+
+def _key_regex(key: str):
+    tokens = [t for t in re.split(r"[\s·・/,，、]+", key.replace("(", " ( ").replace(")", " ) ")) if t]
+    return re.compile(_NAME_SEP.join(re.escape(t) for t in tokens))
+
+
+def feature_match(piece: str, name: str, at_start: bool = False):
+    """piece 안에서 기능 이름(별칭 포함)을 찾는다. "공고 검색/필터", "공고검색 필터"처럼 구분자만 달라도 잡는다.
+    at_start면 문장 첫머리만 본다. 찾으면 맞은 길이가 가장 긴 re.Match, 없으면 None."""
+    best = None
+    for key in feature_keys(name):
+        rx = _key_regex(key)
+        m = rx.match(piece) if at_start else rx.search(piece)
+        if m and (best is None or len(m.group(0)) > len(best.group(0))):
+            best = m
+    return best
 
 
 def parse_use_answers(text: str, features: list) -> dict:
@@ -893,7 +965,7 @@ def parse_use_answers(text: str, features: list) -> dict:
     pieces = [p for p in re.split(r"[\n.;]", text or "") if p.strip()]
     result = {}
     for fid, name in features:
-        hits = [p for p in pieces if any(k in p for k in feature_keys(name))]
+        hits = [p for p in pieces if feature_match(p, name)]
         joined = " ".join(hits)
         if not hits:
             result[fid] = "unknown"
@@ -923,6 +995,7 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
 
     st = _STATE
     st.episode = _new_counts()
+    st.last_api_error = None
     st.requests = []
     pid = unit["persona_id"]
     run_id = f"{ctx['batch_id']}_{pid}_r{repeat}"
@@ -943,11 +1016,20 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
 
     asked_features = ctx["asked_features"]
     answers, parsed_use, abort, error_detail = [], None, None, None
+    invalid, cut = [], []  # 다시 물어도 답이 빈 질문 / 답은 있지만 잘렸을 수 있는 질문
     started = time.time()
 
     def ask(agent, qid, text):
         before = len(st.requests)
-        actions = agent.listen_and_act(text, return_actions=True, communication_display=False)
+        cut_before = (st.episode["truncated"], st.episode["length"])
+        parts = split_actions(agent.listen_and_act(text, return_actions=True, communication_display=False))
+        first = None
+        if not parts["talk"].strip():
+            # 모델이 생각(THINK)만 하고 말(TALK) 없이 끝냈거나, 행동 목록이 잘리면서 TALK가 사라진 경우.
+            # 빈 답을 그대로 두면 추출 단계에서 "이유 없음"으로 조용히 빠진다(11/21 점검 1번). 같은 질문을 한 번 더 묻는다
+            st.add("retried_answers")
+            first = parts
+            parts = split_actions(agent.listen_and_act(text, return_actions=True, communication_display=False))
         images = max(st.requests[before:], default=0)
         entry = {
             "question_id": qid,
@@ -958,7 +1040,19 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
             "captures": ctx["capture_names"] if images else [],
             "images_in_request": images,
         }
-        entry.update(split_actions(actions))
+        entry.update(parts)
+        if first is not None:
+            entry["first_attempt"] = first  # 빈 답이던 첫 시도의 행동 원문
+        truncs = st.episode["truncated"] - cut_before[0]
+        lengths = st.episode["length"] - cut_before[1]
+        entry["action_truncations"] = truncs
+        entry["length_cutoffs"] = lengths
+        if not parts["talk"].strip():
+            st.add("empty_answers")
+            invalid.append({"question_id": qid, "why": "다시 물어도 빈 답"})
+        elif truncs or lengths:
+            # 답은 있지만 행동 목록이나 응답 길이가 잘려 뒷부분이 빠졌을 수 있다. 무효로 치지는 않고 표시만 한다
+            cut.append({"question_id": qid, "action_truncations": truncs, "length_cutoffs": lengths})
         answers.append(entry)
         return entry
 
@@ -1043,6 +1137,12 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
         "calls_cached": st.episode["calls_cached"],
         "empty_responses": st.episode["empty"],
         "length_cutoffs": st.episode["length"],
+        "usage_missing": st.episode["usage_missing"],
+        "retried_answers": st.episode["retried_answers"],
+        "invalid_answers": invalid,
+        "cut_answers": cut,
+        "last_api_error": st.last_api_error,
+        "output_token_weight": ctx["cfg"]["output_token_weight"],
         "max_actions_before_done": ctx["cfg"]["max_actions_before_done"],
         "max_image_stimuli_to_recall": ctx["cfg"]["max_image_stimuli_to_recall"],
         "auto_image_description": ctx["cfg"]["auto_image_description"],
@@ -1083,6 +1183,10 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
             "status": "성공",
             "features": [{"feature_id": fid, "name": name} for fid, name in ctx["all_features"]],
             "use_parsed_at_runtime": parsed_use,  # 꼬리 질문을 건너뛸지 정하는 데만 썼다
+            # 다시 물어도 답이 빈 질문. 하나라도 있으면 추출·판정 시트에서 이 에피소드를 빼고 개수를 알린다
+            "invalid_answers": invalid,
+            # 답은 있지만 행동 목록·응답 길이가 잘린 질문. 쓰되 개수를 알린다
+            "cut_answers": cut,
             "answers": answers,
         }
         ctx["raw_path"].parent.mkdir(parents=True, exist_ok=True)
@@ -1091,7 +1195,8 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
 
     text = "\n".join(a["think"] + "\n" + a["talk"] for a in asked)
     return {"run_id": run_id, "ok": abort is None, "elapsed": elapsed, "text": text, "abort": abort,
-            "questions": len(asked), "images": list(st.requests)}
+            "questions": len(asked), "images": list(st.requests),
+            "invalid": abort is None and bool(invalid), "cut": abort is None and bool(cut)}
 
 
 def decide_exit_code(episodes: list, fatal) -> int:
@@ -1140,6 +1245,14 @@ def summarize(ctx: dict, episodes: list, exit_code: int) -> dict:
         "tokens_cumulative": st.tokens_used,
         "token_cap": st.token_cap,
         "failure_rate": rate(len(episodes) - len(ok), len(episodes)),
+        # 성공했지만 다시 물어도 답이 빈 질문이 있는 에피소드. 추출·판정 시트에서 빠진다
+        "episodes_invalid": sum(1 for e in ok if e.get("invalid")),
+        "invalid_rate": rate(sum(1 for e in ok if e.get("invalid")), len(ok)),
+        "episodes_cut": sum(1 for e in ok if e.get("cut")),
+        "retried_answers": t["retried_answers"],
+        "empty_answers": t["empty_answers"],
+        "usage_missing": t["usage_missing"],
+        "output_token_weight": st.output_weight,
         "empty_rate": rate(t["empty"], t["messages"]),
         "length_cutoff_rate": rate(t["length"], responses),
         "action_truncations": t["truncated"],
@@ -1158,6 +1271,17 @@ def summarize(ctx: dict, episodes: list, exit_code: int) -> dict:
     }
 
 
+def summary_warnings(s: dict) -> list:
+    """종료 코드는 안 바꾸지만 그냥 지나치면 측정값이 틀어지는 것들 (11/21 조용한 실패 점검 1·5번)."""
+    out = []
+    if (s.get("invalid_rate") or 0) > INVALID_RATE_WARN:
+        out.append(f"무효 에피소드가 {s['invalid_rate'] * 100:.1f}%다 (문턱 {INVALID_RATE_WARN * 100:.0f}%). "
+                   "조건마다 빠지는 비율이 다르면 일치율이 기운다. 원인을 보고 다시 돌릴지 정한다")
+    if s.get("usage_missing"):
+        out.append(f"사용량(usage)이 없는 실제 호출 {s['usage_missing']}회. 비용이 그만큼 덜 세어졌다")
+    return out
+
+
 def print_summary(s: dict) -> None:
     # 프로토콜 시범 실행 규칙: 실제 스냅샷 시범의 응답 내용은 정답지 정리자, 판정자가 보면 안 된다.
     # 그래서 화면에는 숫자만 찍는다.
@@ -1172,8 +1296,14 @@ def print_summary(s: dict) -> None:
     print(f"  토큰         : 이번 {s['tokens_total']:,} (입력 {s['tokens_in']:,} + 출력 {s['tokens_out']:,})")
     cached_share = pct(s["tokens_in_cached"] / s["tokens_in"]) if s["tokens_in"] else "-"
     print(f"  입력 중 캐시 : {s['tokens_in_cached']:,} ({cached_share}). API 쪽 프롬프트 캐시라 입력값이 싸게 매겨진다")
-    print(f"  누적 토큰    : {s['tokens_cumulative']:,} / 상한 {s['token_cap']:,} (이전 실행 {s['tokens_before']:,})")
+    print(f"  누적 토큰    : {s['tokens_cumulative']:,} / 상한 {s['token_cap']:,} (이전 실행 {s['tokens_before']:,}, "
+          f"입력 토큰 환산: 출력 x{s['output_token_weight']})")
     print(f"  실패 비율    : {pct(s['failure_rate'])} (NFR-06 문턱 {FAILURE_RATE_LIMIT * 100:.0f}%)")
+    print(f"  빈 답        : 다시 물은 질문 {s['retried_answers']}개, 그래도 빈 질문 {s['empty_answers']}개 -> "
+          f"무효 에피소드 {s['episodes_invalid']}개 ({pct(s['invalid_rate'])})")
+    print(f"  잘린 답      : {s['episodes_cut']}개 에피소드 (답은 있지만 뒷부분이 빠졌을 수 있음, 그대로 씀)")
+    for w in summary_warnings(s):
+        print(f"  [경고] {w}")
     print(f"  빈 응답 비율 : {pct(s['empty_rate'])}")
     print(f"  길이 초과    : {pct(s['length_cutoff_rate'])} (finish_reason=length)")
     print(f"  행동 잘림    : {s['action_truncations']}회")
@@ -1262,7 +1392,7 @@ def run(args, root: Path) -> int:
 
     # --- 설정 검사 ---
     provider, base_url = check_env(root)
-    tokens_before = previous_tokens(root / cfg["meta_dir"], provider)
+    tokens_before = previous_tokens(root / cfg["meta_dir"], provider, cfg["output_token_weight"])
     model, max_completion_tokens, batch_id = setup_tinytroupe(
         cfg, root, provider, f"{args.service}_{args.platform}_c{args.condition}")
 
@@ -1308,7 +1438,7 @@ def run(args, root: Path) -> int:
         "cache_dir": root / cfg["cache_dir"],
         "episodes_planned": len(units) * args.repeat,
     }
-    _STATE = RunState(cfg["token_cap"], cfg["empty_retries"], tokens_before)
+    _STATE = RunState(cfg["token_cap"], cfg["empty_retries"], tokens_before, cfg["output_token_weight"])
 
     print(f"[실행] {batch_id}: {provider}/{model}, {args.platform}, 조건 {args.condition}, "
           f"{'슬롯' if args.condition == 0 else '페르소나'} {len(units)} x 반복 {args.repeat}, "
@@ -1370,6 +1500,7 @@ def run_check_episode(ctx: dict, unit: dict, repeat: int):
 
     st = _STATE
     st.episode = _new_counts()
+    st.last_api_error = None
     st.requests = []
     pid = unit["persona_id"]
     run_id = f"{ctx['batch_id']}_{pid}_r{repeat}"
@@ -1436,6 +1567,9 @@ def run_check_episode(ctx: dict, unit: dict, repeat: int):
         "calls_cached": st.episode["calls_cached"],
         "empty_responses": st.episode["empty"],
         "length_cutoffs": st.episode["length"],
+        "usage_missing": st.episode["usage_missing"],
+        "last_api_error": st.last_api_error,
+        "output_token_weight": ctx["cfg"]["output_token_weight"],
         "max_actions_before_done": ctx["cfg"]["max_actions_before_done"],
         "json_ensure_ascii": False,
         "neutral_agent_name": ctx["cfg"]["neutral_agent_name"] if ctx["condition"] == 1 else None,
@@ -1504,6 +1638,10 @@ def summarize_check(ctx: dict, episodes: list, exit_code: int) -> dict:
         "token_cap": _STATE.token_cap,
         "failure_rate": round((len(episodes) - len(ok)) / len(episodes), 3) if episodes else None,
         "action_truncations": t["truncated"],
+        # 무효 답 비율. 유효 답(있다·없다)만 분모에 들어가서, 많으면 남은 답이 한쪽으로 기울 수 있다
+        "invalid_rate": round(count.get("무효", 0) / len(ok), 3) if ok else None,
+        "usage_missing": t["usage_missing"],
+        "output_token_weight": _STATE.output_weight,
         "elapsed_sec": round(sum(e["elapsed"] for e in episodes), 1),
     }
 
@@ -1520,6 +1658,8 @@ def print_summary_check(s: dict) -> None:
     rate = "-" if s["failure_rate"] is None else f"{s['failure_rate'] * 100:.1f}%"
     print(f"  실패 비율    : {rate} (NFR-06 문턱 {FAILURE_RATE_LIMIT * 100:.0f}%)")
     print(f"  걸린 시간    : {s['elapsed_sec']}초")
+    for w in summary_warnings(s):
+        print(f"  [경고] {w}")
     print("=" * 60)
 
 
@@ -1549,7 +1689,7 @@ def run_check(args, root: Path) -> int:
     done = recorded_episodes(raw_path, CHECK_EPISODE_KEY)
 
     provider, base_url = check_env(root)
-    tokens_before = previous_tokens(root / cfg["meta_dir"], provider)
+    tokens_before = previous_tokens(root / cfg["meta_dir"], provider, cfg["output_token_weight"])
     model, max_completion_tokens, batch_id = setup_tinytroupe(cfg, root, provider,
                                                               f"{CHECK_USED6M}_c{args.condition}")
     ctx = {
@@ -1573,7 +1713,7 @@ def run_check(args, root: Path) -> int:
         "cache_dir": root / cfg["cache_dir"],
         "episodes_planned": len(personas) * args.repeat,
     }
-    _STATE = RunState(cfg["token_cap"], cfg["empty_retries"], tokens_before)
+    _STATE = RunState(cfg["token_cap"], cfg["empty_retries"], tokens_before, cfg["output_token_weight"])
     print(f"[점검] {batch_id}: {provider}/{model}, 조건 {args.condition}, 페르소나 {len(personas)} x 반복 {args.repeat}, "
           f"폼 2-6 한 문항")
 

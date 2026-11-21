@@ -52,6 +52,9 @@ JUDGE_COLS = ("code_1", "code_2", "code_final")
 KAPPA_MIN = 0.6  # TRD NFR-07. 못 미치면 판정 기준을 다듬고 다시 판정한다
 # 같은 페르소나·회차가 두 번 들어가면(실패 뒤 다시 돌린 경우 등) 한 칸에서 두 번 센다
 EPISODE_KEY = ("service", "platform", "condition", "persona_id", "repeat", "input_mode", "model")
+# 이유 줄이 하나도 없는 기능(쓴다/안 쓴다고만 하고 이유를 안 댐). 시트에는 안 넣고 대응표에만 두고, 가져올 때 '-'로 넣는다.
+# 사람 쪽 "답했지만 코드 없음"을 응답자로 세는 것과 맞추려는 것이다 (11/21 조용한 실패 점검 2번)
+NO_REASON = "none"
 DASHES = dict.fromkeys(map(ord, "\u2010\u2011\u2012\u2013\u2014\u2015\u2212\u30fc"), "-")
 
 
@@ -89,6 +92,14 @@ def items_from_record(r: dict) -> tuple:
                     "feature_name": r.get("feature_name", ""), "kind": kind, "source": source, "text": text,
                     "options_found": " / ".join(opts)})
     return out, skipped
+
+
+def no_reason_item(r: dict) -> dict:
+    """이유 줄이 없는 기능 하나를 대응표 줄로. 판정자 시트에는 안 넣는다 (판정할 글이 없다)."""
+    base = {k: r[k] for k in ("run_id", "service", "platform", "condition", "persona_id", "repeat", "feature_id")}
+    base.update({k: r.get(k) or "" for k in ("input_mode", "model")})
+    return {**base, "item_id": item_id(base["run_id"], base["feature_id"], NO_REASON),
+            "kind": r["use_choice"], "source": NO_REASON}
 
 
 def read_jsonl(path: Path) -> list:
@@ -171,11 +182,27 @@ def cmd_make(args, root: Path) -> int:
     except (InputError, UnicodeDecodeError) as e:
         print(f"[입력 오류] {e}", file=sys.stderr)
         return EXIT_INPUT
-    items, skipped = [], 0
+    items, no_reason, skipped = [], [], 0
+    stats = {}  # 조건 -> 에피소드 수 세기
+    unknown_empty = 0
     for r in records:
+        c = str(r.get("condition"))
+        v = stats.setdefault(c, {"episodes": set(), "invalid": set(), "with_reason": set(), "no_reason_only": set()})
+        v["episodes"].add(r["run_id"])
+        if r.get("invalid_answers"):
+            # 실행기가 다시 물어도 빈 답이라 무효로 표시한 에피소드. 이유가 없는 게 아니라 답을 못 받은 것이라 뺀다
+            v["invalid"].add(r["run_id"])
+            continue
         got, sk = items_from_record(r)
         items += got
         skipped += sk
+        if got:
+            v["with_reason"].add(r["run_id"])
+        elif r.get("asked") and r.get("use_choice") in ("use", "nouse"):
+            no_reason.append(no_reason_item(r))
+            v["no_reason_only"].add(r["run_id"])
+        elif r.get("asked"):
+            unknown_empty += 1  # 쓸지 안 쓸지도 못 가리고 이유도 없음. 어느 칸에도 못 넣는다
     if not items:
         print("[입력 오류] 판정할 이유 줄이 없음", file=sys.stderr)
         return EXIT_INPUT
@@ -198,12 +225,21 @@ def cmd_make(args, root: Path) -> int:
     sheet = [{**i, "code_1": "", "code_2": "", "code_final": "", **dict.fromkeys(EXTRA_COLS, ""), "note": ""}
              for i in items]
     write_csv(out / f"sheet_{stamp}.csv", SHEET_FIELDS, sheet)
-    write_csv(out / f"key_{stamp}.csv", KEY_FIELDS, sorted(items, key=lambda i: i["item_id"]))
+    write_csv(out / f"key_{stamp}.csv", KEY_FIELDS, sorted(items + no_reason, key=lambda i: i["item_id"]))
     kinds = Counter(i["kind"] for i in items)
     print(f"[시트] 이유 줄 {len(items)}개 (쓸 이유 {kinds['use']}, 안 쓸 이유 {kinds['nouse']}), "
           f"에피소드 {len({i['run_id'] for i in items})}개")
     if skipped:
         print(f"  쓸/안 쓸 판별과 안 맞는 줄 {skipped}개는 넣지 않음 (쓴다고 한 기능의 4-7 줄 등)")
+    print(f"  이유 없이 쓴다/안 쓴다고만 한 기능 {len(no_reason)}개: 시트에 안 넣고 가져올 때 '-'로 넣음 "
+          "(사람 쪽 '답했지만 코드 없음'과 같게 응답자로 셈)")
+    if unknown_empty:
+        print(f"  주의: 쓸지 안 쓸지도 못 가리고 이유도 없는 기능 {unknown_empty}개는 어느 칸에도 안 들어감")
+    for c, v in sorted(stats.items()):
+        print(f"  조건 {c}: 에피소드 {len(v['episodes'])}개 = 이유 있음 {len(v['with_reason'])} + "
+              f"이유 없이 답만 {len(v['no_reason_only'] - v['with_reason'])} + 무효로 뺌 {len(v['invalid'])}"
+              + ("" if len(v["episodes"]) == len(v["with_reason"] | v["no_reason_only"] | v["invalid"])
+                 else f" (어느 쪽에도 안 든 {len(v['episodes'] - v['with_reason'] - v['no_reason_only'] - v['invalid'])})"))
     if len({i["condition"] for i in items}) < 2:
         print("  주의: 시트에 조건이 하나뿐이다. 판정자가 조건을 짐작할 수 있으니 본 판정은 조건을 섞어서 만든다")
     print(f"  판정자에게 줄 것: {args.out}/sheet_{stamp}.csv")
@@ -219,7 +255,9 @@ def cmd_import(args, root: Path) -> int:
             return EXIT_USAGE
     try:
         sheet = read_csv(paths["sheet"], ["item_id", *JUDGE_COLS])
-        key = {r["item_id"]: r for r in read_csv(paths["key"], KEY_FIELDS)}
+        key_all = read_csv(paths["key"], KEY_FIELDS)
+        key = {r["item_id"]: r for r in key_all if r["source"] != NO_REASON}
+        no_reason = [r for r in key_all if r["source"] == NO_REASON]
     except (InputError, UnicodeDecodeError) as e:
         print(f"[입력 오류] {e}", file=sys.stderr)
         return EXIT_INPUT
@@ -259,6 +297,9 @@ def cmd_import(args, root: Path) -> int:
         for code in norm_codes(r["code_final"]):
             rows.append({**{f: k[f] for f in AI_CODE_FIELDS if f != "code" and f not in EXTRA_COLS}, "code": code,
                          **extra})
+    for k in sorted(no_reason, key=lambda x: x["item_id"]):
+        rows.append({**{f: k[f] for f in AI_CODE_FIELDS if f != "code" and f not in EXTRA_COLS}, "code": "-",
+                     **dict.fromkeys(EXTRA_COLS, "")})
     stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
     out = root / args.out
     out.mkdir(parents=True, exist_ok=True)
@@ -270,9 +311,11 @@ def cmd_import(args, root: Path) -> int:
               "disagreements": len(sheet) - agree,
               "final_differs_from_both": sum(";".join(norm_codes(r["code_final"])) not in (x, y)
                                              for r, x, y in zip(sheet, a, b)),
-              "code_rows": len(rows), "not_reason_rows": sum(r["code"] == "-" for r in rows)}
+              "code_rows": len(rows), "not_reason_rows": sum(r["code"] == "-" for r in rows),
+              "no_reason_features": len(no_reason)}
     (out / f"agreement_{stamp}.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(f"[가져오기] 줄 {report['items']}개 -> 코드 {report['code_rows']}개 (이유 아님 {report['not_reason_rows']})")
+    print(f"[가져오기] 줄 {report['items']}개 -> 코드 {report['code_rows']}개 (이유 아님 {report['not_reason_rows']}, "
+          f"그중 이유 없이 답만 한 기능 {report['no_reason_features']})")
     print(f"  두 판정자 일치율 {report['agreement']}, kappa {report['kappa']}, 다르게 붙인 줄 {report['disagreements']}개")
     print(f"  출력: {args.out}/ai_codes_{stamp}.csv, agreement_{stamp}.json")
     return EXIT_OK
