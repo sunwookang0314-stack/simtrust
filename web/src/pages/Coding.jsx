@@ -1,4 +1,4 @@
-// 화면 4. 코드 붙이기: 화면 3에서 뽑은 이유 줄마다 판정자 두 명이 코드북 v0.1 코드를 따로 붙이고 맞춰 본다
+// 화면 4. 코드 붙이기: 화면 3에서 뽑은 이유 줄마다 판정자 두 명이 코드북 v1.0 작업본(33개 확정) 코드를 따로 붙이고 맞춰 본다
 // (scripts/reason_sheet.py). 실제 시트는 AI 이름·조건을 가리고 순서를 섞는다. kappa 0.6 미만이면 다시 한다 (NFR-07)
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -35,7 +35,7 @@ export default function Coding() {
   const [book, setBook] = useState({});
   const [blind, setBlind] = useState(false);
   useEffect(() => {
-    fetch(`${import.meta.env.BASE_URL}data/codebook_v0.1.csv`).then(r => r.text())
+    fetch(`${import.meta.env.BASE_URL}data/codebook.csv`).then(r => r.text())
       .then(t => setBook(Object.fromEntries(parseCsv(t).map(r => [r.code, r]))));
   }, []);
 
@@ -49,7 +49,7 @@ export default function Coding() {
   return (
     <div className="page">
       <div className="phead">
-        <span className="no">4 · 코드 붙이기</span><span className="sample">화면 3의 예시 줄 · 코드북 v0.1</span>
+        <span className="no">4 · 코드 붙이기</span><span className="sample">화면 3의 예시 줄 · 코드북 v1.0 (고정 전)</span>
         <h1>이유 {lines.length}줄에 코드북 코드를 붙였어요</h1>
         <p>판정자 두 명이 따로 붙이고, 다른 줄은 맞춰 봐요. 사람 설문 답에도 같은 코드북으로 코드를 붙여서, 같은 코드면 같은 이유로 봐요.</p>
       </div>
@@ -78,7 +78,7 @@ export default function Coding() {
         </table>
 
         <aside className="cbook">
-          <h4>쓴 코드 (코드북 v0.1)</h4>
+          <h4>쓴 코드 (코드북 v1.0)</h4>
           {used.map(c => (
             <div key={c} className="cb">
               <Code code={c} book={book} /><b>{book[c]?.name}</b>

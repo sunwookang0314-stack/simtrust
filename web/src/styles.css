@@ -333,3 +333,14 @@ code{font-size:12px;background:var(--g100);padding:1px 5px;border-radius:4px}
 .map .mh.pz{color:var(--b700)}
 .effect{margin-top:10px!important;font-size:15px!important;color:var(--g800)!important}
 .effect b{color:var(--b600)}
+
+/* 거름망 페르소나 원 (조건 2): 칩·원에 올리면 서로 켜진다 */
+.pstrip{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;grid-template-columns:none}
+.pstrip .pd{width:24px;height:24px;border-radius:50%;border:0;padding:0;font:inherit;font-size:10px;font-weight:700;color:var(--b700);background:#fff;box-shadow:inset 0 0 0 1.5px var(--b300);cursor:default;position:relative;transition:background .2s,opacity .2s,transform .2s}
+.pstrip .pd sup{position:absolute;top:-6px;right:-6px;font-size:9px;background:var(--b600);color:#fff;border-radius:7px;padding:0 3px;line-height:13px}
+.pstrip .pd.hl{background:var(--b500);color:#fff;transform:scale(1.15)}
+.pstrip .pd.dim{opacity:.3}
+.pstrip small{flex-basis:100%;text-align:right;white-space:normal;line-height:1.35}
+.schip{cursor:default}
+.schip.hl{box-shadow:0 0 0 3px #fff,0 0 0 5px var(--b600)!important;z-index:2}
+.schip.dim{opacity:.25!important}

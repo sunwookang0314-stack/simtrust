@@ -6,7 +6,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { POOLED, cellOf, isCandidate, reasonsOf } from "../lib/data.js";
-import { PERSONAS, REPEATS } from "../lib/personas.js";
 import { VerdictBadge } from "./ui.jsx";
 
 const W = 1200, H = 470;              // 무대 좌표. 화면 폭에 맞춰 줄이고 키운다
@@ -41,6 +40,8 @@ export default function SieveStage({ models, params }) {
   const setPick = id => { const n = new URLSearchParams(sp); n.set("ai", id); setSp(n, { replace: true }); };
   const [phase, setPhase] = useState(-1);
   const [run, setRun] = useState(0);
+  // 페르소나 AI일 때: 칩에 올리면 그 말을 한 페르소나를, 페르소나 원에 올리면 그 페르소나가 한 말을 켠다
+  const [hover, setHover] = useState({ code: null, pid: null });
   const box = useRef(null);
   const scale = useFit(box);
 
@@ -63,6 +64,10 @@ export default function SieveStage({ models, params }) {
   const cands = ai.filter(r => !passed.has(r.code) && isCandidate(r));
   const candIdx = new Map(cands.map((r, i) => [r.code, i]));
   const nMissed = holes.filter(h => !ai.some(r => r.code === h.code)).length;
+  const pids = [...new Set(ai.flatMap(r => [...(r.personas?.keys() ?? [])]))].sort();
+  const hoverRow = ai.find(r => r.code === hover.code);
+  const saidBy = pid => hoverRow?.personas?.get(pid) ?? 0;
+  const said = r => (hover.pid ? r.personas?.get(hover.pid) ?? 0 : null);
 
   // 칸이나 AI가 바뀌거나 다시 보기를 누르면 처음부터 돈다
   useEffect(() => {
@@ -110,14 +115,21 @@ export default function SieveStage({ models, params }) {
           <div className="zone za" style={{ left: 0, top: 0, width: W, height: 170 }}>
             <span className="ztag a">{model.name} 답 {cell.ai_episodes}개에서 나온 이유 {ai.length}개</span>
           </div>
-          {model.persona && (
-            <div className="pstrip" style={{ left: 1004, top: 8 }} aria-label="페르소나 10명 × 3번">
-              {Array.from({ length: PERSONAS.length * REPEATS }, (_, i) => {
-                const p = PERSONAS[i % PERSONAS.length];
-                return <i key={i} className={`${p.job ? "jo" : ""}${phase >= 0 ? " on" : ""}`} style={{ transitionDelay: `${i * 20}ms` }}
-                          title={`${p.n} ${p.a}세 · ${p.job ? "취준생" : "재학생"} · ${Math.floor(i / PERSONAS.length) + 1}회차`} />;
+          {model.persona && pids.length > 0 && (
+            <div className="pstrip" style={{ left: W - 20 - 300, top: 10, width: 300 }} aria-label={`페르소나 ${pids.length}명`}>
+              {pids.map(pid => {
+                const n = saidBy(pid);
+                const cls = hover.code ? (n ? " hl" : " dim") : hover.pid === pid ? " hl" : "";
+                return (
+                  <button key={pid} className={`pd${cls}`} title={`페르소나 ${pid}`}
+                          onMouseEnter={() => setHover({ code: null, pid })} onMouseLeave={() => setHover({ code: null, pid: null })}
+                          onFocus={() => setHover({ code: null, pid })} onBlur={() => setHover({ code: null, pid: null })}>
+                    {pid.replace("P", "")}{n > 0 && <sup>{n}</sup>}
+                  </button>
+                );
               })}
-              <small>페르소나 {PERSONAS.length}명 × {REPEATS}번</small>
+              <small>{hover.code ? `${hoverRow?.name}: ${[...(hoverRow?.personas?.keys() ?? [])].length}명이 말함`
+                : hover.pid ? `페르소나 ${hover.pid}가 한 말이 켜져요` : `페르소나 ${pids.length}명 · 칩이나 원에 마우스를 올려 보세요`}</small>
             </div>
           )}
           <div className="zone zh" style={{ left: 0, top: 184, width: SIEVE1_R + 16, height: H - 184 }}>
@@ -153,8 +165,12 @@ export default function SieveStage({ models, params }) {
             const cand = candIdx.has(r.code);
             const state = phase >= 2 && isPass ? " pass" : phase >= 5 && cand ? " cand" : phase >= 3 && !isPass ? " stuck" : "";
             const gone = phase >= 5 && !isPass && !cand;
+            const s = said(r);
+            const lit = s == null ? "" : s > 0 ? " hl" : " dim";
             return (
-              <div key={r.code} className={`schip t${tier(share)}${state}`} title={r.basis}
+              <div key={r.code} className={`schip t${tier(share)}${state}${lit}`} title={r.basis} tabIndex={0}
+                   onMouseEnter={() => setHover({ code: r.code, pid: null })} onMouseLeave={() => setHover({ code: null, pid: null })}
+                   onFocus={() => setHover({ code: r.code, pid: null })} onBlur={() => setHover({ code: null, pid: null })}
                    style={{ left: p.x, top: p.y, opacity: phase < 0 || gone ? 0 : 1,
                             "--s": phase < 0 ? 0.3 : 0.86 + Math.min(share, 0.6) * 0.5,
                             transitionDelay: `${(phase <= 0 ? i * 70 : isPass ? i * 90 : phase >= 4 ? i * 60 : 0)}ms` }}>

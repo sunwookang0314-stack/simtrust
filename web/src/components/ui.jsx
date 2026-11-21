@@ -57,5 +57,5 @@ export function CellPicker({ params, only = ["service", "feature", "kind"] }) {
 }
 
 export function SampleTag() {
-  return <span className="sample">가짜 견본 데이터 (합친 결과 자리에 캠퍼스픽 견본 칸) · 판정 규칙 확정 전 초안 · 막대 점선 50%·70%는 참고선</span>;
+  return <span className="sample">가짜 견본 데이터 · 판정은 규칙 초안(main), 본 규칙 fixed_70은 동결 뒤 반영 · 막대 점선 50%·70%</span>;
 }

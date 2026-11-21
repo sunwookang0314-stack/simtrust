@@ -32,7 +32,7 @@ export default function TrustMap() {
         <p>설문 응답자 {HUMAN_POOL.respondents}명({HUMAN_POOL.services}개 서비스 합침)으로 기능마다 거름망을 돌린 결과예요. 진할수록 믿을 만하고, 칸을 누르면 어떤 이유가 통과했는지 볼 수 있어요.</p>
         {effect != null && (
           <p className="effect">페르소나 효과: {baseM.name} 그냥 <b>{trustCount(baseM)}칸</b> → {baseM.name}+페르소나 <b>{trustCount(personaM)}칸</b>
-            {" "}({effect > 0 ? `${effect}칸 늘었어요` : effect < 0 ? `${-effect}칸 줄었어요` : "같아요"}) <span className="sample">자리표시 견본</span></p>
+            {" "}({effect > 0 ? `${effect}칸 늘었어요` : effect < 0 ? `${-effect}칸 줄었어요` : "같아요"}) <span className="sample">가짜 견본</span></p>
         )}
       </div>
       <CellPicker params={params} only={["kind"]} />

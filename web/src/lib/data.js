@@ -11,7 +11,7 @@ export const MODELS = [
   { id: "model_a", name: "GPT", seat: "페르소나 없음", note: "가짜 견본 (사람 같은 모델)" },
   { id: "model_b", name: "Claude", seat: "페르소나 없음", note: "가짜 견본 (반만 맞는 모델)" },
   { id: "model_c", name: "Gemini", seat: "페르소나 없음", note: "가짜 견본 (공통 이유만 말하는 모델)" },
-  { id: "persona", name: "페르소나 AI", seat: "바탕 모델 + 페르소나 10명 × 3번", note: "자리표시 견본 (model_a 복사)", persona: true },
+  { id: "persona", name: "페르소나 AI", seat: "바탕 모델 + 페르소나 10명 × 3번", note: "가짜 견본 (페르소나 P01~P10)", persona: true },
 ];
 export const BASE_MODELS = MODELS.filter(m => !m.persona);
 
@@ -68,6 +68,16 @@ async function fetchCsv(name) {
   return parseCsv(await res.text());
 }
 
+/** 'app:P01;app:P01;web:P02' → Map(P01 → 2, P02 → 1). 같은 페르소나는 앱·웹을 합쳐 센다 */
+function personaCounts(ids) {
+  const m = new Map();
+  for (const x of (ids || "").split(";").map(s => s.trim()).filter(Boolean)) {
+    const pid = x.split(":").pop();
+    m.set(pid, (m.get(pid) || 0) + 1);
+  }
+  return m;
+}
+
 let cache = null;
 
 /** 모델마다 칸(cells)과 이유(reasons). 판정 칸(scope=main)만 남긴다. */
@@ -83,6 +93,7 @@ export function loadAll() {
       reasons: reasons.filter(r => r.scope === "main").map(r => ({
         ...r, human_count: num(r.human_count), n_humans: num(r.n_humans),
         ai_episodes_with_code: num(r.ai_episodes_with_code), ai_episodes: num(r.ai_episodes),
+        personas: personaCounts(r.ai_persona_ids),
       })),
     };
   }));
@@ -98,13 +109,10 @@ export const isCandidate = r =>
 // 사람 데이터는 서비스를 나누지 않고 합쳐서 판정한다 (사전등록 v1 11/16 변경 기록, 강선우·김민우).
 // 설문 3-2에서 폼 보기 8개 서비스 중 하나를 고른 응답 31명. AI는 링커리어·캠퍼스픽 캡처를 본다
 export const HUMAN_POOL = { respondents: 31, services: 8 };
-export const POOLED = "pooled";
-// 가짜 견본은 아직 서비스마다 나뉘어 있어서, 합친 결과 자리에는 캠퍼스픽 견본 칸을 대신 쓴다(판정이 골고루 섞여 있어서) (김민우 견본이 나오면 바꿈)
-const POOLED_STANDIN = "campuspick";
-const svcOf = service => (service === POOLED ? POOLED_STANDIN : service);
+export const POOLED = "*";   // 계산기는 합친 칸의 service를 *로 낸다
 
 export const cellOf = (model, service, feature, kind) =>
-  model.cells.find(c => c.service === svcOf(service) && c.feature_id === feature && c.kind === kind);
+  model.cells.find(c => c.service === service && c.feature_id === feature && c.kind === kind);
 
 export const reasonsOf = (model, service, feature, kind) =>
-  model.reasons.filter(r => r.service === svcOf(service) && r.feature_id === feature && r.kind === kind);
+  model.reasons.filter(r => r.service === service && r.feature_id === feature && r.kind === kind);
