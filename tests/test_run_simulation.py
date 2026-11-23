@@ -538,6 +538,18 @@ class TestRunSimulation(unittest.TestCase):
         self.assertIn("참여자", FAKE.decoded(0))
         self.assertNotIn("C0-01", FAKE.decoded(0))  # 슬롯 ID는 기록용이고 AI한테는 안 간다
 
+    def test_meta_written_atomically_and_tmp_not_counted(self):
+        # 두 프로세스를 같이 돌릴 때: 기록은 임시 파일에 쓴 뒤 이름을 바꾸고, 쓰다 만 임시 파일은 누적 토큰에 안 걸린다
+        cfg = write_cfg("atomic")
+        code, log = run(*args(cfg))
+        self.assertEqual(code, 0, log)
+        meta_dir = TMP / "out_atomic" / "meta"
+        self.assertEqual([p.name for p in meta_dir.iterdir() if p.name.endswith(".tmp")], [])
+        before = rs.previous_tokens(meta_dir, "gemini")
+        self.assertGreater(before, 0)
+        (meta_dir / "half_written_r1.json.tmp").write_text('{"provider": "gemini", "tokens_in": 99', encoding="utf-8")
+        self.assertEqual(rs.previous_tokens(meta_dir, "gemini"), before)
+
     def test_condition1_keeps_only_age_and_occupation(self):
         spec = json.loads(PERSONA_SRC[0].read_text(encoding="utf-8"))["persona"]
         cfg = write_cfg("c1")

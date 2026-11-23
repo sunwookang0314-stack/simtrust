@@ -445,6 +445,14 @@ def load_personas(personas_dir: Path, limit):
     return units, problems
 
 
+def write_json_atomic(path: Path, data: dict):
+    """실행 기록을 임시 파일에 쓴 뒤 이름을 바꾼다. 두 프로세스를 같이 돌릴 때 다른 쪽이 누적 토큰을 세려고
+    쓰는 중인 기록을 읽으면 반쯤 쓴 파일이라 못 읽고 멈춘다(previous_tokens). 임시 이름은 *.json에 안 걸린다."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def weighted_tokens(tokens_in: int, tokens_out: int, weight) -> int:
     """비용 상한에 세는 값 (입력 토큰 환산). 출력 토큰은 weight배로 센다."""
     return int(tokens_in + tokens_out * weight)
@@ -1179,9 +1187,7 @@ def run_episode(ctx: dict, unit: dict, repeat: int):
     if error_detail:
         meta["error_detail"] = error_detail
     ctx["meta_dir"].mkdir(parents=True, exist_ok=True)
-    (ctx["meta_dir"] / f"{run_id}.json").write_text(
-        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    write_json_atomic(ctx["meta_dir"] / f"{run_id}.json", meta)
 
     if abort is None:
         # 한 줄 = 한 에피소드 (서비스 x 플랫폼 x 조건 x 페르소나 x 회차). 실패한 에피소드는 실행 기록에만 남긴다.
@@ -1482,9 +1488,7 @@ def run(args, root: Path) -> int:
     exit_code = decide_exit_code(episodes, fatal)
     summary = summarize(ctx, episodes, exit_code)
     ctx["meta_dir"].mkdir(parents=True, exist_ok=True)
-    (ctx["meta_dir"] / f"{batch_id}.summary.json").write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    write_json_atomic(ctx["meta_dir"] / f"{batch_id}.summary.json", summary)
     print_summary(summary)
     return exit_code
 
@@ -1603,7 +1607,7 @@ def run_check_episode(ctx: dict, unit: dict, repeat: int):
     if error_detail:
         meta["error_detail"] = error_detail
     ctx["meta_dir"].mkdir(parents=True, exist_ok=True)
-    (ctx["meta_dir"] / f"{run_id}.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_json_atomic(ctx["meta_dir"] / f"{run_id}.json", meta)
 
     if abort is None:
         line = {
@@ -1754,8 +1758,7 @@ def run_check(args, root: Path) -> int:
     exit_code = decide_exit_code(episodes, fatal)
     summary = summarize_check(ctx, episodes, exit_code)
     ctx["meta_dir"].mkdir(parents=True, exist_ok=True)
-    (ctx["meta_dir"] / f"{batch_id}.summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2),
-                                                             encoding="utf-8")
+    write_json_atomic(ctx["meta_dir"] / f"{batch_id}.summary.json", summary)
     print_summary_check(summary)
     return exit_code
 
