@@ -60,8 +60,9 @@ EPISODE_KEY = ("service", "platform", "condition", "persona_id", "repeat", "prov
 MAX_COMPLETION_LIMIT = {"openai": 2048, "gemini": 8192}
 CONCURRENCY_LIMIT = {"openai": 2, "gemini": 1}
 
-# FR-03-01: 조건 0은 슬롯 C0-01~C0-10으로 돌린다 (다른 조건의 페르소나 10명과 호출 수를 맞춘다)
-CONDITION0_SLOTS = 10
+# FR-03-01: 조건 0은 슬롯 C0-01~C0-40으로 돌린다 (다른 조건의 페르소나 수와 호출 수를 맞춘다).
+# 처음엔 페르소나 10명이라 10이었다. 11/18 패널 40명으로 바뀌어서 40으로 올림 (11/23 민우)
+CONDITION0_SLOTS = 40
 
 # NFR-06: 에피소드 실패율이 이 값을 넘으면 종료 코드 5
 FAILURE_RATE_LIMIT = 0.05
@@ -71,8 +72,9 @@ INVALID_RATE_WARN = 0.05
 # gpt-5-mini 값(입력 $0.25, 출력 $2.00 / 100만 토큰)이 8배라서 기본 8. 실행 설정 output_token_weight로 바꾼다
 OUTPUT_TOKEN_WEIGHT_DEFAULT = 8
 
-# 시간 환산용. 대조 서비스 2 x 조건 4 x 페르소나 10 x 반복 3 x 플랫폼 2 (AI제시프로토콜.md 235행)
-PLANNED_EPISODES = 480
+# 시간 환산용. 대조 서비스 2 x 조건 3(0·1·2) x 페르소나 40 x 반복 3 x 플랫폼 2.
+# 처음 값 480은 조건 4 x 페르소나 10 (AI제시프로토콜.md 235행). 조건 3은 아직 막혀 있고 패널이 40명이 됐다
+PLANNED_EPISODES = 1440
 
 # 무관심 재현 점검 (docs/measurement/무관심재현점검_계획.md 2장). 폼 2-6 한 문항만 묻는다
 CHECK_USED6M = "used6m"

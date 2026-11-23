@@ -526,13 +526,15 @@ class TestRunSimulation(unittest.TestCase):
         groups = sorted(p.name for p in (TMP / "out_platform" / "cache").iterdir())
         self.assertTrue(groups[0].startswith("fake_app_c2_") and groups[1].startswith("fake_web_c2_"), groups)
 
-    def test_condition0_uses_ten_slots_and_neutral_name(self):
+    def test_condition0_uses_slots_and_neutral_name(self):
+        self.assertEqual(rs.CONDITION0_SLOTS, 40)  # 패널 40명과 호출 수를 맞춘다 (11/23)
         cfg = write_cfg("c0")
         code, log = run(*args(cfg, condition=0, limit=None))
         self.assertEqual(code, 0, log)
-        self.assertEqual([x["persona_id"] for x in read_raw("c0")], [f"C0-{i:02d}" for i in range(1, 11)])
+        slots = [f"C0-{i:02d}" for i in range(1, rs.CONDITION0_SLOTS + 1)]
+        self.assertEqual([x["persona_id"] for x in read_raw("c0")], slots)
         caches = sorted(p.name for p in (TMP / "out_c0" / "cache").rglob("*.json"))
-        self.assertEqual(caches, [f"C0-{i:02d}_r1.json" for i in range(1, 11)])
+        self.assertEqual(caches, [f"{s}_r1.json" for s in slots])
         self.assertIn("참여자", FAKE.decoded(0))
         self.assertNotIn("C0-01", FAKE.decoded(0))  # 슬롯 ID는 기록용이고 AI한테는 안 간다
 
@@ -737,9 +739,10 @@ class TestRunSimulation(unittest.TestCase):
         self.assertEqual(len(read_raw("cont2")), 1)  # 실패한 에피소드는 원시 응답에 안 쓴다
 
         # 에피소드 20개 중 1개 실패: 실패율 5%는 문턱을 넘지 않아서 종료 코드 0
+        # (조건 0 슬롯이 40이 된 뒤로는 슬롯 10개 x 반복 2로 20개를 맞춘다)
         FAKE.reset("empty_once")
         cfg = write_cfg("cont20", empty_retries=0)
-        code, log = run(*args(cfg, condition=0, repeat=2, limit=None))
+        code, log = run(*args(cfg, condition=0, repeat=2, limit=10))
         self.assertEqual(code, 0, log)
         summary = last_summary("cont20")
         self.assertEqual((summary["episodes_run"], summary["episodes_ok"]), (20, 19))
