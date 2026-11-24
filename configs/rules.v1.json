@@ -1,0 +1,135 @@
+{
+  "rules_version": "v1.0",
+  "frozen": true,
+  "frozen_at": "2026-11-24",
+  "note": "Frozen rules for the main judgment. Copied from rules.draft.json and changed only where docs/measurement/사전등록_v1.md decided (change log 11/16, 11/19, 11/24). rules.draft.json stays as the draft that the v2 simulation (result_v2.json), tests and demo sample were run with. Frozen before the AI judge sheet was coded and before the main results were computed.",
+  "_frozen_from": "Changes from rules.draft.json: method anchors -> fixed (fixed_70 chosen by v2, 11/19); cell_keys drop service (services pooled, 11/16 and section 6); reference_kinds adds use (D6, 11/24); sensitivity: fixed_70 removed (now main), anchors_95 added (v2 candidate 'main').",
+  "cell_keys": [
+    "feature_id",
+    "kind"
+  ],
+  "_cell_keys": "Pooled judgment (사전등록 v1 section 6, change log 11/16): services are merged, so the cell is feature x kind. Platform cells are reference only (platform_reference).",
+  "platform_reference": true,
+  "_platform_reference": "Also report per-platform cells as reference only, for platforms with at least min_humans respondents. Not counted in the verdict summary.",
+  "min_humans": 5,
+  "method": "fixed",
+  "metrics": [
+    "precision",
+    "recall"
+  ],
+  "level": 0.95,
+  "resamples": 1000,
+  "seed": 20261105,
+  "fixed": {
+    "trust": 0.7,
+    "reference": 0.5
+  },
+  "reason_min_humans": 1,
+  "ai_drop_codes": [
+    "-"
+  ],
+  "sensitivity": [
+    {
+      "name": "anchors_95",
+      "method": "anchors",
+      "level": 0.95
+    },
+    {
+      "name": "anchors_90",
+      "method": "anchors",
+      "level": 0.9
+    },
+    {
+      "name": "fixed_60",
+      "method": "fixed",
+      "trust": 0.6,
+      "reference": 0.4
+    },
+    {
+      "name": "fixed_80",
+      "method": "fixed",
+      "trust": 0.8,
+      "reference": 0.6
+    },
+    {
+      "name": "gate_fixed_70",
+      "method": "gate",
+      "trust": 0.7,
+      "reference": 0.5
+    },
+    {
+      "name": "main_dist",
+      "method": "anchors",
+      "level": 0.95,
+      "metrics": [
+        "precision",
+        "recall",
+        "dist"
+      ],
+      "perm": [
+        "dist"
+      ]
+    },
+    {
+      "name": "main_rank",
+      "method": "anchors",
+      "level": 0.95,
+      "metrics": [
+        "precision",
+        "recall",
+        "rank"
+      ],
+      "perm": [
+        "rank"
+      ]
+    },
+    {
+      "name": "ladder_50",
+      "method": "ladder",
+      "level": 0.95,
+      "must_beat": [
+        "wrong50",
+        "common_only",
+        "reversed",
+        "floor"
+      ]
+    }
+  ],
+  "_gate_fixed_70": "Floor check first, then fixed 70%/50% on pooled values. Definition fixed in docs/measurement/사전등록_v1.md section 2.",
+  "_main_dist": "main plus distribution similarity (1 - Jensen-Shannon divergence, base 2) on reason counts. Stratified permutation test (platform as block, all humans vs all AI personas): p >= 0.05 for dist. Added in docs/measurement/사전등록_v1.1_추가.md.",
+  "_main_rank": "main plus rank agreement (Spearman, average ranks for ties) on reason counts. Same permutation test with rank as the statistic. Added in docs/measurement/사전등록_v1.1_추가.md.",
+  "_ladder_50": "Decoy ladder. Decoy AIs are built from the cell's own human answers (50% wrong reasons, common reasons only, reversed order) plus the same AI's answers to other features. Trust needs both: no evidence the AI differs from humans (stratified permutation, min-p over four metrics, p >= 0.05) and the AI clearly beats every must_beat decoy (p < 0.05). Needs the codebook for common codes. Added in docs/measurement/사전등록_v1.2_추가.md.",
+  "ladder": {
+    "decoy_draws": 500,
+    "rungs": true
+  },
+  "_ladder": "Draws per decoy kind (permutations use resamples). rungs: also report the 25/50/75% wrong-reason decoys. Report only, verdicts do not change.",
+  "coverage_target": 0.9,
+  "_coverage_target": "Report only. Sample coverage per cell (Chao et al. 2014, incidence data) and respondents needed to reach this coverage.",
+  "human_equivalent": {
+    "draws": 200
+  },
+  "_human_equivalent": "Report only. How many humans the AI sample is worth in distribution similarity. 0 draws turns it off.",
+  "stability": {
+    "start": 3,
+    "step": 2,
+    "draws": 200,
+    "tolerance": 0.05
+  },
+  "saturation": {
+    "group_keys": [
+      "service"
+    ],
+    "min_respondents": 15,
+    "run": 3,
+    "max_new": 1
+  },
+  "_method": "fixed_70 chosen by the v2 simulation (사전등록 v1 change log 11/19): both precision and recall >= trust -> trust, both >= reference -> reference. T=90 per service; pooled minimum 80.",
+  "reference_kinds": [
+    "nouse_quit",
+    "use"
+  ],
+  "_reference_kinds": "Cells of these kinds are computed and printed separately but not counted in the verdict summary. use added 11/24 (Kang Sunwoo, PR #54 comment, D6): v2 simulated nouse cells only, and AI first impressions differ from 4-4 experience.",
+  "_reason_min_humans": "1, decided 11/24 (Kang Sunwoo, PR #54 comment). Only marks the reasons table.",
+  "_anchors_95": "The v2 candidate named 'main' (two anchors, 95%). Reported as sensitivity after fixed_70 became main."
+}

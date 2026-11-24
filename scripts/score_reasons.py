@@ -68,6 +68,9 @@ KINDS = ("use", "nouse")  # AI 쪽
 # 사람 쪽은 안 쓸 이유를 둘로 나눈다 (폼 B v2 210행). nouse: 안 써본 사람(4-6, 4-7), nouse_quit: 써봤다가 그만둔 사람(4-5, 4-7)
 # AI 안 쓸 이유는 첫인상이라 nouse와 바로 비교하고, nouse_quit과는 참고로만 비교한다
 HUMAN_KINDS = ("use", "nouse", "nouse_quit")
+# 본 판정 요약 수에서 빼고 참고로만 따로 세는 칸 종류. 규칙 파일 reference_kinds로 정한다.
+# 11/24 강선우(PR #54 댓글, 사전등록 변경 기록): 쓸 이유(use, D6)도 nouse_quit처럼 참고로만 낸다
+REFERENCE_KINDS_DEFAULT = ("nouse_quit",)
 PLATFORMS = ("app", "web")
 CONDITIONS = (0, 1, 2, 3)
 METRICS = ("precision", "recall")  # 이유 종류가 겹치는지
@@ -277,6 +280,11 @@ def load_rules(path: Path) -> dict:
         raise InputError(f"{path.name}: stability 값이 이상함")
     if not set(sa["group_keys"]) <= {"service", "platform"} or sa["run"] < 1 or sa["max_new"] < 0:
         raise InputError(f"{path.name}: saturation 값이 이상함")
+    ref_kinds = rules.get("reference_kinds", list(REFERENCE_KINDS_DEFAULT))
+    if (not isinstance(ref_kinds, list) or not set(ref_kinds) <= {"use", "nouse_quit"}
+            or "nouse_quit" not in ref_kinds):
+        raise InputError(f"{path.name}: reference_kinds는 use, nouse_quit 중에서 고르고 nouse_quit은 꼭 넣는다 "
+                         "(nouse는 본 비교라 넣을 수 없다)")
     if not isinstance(rules.get("platform_reference", True), bool):
         raise InputError(f"{path.name}: platform_reference는 true 또는 false")
     target = rules.get("coverage_target", 0.9)
@@ -1067,7 +1075,8 @@ def score(human: list, ai: list, rules: dict, codebook: dict = None) -> dict:
     platform_ref = []
     if "platform" not in keys and rules.get("platform_reference", True):
         platform_ref = score_cells(human, ai + copies, rules, with_platform(keys), codebook, PLATFORM_REF)[0]
-    summary = summarize(cells, conditions, alts, keys, platform_ref)
+    summary = summarize(cells, conditions, alts, keys, platform_ref,
+                        tuple(rules.get("reference_kinds", REFERENCE_KINDS_DEFAULT)))
     # 판정이 난 칸 중 AI 페르소나가 사람 하한보다 적은 칸. 판정 규칙은 그대로 두고 수만 알린다 (11/21 점검 2번)
     summary["ai_personas_below_min_cells"] = sum(
         1 for c in cells if c["verdict"] in (TRUST, REF, ASK) and (c.get("ai_personas") or 0) < rules["min_humans"])
@@ -1075,10 +1084,11 @@ def score(human: list, ai: list, rules: dict, codebook: dict = None) -> dict:
             "coverage": coverage, "saturation": saturation(human, rules), "summary": summary}
 
 
-def summarize(cells: list, conditions: list, alts: list, keys: list, platform_ref: list = ()) -> dict:
+def summarize(cells: list, conditions: list, alts: list, keys: list, platform_ref: list = (),
+              ref_kinds: tuple = REFERENCE_KINDS_DEFAULT) -> dict:
     out = {"verdicts": {}, "mean": {}, "mean_nocommon": {}, "above_condition0": {}, "sensitivity_changed": {}}
     for cond in conditions:
-        mine = [c for c in cells if c["condition"] == cond and c.get("kind") != "nouse_quit"]  # 본 비교만
+        mine = [c for c in cells if c["condition"] == cond and c.get("kind") not in ref_kinds]  # 본 비교만
         out["verdicts"][cond] = {v: sum(c["verdict"] == v for c in mine) for v in VERDICTS}
         out["mean"][cond] = {m: mean([c["full"][m] for c in mine if c["verdict"] != LOW]) for m in METRICS}
         out["mean_nocommon"][cond] = {m: mean([c["nocommon"][m] for c in mine
@@ -1091,7 +1101,7 @@ def summarize(cells: list, conditions: list, alts: list, keys: list, platform_re
             higher = same = lower = 0
             for c in cells:
                 b = base.get(tuple(c[k] for k in keys))
-                if c["condition"] != cond or b is None or c["verdict"] == LOW or c.get("kind") == "nouse_quit":
+                if c["condition"] != cond or b is None or c["verdict"] == LOW or c.get("kind") in ref_kinds:
                     continue
                 x, y = c["full"]["precision"], b["full"]["precision"]
                 if x is None or y is None:
@@ -1102,11 +1112,14 @@ def summarize(cells: list, conditions: list, alts: list, keys: list, platform_re
             out["above_condition0"][cond] = {"higher": higher, "same": same, "lower": lower}
     for name, _ in alts:
         out["sensitivity_changed"][name] = sum(c["sensitivity"][name] != c["verdict"] for c in cells
-                                               if c.get("kind") != "nouse_quit")
+                                               if c.get("kind") not in ref_kinds)
     quit_cells = [c for c in cells if c.get("kind") == "nouse_quit"]
     out["quit_reference"] = {cond: {v: sum(c["verdict"] == v for c in quit_cells if c["condition"] == cond)
                                     for v in VERDICTS} for cond in conditions} if quit_cells else {}
-    ref = [c for c in platform_ref if c.get("kind") != "nouse_quit"]
+    use_cells = [c for c in cells if c.get("kind") == "use"] if "use" in ref_kinds else []
+    out["use_reference"] = {cond: {v: sum(c["verdict"] == v for c in use_cells if c["condition"] == cond)
+                                   for v in VERDICTS} for cond in conditions} if use_cells else {}
+    ref = [c for c in platform_ref if c.get("kind") not in ref_kinds]
     out["platform_reference"] = {cond: {v: sum(c["verdict"] == v for c in ref if c["condition"] == cond)
                                         for v in VERDICTS} for cond in conditions} if ref else {}
     out["ai_platform_short_cells"] = sum(c["ai_platform_short"] > 0 for c in cells)
@@ -1239,6 +1252,8 @@ def print_summary(result: dict, rules: dict, run_id: str) -> None:
         print(f"  조건 {cond} vs 0: 통과율 높음 {x['higher']}, 같음 {x['same']}, 낮음 {x['lower']}")
     for cond, v in s.get("quit_reference", {}).items():
         print(f"  조건 {cond} 그만둔 사람 칸(참고): " + ", ".join(f"{k} {v[k]}" for k in VERDICTS))
+    for cond, v in s.get("use_reference", {}).items():
+        print(f"  조건 {cond} 쓸 이유 칸(참고): " + ", ".join(f"{k} {v[k]}" for k in VERDICTS))
     for cond, v in s.get("platform_reference", {}).items():
         print(f"  조건 {cond} 플랫폼별 칸(참고, 사람 {rules['min_humans']}명 이상만): "
               + ", ".join(f"{k} {v[k]}" for k in VERDICTS))
@@ -1253,7 +1268,8 @@ def print_summary(result: dict, rules: dict, run_id: str) -> None:
         label = "/".join(str(g[k]) for k in rules["saturation"]["group_keys"])
         print(f"  포화 {label}: 응답자 {g['respondents']}명, 이유 {g['reasons']}개, "
               f"다 모음 {g['saturated_at'] if g['saturated_at'] else '아직'}")
-    main_cells = [c for c in result["cells"] if c.get("kind") != "nouse_quit" and c.get("coverage")]
+    ref_kinds = tuple(rules.get("reference_kinds", REFERENCE_KINDS_DEFAULT))
+    main_cells = [c for c in result["cells"] if c.get("kind") not in ref_kinds and c.get("coverage")]
     if main_cells:
         target = rules.get("coverage_target", 0.9)
         short = sum(c["coverage"]["estimate"] < target for c in main_cells)

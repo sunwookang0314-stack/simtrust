@@ -164,6 +164,19 @@ class TestNumbers(unittest.TestCase):
         with self.assertRaises(sr.InputError):
             sr.check_common([{**BASIC_A[0], "kind": "nouse_quit"}], "ai")  # AI 쪽에는 없는 kind
 
+    def test_use_cells_are_reference_only_when_ruled(self):
+        # 11/24 D6: 쓸 이유 칸은 계산해서 따로 찍고 요약 판정 수에는 넣지 않는다
+        h = BASIC_H + human_rows("F1", {f"U{i}": ["A"] for i in range(5)}, kind="use")
+        a = BASIC_A + ai_rows("F1", {"e1": ["A"], "e2": ["A"]}, kind="use")
+        before = sr.score(h, a, rules())
+        self.assertEqual(sum(before["summary"]["verdicts"][2].values()), 2)  # 초안: use도 요약에 든다
+        self.assertEqual(before["summary"]["use_reference"], {})
+        after = sr.score(h, a, rules(reference_kinds=["nouse_quit", "use"]))
+        use_cell = find(after["cells"], feature_id="F1", kind="use", condition=2)
+        self.assertIn(use_cell["verdict"], sr.VERDICTS)  # 계산은 한다
+        self.assertEqual(sum(after["summary"]["verdicts"][2].values()), 1)  # 요약에는 nouse만
+        self.assertEqual(sum(after["summary"]["use_reference"][2].values()), 1)
+
     def test_service_cells_pool_platforms(self):
         # 11/6 D4: 판정 칸은 서비스 x 기능 x 쓸/안 쓸. 플랫폼별 칸은 사람이 하한 이상일 때만 참고로 낸다
         h = (human_rows("F1", {f"A{i}": ["A"] for i in range(3)})
@@ -768,6 +781,32 @@ class TestCLI(unittest.TestCase):
         r = sr.load_rules(REPO / "configs/rules.draft.json")
         self.assertFalse(r["frozen"])
         self.assertEqual((r["method"], r["level"], r["resamples"], r["min_humans"]), ("anchors", 0.95, 1000, 5))
+
+    def test_frozen_rules_change_only_decided_items(self):
+        # 11/24 동결: 초안에서 사전등록으로 정한 것만 바꾼다 (v2 결과 fixed_70, 서비스 합침, D6, reason_min_humans)
+        draft = json.loads((REPO / "configs/rules.draft.json").read_text(encoding="utf-8"))
+        v1 = sr.load_rules(REPO / "configs/rules.v1.json")
+        self.assertTrue(v1["frozen"])
+        self.assertEqual(v1["frozen_at"], "2026-11-24")
+        self.assertEqual((v1["method"], v1["fixed"]), ("fixed", {"trust": 0.7, "reference": 0.5}))
+        self.assertEqual(v1["cell_keys"], ["feature_id", "kind"])
+        self.assertEqual(v1["reference_kinds"], ["nouse_quit", "use"])
+        self.assertEqual(v1["reason_min_humans"], 1)
+        decided = {"rules_version", "frozen", "frozen_at", "note", "method", "cell_keys", "reference_kinds",
+                   "sensitivity"}
+        for k, v in draft.items():
+            if k not in decided and not k.startswith("_"):
+                self.assertEqual(v1[k], v, k)
+        names = [a["name"] for a in v1["sensitivity"]]
+        self.assertNotIn("fixed_70", names)  # 본 규칙이 됐다
+        self.assertEqual(set(names), {a["name"] for a in draft["sensitivity"]} - {"fixed_70"} | {"anchors_95"})
+
+    def test_reference_kinds_must_keep_main_comparison(self):
+        for bad in (["nouse_quit", "nouse"], ["use"], "use"):
+            path = TMP / "rules_badref.json"
+            path.write_text(json.dumps({**RULES, "reference_kinds": bad}), encoding="utf-8")
+            with self.assertRaises(sr.InputError, msg=bad):
+                sr.load_rules(path)
 
 
 if __name__ == "__main__":
