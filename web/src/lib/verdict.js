@@ -30,3 +30,18 @@ export function verdictWhy(cell) {
     return `${below(RULE.ref).map(m => METRIC_SAY[m]).join("·")}이 절반도 안 돼요`;
   return say;
 }
+
+/**
+ * 동결 규칙(configs/rules.v1.json, 11/24)으로 낸 판정. method fixed: 응답자 min_humans(5)명 미만 = 자료 부족,
+ * 통과율·재현율 둘 다 70% 이상 = 믿고 써도 됨, 둘 다 50% 이상 = 참고용, 아니면 사람에게 물어볼 것.
+ * 지금 견본(public/data/sample/)은 초안 규칙(rules.draft.json)으로 계산돼 verdict 칸이 다르다. 실제 결과가 v1 규칙으로
+ * 나오면 verdict 칸과 이 값이 같아야 한다. 발표용 화면(Quick)이 이것을 쓴다
+ */
+export function verdictV1(cell) {
+  if (!cell) return null;
+  if (cell.n_humans < 5) return "자료 부족";
+  if (cell.precision == null || cell.recall == null) return "계산 불가";
+  if (cell.precision >= RULE.trust && cell.recall >= RULE.trust) return "믿고 써도 됨";
+  if (cell.precision >= RULE.ref && cell.recall >= RULE.ref) return "참고용";
+  return "사람에게 물어볼 것";
+}

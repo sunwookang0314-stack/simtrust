@@ -2,6 +2,7 @@ import { Navigate, NavLink, Outlet, Route, Routes } from "react-router-dom";
 import Home from "./pages/Home.jsx";
 import Demo from "./pages/Demo.jsx";
 import TrustMap from "./pages/TrustMap.jsx";
+import Quick from "./pages/Quick.jsx";
 import { NAV } from "./lib/steps.js";
 
 function Layout() {
@@ -25,6 +26,8 @@ function Layout() {
 export default function App() {
   return (
     <Routes>
+      {/* 발표용 한눈에 보기: 위쪽 메뉴 없이 화면을 꽉 채운다 */}
+      <Route path="quick" element={<Quick />} />
       <Route element={<Layout />}>
         <Route index element={<Home />} />
         <Route path="demo" element={<Demo />} />

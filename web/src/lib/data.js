@@ -2,6 +2,8 @@
 // 지금은 public/data/sample/의 가짜 견본이고, 실제 결과가 나오면 DATA_DIR의 파일만 바꾼다.
 
 const DATA_DIR = `${import.meta.env.BASE_URL}data/sample/`;
+/** 지금 데이터가 가짜 견본인지. 실제 계산기 출력으로 DATA_DIR을 바꾸면 false가 된다 */
+export const IS_SAMPLE = DATA_DIR.endsWith("/sample/");
 
 // 검증받는 AI 4개 (11/11 구조 확정)
 // - GPT·Claude·Gemini: 페르소나 없이 같은 질문 (조건 0, #35)
