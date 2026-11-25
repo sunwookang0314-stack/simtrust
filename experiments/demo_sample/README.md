@@ -37,7 +37,7 @@ python experiments/demo_sample/make_demo_sample.py
 | `out/cells_{model_a,model_b,model_c,persona}.csv` | 칸(서비스 x 기능 x 쓸/안 쓸)마다 숫자와 판정 |
 | `out/summary.json` | 모델별 안 쓸 이유 칸 판정 수 |
 
-코드북은 따로 복사하지 않는다. 코드 이름과 정의는 `docs/codebook/코드북_초안.csv`를 읽는다.
+코드북은 따로 복사하지 않는다. 코드 이름과 정의는 `docs/codebook/코드북.csv`(11/25 `코드북_초안.csv`에서 이름 바꿈)를 읽는다.
 
 ## reasons 표 칸
 

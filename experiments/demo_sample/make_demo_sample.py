@@ -33,7 +33,7 @@ import form_to_sheet as fts  # noqa: E402
 import score_reasons as sr  # noqa: E402
 
 SEED = "demo-20261112"
-CODEBOOK = ROOT / "docs/codebook/코드북_초안.csv"
+CODEBOOK = ROOT / "docs/codebook/코드북.csv"   # 11/25 코드북_초안.csv에서 이름 바꿈 (v1.0 고정)
 SERVICES = {"링커리어": "linkareer", "에브리커리어(캠퍼스픽)": "campuspick"}
 PER_SERVICE = 40
 P_APP = 0.7  # 사람 수 시뮬레이션과 같은 가정
@@ -266,7 +266,7 @@ def main() -> int:
         summary[model] = {"label": label, "condition": condition,
                           "ai_answers_per_service_platform": SLOTS * REPEATS,
                           "nouse_verdicts": dict(Counter(c["verdict"] for c in cells))}
-    (out_dir / "summary.json").write_text(json.dumps({"seed": SEED, "codebook": "docs/codebook/코드북_초안.csv (v0.1)",
+    (out_dir / "summary.json").write_text(json.dumps({"seed": SEED, "codebook": "docs/codebook/코드북.csv",
                                                       "respondents_per_service": PER_SERVICE,
                                                       "models": summary}, ensure_ascii=False, indent=1),
                                           encoding="utf-8")
