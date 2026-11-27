@@ -5,7 +5,8 @@ make: 추출 결과(extract_reasons.py의 extracted_*.jsonl)에서 AI 이유를 
   - 줄과 에피소드를 잇는 대응표(key)는 따로 둔다. 판정자에게는 시트만 준다
   - 판정자 둘이 따로 code_1, code_2를 채우고, 맞춰 본 뒤 code_final을 채운다
   - 코드는 코드북(#28) 코드를 쓴다. 이유가 아닌 줄은 '-', 한 줄에 이유가 여럿이면 ';'로 나눈다
-  - 코드북에 없는 이유는 판정자가 새 코드를 붙인다(같은 이유면 같은 새 코드). 사람 코드와 안 겹치면 통과 못 한 이유로 센다
+  - 코드북에 맞는 코드가 없으면 기타(C98·U98)를 붙이고 메모를 남긴다(코딩 규칙 v1.0). import에 --codebook을 주면
+    코드북에 없는 코드(C-01 같은 오타 포함)가 있을 때 멈춘다. 안 주면 전처럼 받고, 계산기는 그런 코드를 기능 코드로 센다
   - alt_means(대체 수단), subtype(세부 유형, F4만)은 코딩 규칙 v0.1 4장 값으로 채운다. 판정에는 안 쓰고 결과에 같이 남긴다.
     여럿이면 ';'로 나누고 없으면 비운다. 사람 정리 시트(form_to_sheet.py)와 같은 칸이다
 import: 채운 시트와 대응표를 합쳐 score_reasons.py가 읽는 AI 코드 CSV를 만든다
@@ -277,6 +278,16 @@ def cmd_import(args, root: Path) -> int:
         if comma:
             problems.append(f"{col}에 쉼표 {comma}개 (코드가 여럿이면 ;로 나눈다)")
     problems += check_extras(sheet, lambda r: key.get(r["item_id"], {}).get("feature_id"))
+    if args.codebook:
+        try:
+            allowed = {c for r in read_csv(root / args.codebook, ["code"]) for c in norm_codes(r["code"])} | {"-"}
+        except (InputError, UnicodeDecodeError, OSError) as e:
+            print(f"[입력 오류] 코드북: {e}", file=sys.stderr)
+            return EXIT_INPUT
+        for col in JUDGE_COLS:
+            bad = Counter(c for r in sheet for c in norm_codes(r[col]) if c not in allowed)
+            if bad:
+                problems.append(f"{col}에 코드북에 없는 코드 " + ", ".join(f"{c} {n}개" for c, n in sorted(bad.items())))
     if problems:
         print("[입력 오류] 시트를 다 채우지 않았음: " + ", ".join(problems), file=sys.stderr)
         return EXIT_INPUT
@@ -332,6 +343,7 @@ def main(argv=None, root: Path = ROOT) -> int:
     im.add_argument("--sheet", required=True)
     im.add_argument("--key", required=True)
     im.add_argument("--out", default="runs/dev/coded")
+    im.add_argument("--codebook", help="코드북 CSV. 주면 코드북에 없는 코드(오타 포함)가 있을 때 멈춘다")
     im.add_argument("--accept-low-kappa", metavar="사유", default="",
                     help="kappa가 0.6에 못 미쳐도 가져온다. 사유를 agreement JSON에 남긴다")
     try:
