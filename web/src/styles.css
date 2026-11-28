@@ -252,8 +252,9 @@ code{font-size:12px;background:var(--g100);padding:1px 5px;border-radius:4px}
 
 /* 뽑은 이유 전체 보기: 같은 뜻끼리 묶음 */
 .cgroups{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:26px;align-items:start}
-.cgroup{background:#fff;border-radius:18px;padding:18px;box-shadow:0 0 0 1px var(--g200);border-top:4px solid var(--g400)}
-.cgroup.f{border-top-color:var(--b500)}
+.cgroup{background:#fff;border-radius:18px;padding:18px;box-shadow:0 0 0 1px var(--g200)}
+/* 기능 코드 묶음은 오른쪽 줄 수 표시를 파랗게 (둥근 카드에 굵은 위 테두리를 두지 않는다) */
+.cgroup.f .cn{background:var(--b50);color:var(--b700)}
 .cgroup header{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:help}
 .cgroup header b{font-size:18px;font-weight:800}
 .cgroup .cn{font-size:12px;font-weight:700;color:var(--g500);background:var(--g100);border-radius:999px;padding:2px 9px}
