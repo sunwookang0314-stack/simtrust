@@ -1,0 +1,1 @@
+아래는 {service_name} {platform_label} 화면입니다. 화면을 살펴본 뒤 질문에 답해 주세요.
